@@ -1,0 +1,133 @@
+# 🦆 DuckType · 码字鸭
+
+[![CI](https://github.com/USER/REPO/actions/workflows/build.yml/badge.svg)](https://github.com/USER/REPO/actions/workflows/build.yml)
+[![Release](https://img.shields.io/github/v/release/USER/REPO?include_prereleases)](https://github.com/USER/REPO/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+![Platform](https://img.shields.io/badge/platform-Windows-blue)
+
+> 把 `USER/REPO` 替换成你自己的 GitHub 仓库路径，徽章即可生效。
+
+一只安静蹲在后台的小鸭子：统计你通过输入法**上屏**的汉字，记录字频、词频、
+输入序列，并提供一个本地网页仪表盘查看各种统计。**只记录汉字**，拼音/英文/数字不入库。
+
+> Windows only（依赖 Win32 输入法消息钩子）。后台运行，不打断正常使用。
+
+## ✨ 功能
+
+- **字频 / 词频**：高频字、jieba 分词后的高频词。
+- **输入序列浏览与导出**：按时间线查看上屏汉字（即"打过的词语序列"），一键导出 TXT / CSV / JSON。
+- **词性统计**：基于 jieba 词性标注的名/动/形/… 分布。
+- **主题关键词**：用 TF-IDF 关键词提取概括一段时间内输入的主题。
+- **输入效率**：平均/峰值速度（字/分）、活跃时长、会话数。
+- **删改频率**：退格 / Delete 次数与"修改率"（删除键 ÷ 上屏字数）。
+- **分应用统计**：哪个程序里打字最多。
+- **活跃热力图**：星期 × 小时 的输入热力分布；每日趋势。
+- **自定义时间范围**：今天 / 近 7 天 / 近 30 天 / 全部，或任意起止日期（周报、月报都是范围特例）。
+- **趋势环比**：关键指标与上一等长周期对比，卡片上直接显示升/降幅度。
+- **目标 · 连续打卡 · 成就**：每日目标进度环、连续码字 streak、成就徽章墙。
+- **趣味榜单**：最爱词、成语/长词、生僻字、只打过一次的字。
+- **网页设置页**：在仪表盘里直接改黑名单、目标、阈值、端口、自启等，免手动改 JSON。
+- **数据管理与隐私**：一键清空、按日期区间删除、保留期限自动清理。
+- **托盘常驻**：暂停/继续、开机自启、打开仪表盘、打开数据文件夹、退出。关闭浏览器页面不会停止后台统计。
+- **隐私保护**：自动跳过 Win32 密码框；可配置程序黑名单（默认含常见密码管理器）。
+
+## 🧠 工作原理（重点）
+
+普通的全局键盘钩子只能拿到你按下的**拼音字母**，拿不到输入法最终**上屏的汉字**。
+要拿到上屏汉字，必须在每个进程里观察 `WM_CHAR / WM_IME_CHAR` 消息——这需要一个被系统
+注入到其它进程的 `WH_GETMESSAGE` 钩子 DLL。
+
+因此本项目由两部分组成：
+
+1. `native/ducktype_hook.c` —— 极小的钩子 DLL，把每个上屏字符通过一个系统范围的
+   注册消息 `PostMessage` 回主程序（只传一个标量，不做跨进程指针传递，尽量不干扰其它程序）。
+2. Python 主程序 —— 创建隐藏窗口接收字符、用纯 ctypes 的低级键盘钩子统计退格/删除、
+   写入 SQLite、跑分词与统计、起仪表盘、托盘常驻。
+
+> **位数限制**：64 位的钩子只能捕获 64 位程序里的输入（绝大多数现代程序都是 64 位）。
+> 要覆盖 32 位老程序需要再跑一个 32 位宿主，属于进阶用法。
+
+## 🚀 快速开始
+
+### 方式 A：下载发行版（推荐）
+
+在 GitHub 的 Releases 下载 `DuckType.exe`（由 CI 自动编译 DLL + 生成图标并打包）。双击运行，
+托盘出现🦆小鸭图标即在统计。右键托盘可打开仪表盘 / 数据文件夹 / 开机自启 / 暂停 / 退出。
+
+### 方式 B：从源码运行
+
+```bat
+pip install -r requirements.txt
+native\build_dll.bat        :: 需要 MinGW-w64 (gcc) 或 MSVC (cl.exe)
+python -m ducktype
+```
+
+没有编译器也能运行——只是在装好 DLL 之前不会记录上屏汉字（退格/速度等仍可用）。
+
+### 方式 C：自己打包 exe
+
+```bat
+build.bat                   :: 编译 DLL + 生成图标 + 安装依赖 + PyInstaller 打包
+:: 产物：dist\DuckType.exe
+```
+
+## 💻 命令行
+
+```bat
+python -m ducktype                 :: 后台运行（托盘 + 仪表盘）
+python -m ducktype --report        :: 打印文本摘要
+python -m ducktype --export out\   :: 导出字频/词频/序列
+python -m ducktype --clear         :: 清空全部已记录数据
+python -m ducktype --report --range 7d
+```
+
+仪表盘默认地址：`http://127.0.0.1:8765/`（端口被占用会自动顺延）。
+
+## 🗂️ 数据与配置
+
+都在 `%APPDATA%\DuckType\`：
+
+- `ducktype.db` —— SQLite 数据库（字符序列、按键事件、词频缓存）。
+- `config.json` —— 配置（也可在仪表盘「设置」页里改）。
+- `ducktype.log` —— 运行日志。
+
+数据全部留在本机，仪表盘只监听 `127.0.0.1`，不上传任何内容。
+
+## ⚙️ 配置项（config.json）
+
+| 键 | 说明 | 默认 |
+|---|---|---|
+| `paused` | 是否暂停统计 | false |
+| `exclude_password_fields` | 跳过 Win32 密码输入框 | true |
+| `blacklist_apps` | 不统计的程序（进程名，小写） | 常见密码管理器 |
+| `run_gap_seconds` | 超过该间隔或切换程序即视为新的一段输入（影响分词） | 3.0 |
+| `session_gap_seconds` | 超过该空闲秒数视为新的输入会话（影响效率统计） | 60.0 |
+| `retention_days` | 自动删除早于该天数的数据；0 = 永久保留 | 0 |
+| `daily_goal` | 每日字数目标（用于目标环 / streak） | 500 |
+| `dashboard_host` / `dashboard_port` | 仪表盘地址（改端口需重启） | 127.0.0.1 / 8765 |
+| `open_dashboard_on_start` | 启动即打开仪表盘 | false |
+| `autostart` | 开机自启（写 HKCU Run） | false |
+
+## 🎨 图标
+
+图标由代码绘制（`src/ducktype/branding.py`），`tools/make_icon.py` 据此生成多尺寸 `duck.ico`。
+想换成自己的鸭子图：把方形 PNG 放到 `assets/duck.png`，再跑一次 `python tools/make_icon.py` 即可。
+
+## 🧪 测试
+
+```bash
+pip install pytest
+pytest -q
+```
+
+分析层、存储层、配置层的测试与平台无关，CI 在 Ubuntu + Windows 上都会跑。
+
+## ⚠️ 已知限制
+
+- 仅 Windows；目标进程需与钩子位数一致（默认 64 位）。
+- 浏览器 / Electron 应用内的密码框不是 Win32 控件，无法被密码框检测识别——请用程序黑名单。
+- 个别自绘文本框的程序可能不产生标准 `WM_CHAR`，少数情况下会漏记。
+
+## 📄 许可证
+
+MIT，见 [LICENSE](LICENSE)。这是一个本地统计工具，请仅用于统计**你自己**的输入。

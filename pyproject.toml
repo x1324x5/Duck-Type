@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ducktype"
+version = "0.1.0"
+description = "码字鸭 · 后台统计输入法上屏汉字的字频、词频与序列 (Windows)"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+dependencies = [
+    "flask>=3.0",
+    "pystray>=0.19",
+    "pillow>=10.0",
+    "jieba>=0.42.1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[project.scripts]
+ducktype = "ducktype.__main__:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+ducktype = ["dashboard/static/*", "native/*.dll", "assets/*.ico"]

@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.venv/
+venv/
+env/
+
+# Build artifacts
+build/
+dist/
+*.spec.bak
+
+# Native build output (rebuilt by CI / build_dll.bat)
+src/ducktype/native/*.dll
+src/ducktype/native/*.obj
+src/ducktype/native/*.lib
+src/ducktype/native/*.exp
+
+# Generated icon (rebuilt from branding.py by tools/make_icon.py)
+src/ducktype/assets/*.ico
+
+# Local data / editor
+*.db
+*.log
+.vscode/
+.idea/

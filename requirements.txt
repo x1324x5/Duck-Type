@@ -1,0 +1,4 @@
+flask>=3.0
+pystray>=0.19
+pillow>=10.0
+jieba>=0.42.1

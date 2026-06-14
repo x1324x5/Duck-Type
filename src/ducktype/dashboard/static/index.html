@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DuckType · 码字鸭</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🦆</text></svg>" />
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#0f1216; --panel:#181d24; --panel2:#1f2630; --line:#2b333f;
+    --fg:#e7ecf3; --muted:#9aa7b8; --accent:#ffce33; --accent2:#36d399;
+    --warn:#ffb454; --down:#ff6b81; --up:#36d399;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+       font-family:"Segoe UI","Microsoft YaHei",system-ui,sans-serif;}
+  header{display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+         padding:16px 24px;border-bottom:1px solid var(--line);background:var(--panel);}
+  header h1{font-size:18px;margin:0;font-weight:600;letter-spacing:.5px;display:flex;align-items:center;gap:8px}
+  header h1 small{color:var(--muted);font-weight:400;font-size:12px}
+  .spacer{flex:1}
+  nav.tabs{display:flex;gap:6px}
+  nav.tabs button{background:transparent;color:var(--muted);border:1px solid transparent;
+    padding:7px 14px;border-radius:9px;cursor:pointer;font-size:14px}
+  nav.tabs button.active{background:var(--panel2);color:var(--fg);border-color:var(--line)}
+  .rangebar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+    padding:12px 24px;border-bottom:1px solid var(--line);background:var(--panel)}
+  .ranges button{background:var(--panel2);color:var(--muted);border:1px solid var(--line);
+    padding:6px 13px;border-radius:8px;cursor:pointer;font-size:13px;margin-right:4px}
+  .ranges button.active{background:var(--accent);color:#26200a;border-color:var(--accent);font-weight:600}
+  .custom{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
+  .custom input{background:var(--panel2);color:var(--fg);border:1px solid var(--line);
+    border-radius:7px;padding:5px 8px;font-size:13px;color-scheme:dark}
+  #since{color:var(--muted);font-size:12px;margin-left:auto}
+  main{padding:24px;max-width:1280px;margin:0 auto}
+  .view{display:none}.view.active{display:block}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:22px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px}
+  .card .v{font-size:25px;font-weight:700}
+  .card .l{color:var(--muted);font-size:12px;margin-top:4px}
+  .card .d{font-size:12px;margin-top:6px;font-weight:600}
+  .d.up{color:var(--up)} .d.down{color:var(--down)} .d.flat{color:var(--muted)}
+  .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:18px}
+  @media(max-width:880px){.grid{grid-template-columns:1fr}}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:18px}
+  .panel h2{font-size:14px;margin:0 0 14px;font-weight:600;color:var(--fg)}
+  .panel h2 span{color:var(--muted);font-weight:400;font-size:12px;margin-left:6px}
+  canvas{max-height:300px}
+  .wide{grid-column:1 / -1}
+  table.heat{border-collapse:collapse;width:100%;font-size:11px}
+  table.heat td{width:3.6%;padding:0}
+  table.heat .cell{height:18px;border-radius:3px;background:#222a35}
+  table.heat th{color:var(--muted);font-weight:400;text-align:center;padding:2px}
+  table.heat td.dow{color:var(--muted);width:auto;padding-right:8px;text-align:right;white-space:nowrap}
+  .topics{display:flex;flex-wrap:wrap;gap:10px;align-items:baseline}
+  .topics .t{color:var(--accent);background:var(--panel2);padding:4px 10px;border-radius:20px}
+  .empty{color:var(--muted);font-size:13px;padding:8px 0}
+  .foot{color:var(--muted);font-size:12px;text-align:center;margin:30px 0 10px}
+  /* goal + streak */
+  .goalrow{display:flex;gap:24px;align-items:center;flex-wrap:wrap}
+  .ring{width:120px;height:120px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+    background:conic-gradient(var(--accent) calc(var(--p)*1%), #2a323d 0)}
+  .ring .inner{width:96px;height:96px;border-radius:50%;background:var(--panel);
+    display:flex;flex-direction:column;align-items:center;justify-content:center}
+  .ring .inner b{font-size:22px} .ring .inner small{color:var(--muted);font-size:11px}
+  .streaks{display:flex;gap:18px;flex-wrap:wrap}
+  .streaks .s b{font-size:24px} .streaks .s small{color:var(--muted);font-size:12px;display:block}
+  /* achievements */
+  .badges{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+  .badge{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:12px;opacity:.45}
+  .badge.on{opacity:1;border-color:var(--accent)}
+  .badge .n{font-weight:600;font-size:14px}
+  .badge .dsc{color:var(--muted);font-size:11px;margin:4px 0 8px}
+  .badge .bar{height:5px;border-radius:3px;background:#2a323d;overflow:hidden}
+  .badge .bar i{display:block;height:100%;background:var(--accent)}
+  /* lists */
+  .chips{display:flex;flex-wrap:wrap;gap:8px}
+  .chip{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:5px 10px;font-size:13px}
+  .chip b{color:var(--accent);margin-left:6px;font-size:12px}
+  /* sequence */
+  .seq{display:flex;flex-direction:column;gap:8px;max-height:600px;overflow:auto}
+  .run{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+  .run .meta{color:var(--muted);font-size:11px;margin-bottom:4px;display:flex;gap:10px}
+  .run .text{font-size:15px;line-height:1.5;word-break:break-all}
+  .btnrow{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center}
+  .btn{background:var(--panel2);color:var(--fg);border:1px solid var(--line);
+    padding:7px 14px;border-radius:8px;cursor:pointer;font-size:13px;text-decoration:none;display:inline-block}
+  .btn:hover{border-color:var(--accent)}
+  .btn.primary{background:var(--accent);color:#26200a;border-color:var(--accent);font-weight:600}
+  .btn.danger{border-color:var(--down);color:var(--down)}
+  .btn.danger:hover{background:var(--down);color:#fff}
+  /* settings form */
+  .form{display:grid;grid-template-columns:220px 1fr;gap:14px 18px;align-items:center;max-width:720px}
+  .form label{color:var(--muted);font-size:13px}
+  .form input[type=number],.form input[type=text],.form textarea{
+    background:var(--panel2);color:var(--fg);border:1px solid var(--line);border-radius:8px;
+    padding:8px 10px;font-size:13px;width:100%;font-family:inherit}
+  .form textarea{min-height:90px;resize:vertical}
+  .form .hint{font-size:11px;color:var(--muted);grid-column:2}
+  .switch{display:inline-flex;align-items:center;gap:8px;cursor:pointer}
+  .switch input{width:18px;height:18px;accent-color:var(--accent)}
+  .saved{color:var(--up);font-size:13px;margin-left:12px}
+</style>
+</head>
+<body>
+<header>
+  <h1>🦆 DuckType <small>码字鸭 · 输入法汉字统计</small></h1>
+  <div class="spacer"></div>
+  <nav class="tabs" id="tabs">
+    <button data-v="board" class="active">看板</button>
+    <button data-v="sequence">序列</button>
+    <button data-v="fun">趣味</button>
+    <button data-v="settings">设置</button>
+  </nav>
+</header>
+
+<div class="rangebar" id="rangebar">
+  <div class="ranges" id="ranges">
+    <button data-r="today">今天</button>
+    <button data-r="7d" class="active">近 7 天</button>
+    <button data-r="30d">近 30 天</button>
+    <button data-r="all">全部</button>
+  </div>
+  <div class="custom">
+    <input type="date" id="d-start"> 至 <input type="date" id="d-end">
+    <button class="btn" id="d-apply">自定义</button>
+  </div>
+  <span id="since"></span>
+</div>
+
+<main>
+  <!-- ======================= BOARD ======================= -->
+  <section class="view active" id="view-board">
+    <div class="cards" id="cards"></div>
+
+    <div class="panel">
+      <h2>今日目标 & 连续打卡 <span>goal · streak</span></h2>
+      <div class="goalrow">
+        <div class="ring" id="goalRing" style="--p:0"><div class="inner"><b id="goalPct">0%</b><small>今日目标</small></div></div>
+        <div class="streaks">
+          <div class="s"><b id="streakCur">0</b><small>当前连续天数</small></div>
+          <div class="s"><b id="streakBest">0</b><small>历史最长</small></div>
+          <div class="s"><b id="gTotal">0</b><small>累计字数</small></div>
+          <div class="s"><b id="gUnlocked">0</b><small>已解锁成就</small></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="panel wide">
+        <h2>每日输入字数 <span>daily characters</span></h2>
+        <canvas id="dailyChart"></canvas>
+      </div>
+      <div class="panel">
+        <h2>高频字 <span>top characters</span></h2>
+        <canvas id="charChart"></canvas>
+      </div>
+      <div class="panel">
+        <h2>高频词 <span>top words (jieba)</span></h2>
+        <canvas id="wordChart"></canvas>
+      </div>
+      <div class="panel">
+        <h2>词性分布 <span>part-of-speech</span></h2>
+        <canvas id="posChart"></canvas>
+      </div>
+      <div class="panel">
+        <h2>各应用输入量 <span>by application</span></h2>
+        <canvas id="appChart"></canvas>
+      </div>
+      <div class="panel wide">
+        <h2>活跃热力图 <span>characters by weekday × hour</span></h2>
+        <div id="heatmap"></div>
+      </div>
+      <div class="panel wide">
+        <h2>主题关键词 <span>topics (TF-IDF keywords)</span></h2>
+        <div class="topics" id="topics"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================= SEQUENCE ======================= -->
+  <section class="view" id="view-sequence">
+    <div class="panel">
+      <h2>输入序列 <span>committed-character timeline (newest first)</span></h2>
+      <div class="btnrow">
+        <a class="btn primary" id="exp-txt">导出 TXT</a>
+        <a class="btn" id="exp-csv">导出 CSV</a>
+        <a class="btn" id="exp-json">导出 JSON</a>
+      </div>
+      <div class="seq" id="seq"></div>
+    </div>
+  </section>
+
+  <!-- ======================= FUN ======================= -->
+  <section class="view" id="view-fun">
+    <div class="panel">
+      <h2>成就 <span>achievements</span></h2>
+      <div class="badges" id="badges"></div>
+    </div>
+    <div class="grid">
+      <div class="panel"><h2>最爱词 <span>favorite words</span></h2><div class="chips" id="favWords"></div></div>
+      <div class="panel"><h2>成语 & 长词 <span>idioms</span></h2><div class="chips" id="idioms"></div></div>
+      <div class="panel"><h2>生僻字 <span>rare characters</span></h2><div class="chips" id="rareChars"></div></div>
+      <div class="panel"><h2>只打过一次的字 <span>hapax</span></h2><div class="chips" id="hapax"></div></div>
+    </div>
+  </section>
+
+  <!-- ======================= SETTINGS ======================= -->
+  <section class="view" id="view-settings">
+    <div class="panel">
+      <h2>设置 <span>settings</span> <span class="saved" id="cfgSaved" style="display:none">已保存 ✓</span></h2>
+      <div class="form" id="cfgForm">
+        <label>每日目标（字）</label><input type="number" id="c-daily_goal" min="1">
+        <label>暂停统计</label><span class="switch"><input type="checkbox" id="c-paused"></span>
+        <label>跳过密码输入框</label><span class="switch"><input type="checkbox" id="c-exclude_password_fields"></span>
+        <label>开机自启</label><span class="switch"><input type="checkbox" id="c-autostart"></span>
+        <label>启动即打开仪表盘</label><span class="switch"><input type="checkbox" id="c-open_dashboard_on_start"></span>
+        <label>数据保留天数</label><input type="number" id="c-retention_days" min="0">
+        <div class="hint">0 = 永久保留；大于 0 时会自动删除更早的数据。</div>
+        <label>分段间隔（秒）</label><input type="number" id="c-run_gap_seconds" step="0.5" min="0">
+        <div class="hint">超过该停顿或切换程序就视为新的一段（影响分词）。</div>
+        <label>会话间隔（秒）</label><input type="number" id="c-session_gap_seconds" step="5" min="0">
+        <label>仪表盘端口</label><input type="number" id="c-dashboard_port" min="1" max="65535">
+        <div class="hint">修改端口需重启 DuckType 才生效。</div>
+        <label>不统计的程序<br>（每行一个进程名）</label><textarea id="c-blacklist_apps" placeholder="keepass.exe"></textarea>
+      </div>
+      <div class="btnrow" style="margin-top:16px">
+        <button class="btn primary" id="cfgSave">保存设置</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>数据管理 <span>data management</span></h2>
+      <div id="dataSummary" class="empty"></div>
+      <div class="btnrow" style="margin-top:10px">
+        <span class="custom">删除区间 <input type="date" id="del-start"> 至 <input type="date" id="del-end"></span>
+        <button class="btn danger" id="delRange">删除该区间</button>
+        <button class="btn danger" id="clearAll">清空全部数据</button>
+      </div>
+    </div>
+  </section>
+
+  <div class="foot">🦆 数据保存在本机 %APPDATA%\DuckType · 仅本地访问</div>
+</main>
+
+<script>
+const DOW = ["周日","周一","周二","周三","周四","周五","周六"];
+let range = "7d", custom = {start:null, end:null};
+let charts = {};
+
+Chart.defaults.color = "#9aa7b8";
+Chart.defaults.borderColor = "#2b333f";
+Chart.defaults.font.family = '"Segoe UI","Microsoft YaHei",sans-serif';
+
+function qs(){
+  let q = "range=" + range;
+  if(range === "custom"){ q += "&start=" + (custom.start||"") + "&end=" + (custom.end||""); }
+  return q;
+}
+async function getJSON(path){
+  const r = await fetch(path + (path.includes("?")?"&":"?") + qs());
+  return r.json();
+}
+function makeBar(id, labels, data, color){
+  if(charts[id]) charts[id].destroy();
+  charts[id] = new Chart(document.getElementById(id), {
+    type:"bar",
+    data:{labels, datasets:[{data, backgroundColor:color, borderRadius:4}]},
+    options:{plugins:{legend:{display:false}},scales:{x:{grid:{display:false}},y:{beginAtZero:true}}}
+  });
+}
+function escapeHtml(s){return s.replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));}
+
+// ---- tabs ----
+document.getElementById("tabs").addEventListener("click", e=>{
+  const v = e.target.dataset.v; if(!v) return;
+  document.querySelectorAll("#tabs button").forEach(b=>b.classList.toggle("active", b.dataset.v===v));
+  document.querySelectorAll(".view").forEach(s=>s.classList.toggle("active", s.id==="view-"+v));
+  document.getElementById("rangebar").style.display = (v==="settings") ? "none" : "flex";
+  if(v==="settings") loadSettings();
+  else if(v==="sequence") loadSequence();
+  else if(v==="fun") loadFun();
+});
+
+// ---- range ----
+document.getElementById("ranges").addEventListener("click", e=>{
+  if(!e.target.dataset.r) return;
+  range = e.target.dataset.r;
+  document.querySelectorAll("#ranges button").forEach(b=>b.classList.toggle("active", b===e.target));
+  refreshActive();
+});
+document.getElementById("d-apply").addEventListener("click", ()=>{
+  const s = document.getElementById("d-start").value, en = document.getElementById("d-end").value;
+  if(!s && !en) return;
+  range = "custom"; custom = {start:s, end:en};
+  document.querySelectorAll("#ranges button").forEach(b=>b.classList.remove("active"));
+  refreshActive();
+});
+function refreshActive(){
+  const v = document.querySelector("#tabs button.active").dataset.v;
+  if(v==="board") refreshBoard();
+  else if(v==="sequence") loadSequence();
+  else if(v==="fun") loadFun();
+}
+
+// ---- board ----
+function deltaHTML(pct){
+  if(pct===null||pct===undefined) return "";
+  if(pct===0) return `<div class="d flat">→ 持平</div>`;
+  const up = pct>0;
+  return `<div class="d ${up?"up":"down"}">${up?"▲":"▼"} ${Math.abs(pct)}%</div>`;
+}
+function renderCards(o, trend){
+  const d = (trend && trend.delta_pct) || {};
+  const cards = [
+    ["总字数", o.total_chars, d.chars],
+    ["不同汉字", o.distinct_chars, null],
+    ["平均速度", o.cpm + " 字/分", d.cpm],
+    ["峰值速度", o.peak_cpm + " 字/分", null],
+    ["活跃时长", o.active_minutes + " 分", d.active_minutes],
+    ["修改率", (o.edit_ratio*100).toFixed(1) + "%", (d.edit_ratio===null||d.edit_ratio===undefined)?null:-d.edit_ratio],
+    ["删除键", o.backspace + o.delete, null],
+    ["输入会话", o.sessions, null],
+  ];
+  document.getElementById("cards").innerHTML = cards.map(
+    ([l,v,dl]) => `<div class="card"><div class="v">${v}</div><div class="l">${l}</div>${deltaHTML(dl)}</div>`
+  ).join("");
+  document.getElementById("since").textContent =
+    o.tracking_since ? ("自 " + o.tracking_since + " 起记录") : "暂无数据";
+}
+function renderHeat(grid){
+  let max = 1; grid.forEach(row => row.forEach(v => { if(v>max) max=v; }));
+  let html = "<table class='heat'><tr><th></th>";
+  for(let h=0;h<24;h++) html += `<th>${h%6===0?h:""}</th>`;
+  html += "</tr>";
+  for(let dd=0;dd<7;dd++){
+    html += `<tr><td class='dow'>${DOW[dd]}</td>`;
+    for(let h=0;h<24;h++){
+      const v = grid[dd][h];
+      const a = v? (0.12 + 0.88*v/max) : 0;
+      const bg = v? `rgba(255,206,51,${a.toFixed(3)})` : "#222a35";
+      html += `<td><div class='cell' style='background:${bg}' title='${DOW[dd]} ${h}:00 · ${v} 字'></div></td>`;
+    }
+    html += "</tr>";
+  }
+  document.getElementById("heatmap").innerHTML = html + "</table>";
+}
+function renderTopics(rows){
+  const el = document.getElementById("topics");
+  if(!rows.length){ el.innerHTML = "<div class='empty'>暂无（需要安装 jieba 且有足够数据）</div>"; return; }
+  const max = rows[0].weight || 1;
+  el.innerHTML = rows.map(r => `<span class="t" style="font-size:${(13+16*(r.weight/max)).toFixed(0)}px">${r.word}</span>`).join("");
+}
+function renderGamify(g){
+  document.getElementById("goalRing").style.setProperty("--p", (g.goal_pct*100).toFixed(0));
+  document.getElementById("goalPct").textContent = (g.goal_pct*100).toFixed(0) + "%";
+  document.getElementById("streakCur").textContent = g.streak_current;
+  document.getElementById("streakBest").textContent = g.streak_best;
+  document.getElementById("gTotal").textContent = g.total_chars;
+  document.getElementById("gUnlocked").textContent = g.unlocked + " / " + g.achievements.length;
+  document.getElementById("badges").innerHTML = g.achievements.map(a=>`
+    <div class="badge ${a.unlocked?"on":""}">
+      <div class="n">${a.unlocked?"🏅":"🔒"} ${a.name}</div>
+      <div class="dsc">${a.desc}</div>
+      <div class="bar"><i style="width:${(a.progress*100).toFixed(0)}%"></i></div>
+    </div>`).join("");
+}
+async function refreshBoard(){
+  const [o, trend, daily, chars, words, pos, apps, heat, topics, g] = await Promise.all([
+    getJSON("/api/overview"), getJSON("/api/trend"), getJSON("/api/daily"),
+    getJSON("/api/top_chars?n=25"), getJSON("/api/top_words?n=25"), getJSON("/api/pos"),
+    getJSON("/api/apps?n=12"), getJSON("/api/heatmap"), getJSON("/api/topics?n=30"),
+    getJSON("/api/gamify"),
+  ]);
+  renderCards(o, trend);
+  renderGamify(g);
+  if(charts.dailyChart) charts.dailyChart.destroy();
+  charts.dailyChart = new Chart(document.getElementById("dailyChart"), {
+    type:"line",
+    data:{labels:daily.map(d=>d.date),
+      datasets:[{data:daily.map(d=>d.count),borderColor:"#ffce33",
+        backgroundColor:"rgba(255,206,51,.15)",fill:true,tension:.3,pointRadius:2}]},
+    options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true}}}
+  });
+  makeBar("charChart", chars.map(c=>c.ch), chars.map(c=>c.count), "#ffce33");
+  makeBar("wordChart", words.map(w=>w.word), words.map(w=>w.count), "#36d399");
+  makeBar("appChart", apps.map(a=>a.app), apps.map(a=>a.count), "#ffb454");
+  if(charts.posChart) charts.posChart.destroy();
+  charts.posChart = new Chart(document.getElementById("posChart"), {
+    type:"doughnut",
+    data:{labels:pos.slice(0,10).map(p=>p.label),
+      datasets:[{data:pos.slice(0,10).map(p=>p.count),
+        backgroundColor:["#ffce33","#36d399","#ffb454","#ff6b81","#a78bfa","#22d3ee","#f472b6","#facc15","#4ade80","#94a3b8"]}]},
+    options:{plugins:{legend:{position:"right"}}}
+  });
+  renderHeat(heat.grid);
+  renderTopics(topics);
+}
+
+// ---- sequence ----
+async function loadSequence(){
+  const runs = await getJSON("/api/sequence?limit=300");
+  const el = document.getElementById("seq");
+  if(!runs.length){ el.innerHTML = "<div class='empty'>暂无序列数据（需要钩子 DLL 已安装且有上屏汉字）。</div>"; }
+  else el.innerHTML = runs.map(r=>{
+    const t = r.ts ? new Date(r.ts*1000).toLocaleString() : "";
+    return `<div class="run"><div class="meta"><span>${t}</span><span>${escapeHtml(r.app||"")}</span></div><div class="text">${escapeHtml(r.text)}</div></div>`;
+  }).join("");
+  ["txt","csv","json"].forEach(f=>{
+    document.getElementById("exp-"+f).href = "/api/export/sequence."+f+"?"+qs();
+  });
+}
+
+// ---- fun ----
+function chips(items, fmt){ return items.length ? items.map(fmt).join("") : "<div class='empty'>暂无</div>"; }
+async function loadFun(){
+  const [g, f] = await Promise.all([getJSON("/api/gamify"), getJSON("/api/fun")]);
+  renderGamify(g);
+  document.getElementById("favWords").innerHTML = chips(f.favorite_words, w=>`<span class="chip">${escapeHtml(w.word)}<b>${w.count}</b></span>`);
+  document.getElementById("idioms").innerHTML = chips(f.idioms, w=>`<span class="chip">${escapeHtml(w.word)}<b>${w.count}</b></span>`);
+  document.getElementById("rareChars").innerHTML = chips(f.rare_chars, c=>`<span class="chip">${escapeHtml(c.ch)}<b>${c.count}</b></span>`);
+  document.getElementById("hapax").innerHTML = chips(f.hapax, c=>`<span class="chip">${escapeHtml(c)}</span>`);
+}
+
+// ---- settings ----
+const CFG_BOOL = ["paused","exclude_password_fields","autostart","open_dashboard_on_start"];
+const CFG_NUM = ["daily_goal","retention_days","run_gap_seconds","session_gap_seconds","dashboard_port"];
+async function loadSettings(){
+  const c = await fetch("/api/config").then(r=>r.json());
+  CFG_BOOL.forEach(k=>document.getElementById("c-"+k).checked = !!c[k]);
+  CFG_NUM.forEach(k=>document.getElementById("c-"+k).value = c[k]);
+  document.getElementById("c-blacklist_apps").value = (c.blacklist_apps||[]).join("\n");
+  loadDataSummary();
+}
+async function loadDataSummary(){
+  const s = await fetch("/api/data/summary").then(r=>r.json());
+  const fmt = ts => ts ? new Date(ts*1000).toLocaleDateString() : "—";
+  document.getElementById("dataSummary").textContent =
+    `已记录 ${s.char_rows} 个汉字、${s.key_rows} 次按键，时间跨度 ${fmt(s.first_ts)} ~ ${fmt(s.last_ts)}。`;
+}
+document.getElementById("cfgSave").addEventListener("click", async ()=>{
+  const body = {};
+  CFG_BOOL.forEach(k=>body[k]=document.getElementById("c-"+k).checked);
+  CFG_NUM.forEach(k=>body[k]=Number(document.getElementById("c-"+k).value));
+  body.blacklist_apps = document.getElementById("c-blacklist_apps").value.split("\n").map(s=>s.trim()).filter(Boolean);
+  const res = await fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}).then(r=>r.json());
+  const saved = document.getElementById("cfgSaved");
+  saved.textContent = res.restart_required ? "已保存（端口改动需重启）✓" : "已保存 ✓";
+  saved.style.display = "inline"; setTimeout(()=>saved.style.display="none", 3000);
+});
+document.getElementById("clearAll").addEventListener("click", async ()=>{
+  if(!confirm("确定清空全部已记录数据？此操作不可恢复。")) return;
+  const r = await fetch("/api/data/clear",{method:"POST"}).then(r=>r.json());
+  alert(`已删除 ${r.deleted} 个汉字。`); loadDataSummary();
+});
+document.getElementById("delRange").addEventListener("click", async ()=>{
+  const s = document.getElementById("del-start").value, e = document.getElementById("del-end").value;
+  if(!s && !e){ alert("请选择起止日期。"); return; }
+  if(!confirm(`确定删除 ${s||"最早"} 至 ${e||"最新"} 的数据？`)) return;
+  const r = await fetch("/api/data/delete",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({start:s,end:e})}).then(r=>r.json());
+  alert(`已删除 ${r.deleted} 个汉字。`); loadDataSummary();
+});
+
+// ---- boot ----
+refreshBoard();
+setInterval(()=>{ if(document.querySelector("#tabs button.active").dataset.v==="board") refreshBoard(); }, 30000);
+</script>
+</body>
+</html>
