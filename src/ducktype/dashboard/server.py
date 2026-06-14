@@ -27,7 +27,7 @@ log = logging.getLogger("ducktype")
 _STATIC = Path(__file__).resolve().parent / "static"
 
 
-def create_app(db, config) -> Flask:
+def create_app(db, config, status_fn=None) -> Flask:
     app = Flask(__name__, static_folder=None)
 
     def _bounds():
@@ -40,6 +40,17 @@ def create_app(db, config) -> Flask:
     @app.route("/")
     def index():
         return send_from_directory(_STATIC, "index.html")
+
+    @app.route("/favicon.png")
+    def favicon():
+        from ..branding import app_image
+        buf = io.BytesIO()
+        app_image(64, active=True).save(buf, format="PNG")
+        return Response(buf.getvalue(), mimetype="image/png")
+
+    @app.route("/api/status")
+    def api_status():
+        return jsonify(status_fn() if status_fn else {})
 
     # ---- read-only analytics -------------------------------------------
     @app.route("/api/overview")
@@ -189,9 +200,9 @@ class DashboardServer:
     # Try up to this many consecutive ports if the configured one is taken.
     _PORT_TRIES = 10
 
-    def __init__(self, db, config):
+    def __init__(self, db, config, status_fn=None):
         self.config = config
-        self._app = create_app(db, config)
+        self._app = create_app(db, config, status_fn)
         self._server = None
         self._thread: Optional[threading.Thread] = None
         self._bound_port = config.dashboard_port

@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>DuckType · 码字鸭</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🦆</text></svg>" />
+<link rel="icon" type="image/png" href="/favicon.png" />
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
   :root{
@@ -57,6 +57,11 @@
   .topics .t{color:var(--accent);background:var(--panel2);padding:4px 10px;border-radius:20px}
   .empty{color:var(--muted);font-size:13px;padding:8px 0}
   .foot{color:var(--muted);font-size:12px;text-align:center;margin:30px 0 10px}
+  .banner{display:none;border-radius:12px;padding:12px 16px;margin-bottom:18px;font-size:13px;line-height:1.6}
+  .banner.warn{display:block;background:rgba(255,180,84,.12);border:1px solid var(--warn);color:#ffd9a8}
+  .banner.ok{display:block;background:rgba(54,211,153,.10);border:1px solid var(--accent2);color:#aef0d4}
+  .banner b{color:#fff}
+  .banner code{background:#0008;padding:1px 6px;border-radius:5px}
   /* goal + streak */
   .goalrow{display:flex;gap:24px;align-items:center;flex-wrap:wrap}
   .ring{width:120px;height:120px;border-radius:50%;display:flex;align-items:center;justify-content:center;
@@ -130,6 +135,8 @@
 </div>
 
 <main>
+  <div class="banner" id="healthBanner"></div>
+
   <!-- ======================= BOARD ======================= -->
   <section class="view active" id="view-board">
     <div class="cards" id="cards"></div>
@@ -463,9 +470,40 @@ document.getElementById("delRange").addEventListener("click", async ()=>{
   alert(`已删除 ${r.deleted} 个汉字。`); loadDataSummary();
 });
 
+// ---- health banner ----
+async function checkHealth(){
+  let s; try { s = await fetch("/api/status").then(r=>r.json()); } catch(e){ return; }
+  const el = document.getElementById("healthBanner");
+  el.className = "banner";
+  if(s.paused){
+    el.classList.add("warn");
+    el.innerHTML = "⏸️ <b>统计已暂停</b>。到「设置」里取消暂停，或右键托盘小鸭恢复。";
+  } else if(!s.hook_dll_found){
+    el.classList.add("warn");
+    el.innerHTML = "⚠️ <b>没找到钩子 DLL</b>，无法记录上屏汉字（退格/速度仍可用）。" +
+      "请用 release 版的 <code>DuckType.exe</code>，或从源码先运行 <code>native\\build_dll.bat</code> 再启动。" +
+      "<br>期望路径：<code>" + (s.dll_path||"") + "</code>";
+  } else if(!s.hook_installed){
+    el.classList.add("warn");
+    el.innerHTML = "⚠️ <b>钩子安装失败</b>。多半是 DLL 与程序位数不一致（64/32 位）。" +
+      "详见日志 <code>%APPDATA%\\DuckType\\ducktype.log</code>。";
+  } else if(s.chars_captured === 0){
+    el.classList.add("warn");
+    el.innerHTML = "🔎 <b>钩子已就绪，但还没捕获到汉字</b>。请按 <b>Win+R</b> 打开运行框，用输入法打几个汉字测试（运行框是经典 Win32 输入框）：" +
+      "<br>· 运行框能记录、但你常用的程序（Win11 记事本 / 浏览器 / 微信 / VS Code 等）不行 → 这些程序走 <b>TSF</b> 提交文本，不发 WM_CHAR，是当前捕获方式的已知限制。" +
+      "<br>· 连运行框也不行 → 多半是 64/32 位不匹配或被安全软件拦截，请看日志 <code>%APPDATA%\\DuckType\\ducktype.log</code>。";
+  } else {
+    el.classList.add("ok");
+    el.innerHTML = "✅ 钩子工作正常，本次已捕获 <b>" + s.chars_captured + "</b> 个汉字。";
+    setTimeout(()=>{ el.className="banner"; }, 6000);
+  }
+}
+
 // ---- boot ----
 refreshBoard();
+checkHealth();
 setInterval(()=>{ if(document.querySelector("#tabs button.active").dataset.v==="board") refreshBoard(); }, 30000);
+setInterval(checkHealth, 15000);
 </script>
 </body>
 </html>

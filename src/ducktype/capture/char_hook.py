@@ -15,11 +15,14 @@ and the rest of the app still runs -- it just won't record committed characters.
 from __future__ import annotations
 
 import ctypes
+import logging
 import threading
 from ctypes import wintypes
 from typing import Callable, Optional
 
 from ..paths import hook_dll_path
+
+log = logging.getLogger("ducktype")
 
 _user32 = ctypes.WinDLL("user32", use_last_error=True)
 _kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -99,6 +102,8 @@ class CharHook:
     def __init__(self, on_char: Callable[[str], None]):
         self._on_char = on_char
         self.available = hook_dll_path().exists()
+        self.installed = False          # True once the global hook is set
+        self.received = 0               # committed Han chars seen this session
         self._dll = None
         self._hook = None
         self._hwnd = None
@@ -131,6 +136,9 @@ class CharHook:
         else:
             self._pending_high = None
         if _is_han(cp):
+            if self.received == 0:
+                log.info("First committed character captured (hook is working).")
+            self.received += 1
             try:
                 self._on_char(chr(cp))
             except Exception:
@@ -151,17 +159,35 @@ class CharHook:
             0, CLASS_NAME, "DuckType", 0, 0, 0, 0, 0, None, None, hinst, None
         )
         if not self._hwnd:
+            log.error("CharHook: CreateWindowExW failed (err=%d)", ctypes.get_last_error())
             return
 
         self._reg_msg = _user32.RegisterWindowMessageW(REG_MSG_NAME)
 
-        self._dll = ctypes.WinDLL(str(hook_dll_path()))
+        try:
+            self._dll = ctypes.WinDLL(str(hook_dll_path()))
+        except OSError as exc:
+            # Most often: the DLL is the wrong architecture for this Python.
+            log.error("CharHook: failed to load %s (%s). Is it the same 64/32-bit "
+                      "as DuckType?", hook_dll_path(), exc)
+            return
+
         proc = _kernel32.GetProcAddress(self._dll._handle, b"GetMsgProc")
-        if proc:
-            self._hook = _user32.SetWindowsHookExW(
-                WH_GETMESSAGE, ctypes.c_void_p(proc),
-                wintypes.HINSTANCE(self._dll._handle), 0
-            )
+        if not proc:
+            log.error("CharHook: GetProcAddress('GetMsgProc') failed -- the DLL is "
+                      "missing its export.")
+            return
+
+        self._hook = _user32.SetWindowsHookExW(
+            WH_GETMESSAGE, ctypes.c_void_p(proc),
+            wintypes.HINSTANCE(self._dll._handle), 0
+        )
+        if not self._hook:
+            log.error("CharHook: SetWindowsHookExW failed (err=%d). The global hook "
+                      "could not be installed.", ctypes.get_last_error())
+            return
+        self.installed = True
+        log.info("CharHook: global WH_GETMESSAGE hook installed from %s", hook_dll_path())
 
         msg = wintypes.MSG()
         while _user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:

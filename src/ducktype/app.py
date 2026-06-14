@@ -22,11 +22,24 @@ class App:
     def __init__(self):
         self.config = Config.load()
         self.db = Database(db_path())
-        self.dashboard = DashboardServer(self.db, self.config)
+        self.dashboard = DashboardServer(self.db, self.config, self.get_status)
         self._tracker = None
         self._char_hook = None
         self._key_hook = None
         self._purge_timer: threading.Timer | None = None
+
+    # ---- status (for the dashboard health banner) -----------------------
+    def get_status(self) -> dict:
+        ch = self._char_hook
+        return {
+            "platform_supported": sys.platform.startswith("win"),
+            "paused": self.config.paused,
+            "hook_dll_found": bool(ch and ch.available),
+            "hook_installed": bool(ch and ch.installed),
+            "chars_captured": (ch.received if ch else 0),
+            "dll_path": str(hook_dll_path()),
+            "active_app": self._active_app(),
+        }
 
     # ---- capture filtering ----------------------------------------------
     def _active_app(self):
