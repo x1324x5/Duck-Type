@@ -489,9 +489,17 @@ async function checkHealth(){
       "详见日志 <code>%APPDATA%\\DuckType\\ducktype.log</code>。";
   } else if(s.chars_captured === 0){
     el.classList.add("warn");
-    el.innerHTML = "🔎 <b>钩子已就绪，但还没捕获到汉字</b>。请按 <b>Win+R</b> 打开运行框，用输入法打几个汉字测试（运行框是经典 Win32 输入框）：" +
-      "<br>· 运行框能记录、但你常用的程序（Win11 记事本 / 浏览器 / 微信 / VS Code 等）不行 → 这些程序走 <b>TSF</b> 提交文本，不发 WM_CHAR，是当前捕获方式的已知限制。" +
-      "<br>· 连运行框也不行 → 多半是 64/32 位不匹配或被安全软件拦截，请看日志 <code>%APPDATA%\\DuckType\\ducktype.log</code>。";
+    const stat = "（收到字符消息 <b>" + (s.code_units||0) + "</b> 个 / 其中汉字 <b>0</b> 个）";
+    if((s.code_units||0) === 0){
+      el.innerHTML = "🔎 <b>钩子已装，但还没收到任何字符消息</b> " + stat +
+        "。请按 <b>Win+R</b> 打开运行框，先打几个<b>英文字母</b>再回来看：" +
+        "<br>· 英文让上面的数字涨起来 → 通路正常，说明是中文走 <b>TSF</b>（需要换捕获引擎）。" +
+        "<br>· 打英文数字仍是 0 → 注入没生效，多半是被安全软件拦截或目标是 32 位程序，请看日志 <code>%APPDATA%\\DuckType\\ducktype.log</code>。";
+    } else {
+      el.innerHTML = "🔎 <b>能收到字符消息，但收不到汉字</b> " + stat +
+        "。这就是 <b>TSF</b> 限制：英文/拼音通过 WM_CHAR 进来了，但中文上屏走 TSF 不发 WM_CHAR。" +
+        "可在 <b>Win+R 运行框</b>里打中文验证（经典输入框能进）。要彻底解决需要换成 TSF 捕获引擎。";
+    }
   } else {
     el.classList.add("ok");
     el.innerHTML = "✅ 钩子工作正常，本次已捕获 <b>" + s.chars_captured + "</b> 个汉字。";

@@ -36,6 +36,7 @@ class App:
             "paused": self.config.paused,
             "hook_dll_found": bool(ch and ch.available),
             "hook_installed": bool(ch and ch.installed),
+            "code_units": (ch.units if ch else 0),
             "chars_captured": (ch.received if ch else 0),
             "dll_path": str(hook_dll_path()),
             "active_app": self._active_app(),

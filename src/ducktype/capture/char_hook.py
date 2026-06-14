@@ -103,6 +103,7 @@ class CharHook:
         self._on_char = on_char
         self.available = hook_dll_path().exists()
         self.installed = False          # True once the global hook is set
+        self.units = 0                  # ANY WM_CHAR code unit posted by the DLL
         self.received = 0               # committed Han chars seen this session
         self._dll = None
         self._hook = None
@@ -124,6 +125,9 @@ class CharHook:
         return _user32.DefWindowProcW(hwnd, msg, wparam, lparam)
 
     def _handle_code_unit(self, unit: int) -> None:
+        if self.units == 0:
+            log.info("CharHook: first WM_CHAR code unit received (injection works).")
+        self.units += 1
         cp = unit
         if 0xD800 <= unit <= 0xDBFF:           # high surrogate
             self._pending_high = unit
