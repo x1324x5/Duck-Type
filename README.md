@@ -1,11 +1,9 @@
 # 🦆 DuckType · 码字鸭
 
-[![CI](https://github.com/USER/REPO/actions/workflows/build.yml/badge.svg)](https://github.com/USER/REPO/actions/workflows/build.yml)
-[![Release](https://img.shields.io/github/v/release/USER/REPO?include_prereleases)](https://github.com/USER/REPO/releases)
+[![CI](https://github.com/x1324x5/Duck-Type/actions/workflows/build.yml/badge.svg)](https://github.com/x1324x5/Duck-Type/actions/workflows/build.yml)
+[![Release](https://img.shields.io/github/v/release/x1324x5/Duck-Type?include_prereleases)](https://github.com/x1324x5/Duck-Type/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![Platform](https://img.shields.io/badge/platform-Windows-blue)
-
-> 把 `USER/REPO` 替换成你自己的 GitHub 仓库路径，徽章即可生效。
 
 一只安静蹲在后台的小鸭子：统计你通过输入法**上屏**的汉字，记录字频、词频、
 输入序列，并提供一个本地网页仪表盘查看各种统计。**只记录汉字**，拼音/英文/数字不入库。

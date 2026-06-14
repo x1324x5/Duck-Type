@@ -24,11 +24,18 @@ _SIZES = [(256, 256), (128, 128), (64, 64), (48, 48), (32, 32), (16, 16)]
 def main() -> None:
     OUT.parent.mkdir(parents=True, exist_ok=True)
     if CUSTOM_PNG.exists():
-        base = Image.open(CUSTOM_PNG).convert("RGBA")
-        # Square-pad so non-square art is not distorted.
-        side = max(base.size)
+        img = Image.open(CUSTOM_PNG).convert("RGBA")
+        # Trim the transparent margin so the subject fills the icon, then re-pad
+        # to a square with a small breathing-room margin.
+        bbox = img.getbbox()
+        if bbox:
+            img = img.crop(bbox)
+        margin = round(max(img.size) * 0.08)
+        side = max(img.size) + 2 * margin
         canvas = Image.new("RGBA", (side, side), (0, 0, 0, 0))
-        canvas.paste(base, ((side - base.width) // 2, (side - base.height) // 2))
+        canvas.paste(img, ((side - img.width) // 2, (side - img.height) // 2))
+        # Derive every size from a crisp 256px master.
+        canvas = canvas.resize((256, 256), Image.LANCZOS)
         canvas.save(OUT, sizes=_SIZES)
         print(f"Wrote {OUT} from custom {CUSTOM_PNG}")
     else:

@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 import pystray
 from pystray import Menu, MenuItem
 
-from ..branding import duck_image
+from ..branding import app_image
 from ..paths import data_dir
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -24,7 +24,7 @@ class TrayApp:
     def __init__(self, app: "App"):
         self.app = app
         self._icon = pystray.Icon(
-            "DuckType", duck_image(64, active=not app.config.paused), "DuckType · 码字鸭"
+            "DuckType", app_image(64, active=not app.config.paused), "DuckType · 码字鸭"
         )
         self._icon.menu = Menu(
             MenuItem("打开仪表盘", self._open_dashboard, default=True),
@@ -51,7 +51,7 @@ class TrayApp:
 
     def _toggle_pause(self, icon, item):
         self.app.set_paused(not self.app.config.paused)
-        self._icon.icon = duck_image(64, active=not self.app.config.paused)
+        self._icon.icon = app_image(64, active=not self.app.config.paused)
 
     def _toggle_autostart(self, icon, item):
         self.app.set_autostart(not self.app.config.autostart)

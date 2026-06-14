@@ -6,7 +6,7 @@ no binary asset checked in and always matches the tray.
 """
 from __future__ import annotations
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageEnhance
 
 # Palette
 _POND = (210, 236, 255, 255)        # soft blue background
@@ -57,3 +57,24 @@ def duck_image(size: int = 256, active: bool = True) -> Image.Image:
 def ico_images() -> list:
     """The set of square sizes Windows expects inside a .ico."""
     return [duck_image(sz, active=True) for sz in (256, 128, 64, 48, 32, 16)]
+
+
+def _dim(img: Image.Image) -> Image.Image:
+    """Greyed-out version used for the 'paused' tray state."""
+    grey = ImageEnhance.Color(img).enhance(0.25)
+    return ImageEnhance.Brightness(grey).enhance(0.8)
+
+
+def app_image(size: int = 64, active: bool = True) -> Image.Image:
+    """Tray/app icon. Prefers the bundled icon (your custom art, if you dropped a
+    duck.png and ran tools/make_icon.py); otherwise falls back to the code duck.
+    This keeps the tray icon identical to the packaged .exe icon."""
+    try:
+        from .paths import icon_path  # local import avoids any import cycle
+        p = icon_path()
+        if p.exists():
+            img = Image.open(p).convert("RGBA").resize((size, size), Image.LANCZOS)
+            return img if active else _dim(img)
+    except Exception:
+        pass
+    return duck_image(size, active)
