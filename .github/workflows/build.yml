@@ -30,6 +30,8 @@ jobs:
   build:
     needs: test
     runs-on: windows-latest
+    permissions:
+      contents: write   # required for action-gh-release to create the Release
     steps:
       - uses: actions/checkout@v4
 
