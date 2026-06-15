@@ -8,30 +8,40 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
   :root{
-    --bg:#0f1216; --panel:#181d24; --panel2:#1f2630; --line:#2b333f;
+    --bg:#0f1216; --panel:#181d24cc; --panel2:#1f2630; --line:#2b333f;
     --fg:#e7ecf3; --muted:#9aa7b8; --accent:#ffce33; --accent2:#36d399;
     --warn:#ffb454; --down:#ff6b81; --up:#36d399;
   }
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--fg);
-       font-family:"Segoe UI","Microsoft YaHei",system-ui,sans-serif;}
+  body{margin:0;color:var(--fg);
+    font-family:"Segoe UI","Microsoft YaHei",system-ui,sans-serif;
+    background:
+      radial-gradient(1100px 700px at 82% -260px, #20304a 0%, rgba(15,18,22,0) 55%),
+      radial-gradient(900px 600px at -10% 110%, #1c2b27 0%, rgba(15,18,22,0) 50%),
+      #0f1216;
+    background-attachment:fixed;}
   header{display:flex;align-items:center;gap:14px;flex-wrap:wrap;
-         padding:16px 24px;border-bottom:1px solid var(--line);background:var(--panel);}
-  header h1{font-size:18px;margin:0;font-weight:600;letter-spacing:.5px;display:flex;align-items:center;gap:8px}
+    padding:16px 24px;border-bottom:1px solid var(--line);
+    background:rgba(20,25,32,.7);backdrop-filter:blur(8px);}
+  header h1{font-size:18px;margin:0;font-weight:600;letter-spacing:.5px;display:flex;align-items:center;gap:10px}
   header h1 small{color:var(--muted);font-weight:400;font-size:12px}
+  .logo{width:34px;height:34px;border-radius:9px;display:block}
   .spacer{flex:1}
-  nav.tabs{display:flex;gap:6px}
+  nav.tabs{display:flex;gap:6px;flex-wrap:wrap}
   nav.tabs button{background:transparent;color:var(--muted);border:1px solid transparent;
     padding:7px 14px;border-radius:9px;cursor:pointer;font-size:14px}
   nav.tabs button.active{background:var(--panel2);color:var(--fg);border-color:var(--line)}
   .rangebar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
-    padding:12px 24px;border-bottom:1px solid var(--line);background:var(--panel)}
+    padding:12px 24px;border-bottom:1px solid var(--line);background:rgba(20,25,32,.5)}
   .ranges button{background:var(--panel2);color:var(--muted);border:1px solid var(--line);
     padding:6px 13px;border-radius:8px;cursor:pointer;font-size:13px;margin-right:4px}
   .ranges button.active{background:var(--accent);color:#26200a;border-color:var(--accent);font-weight:600}
   .custom{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
   .custom input{background:var(--panel2);color:var(--fg);border:1px solid var(--line);
     border-radius:7px;padding:5px 8px;font-size:13px;color-scheme:dark}
+  .iconbtn{background:var(--panel2);color:var(--fg);border:1px solid var(--line);
+    border-radius:8px;width:34px;height:32px;cursor:pointer;font-size:15px;line-height:1}
+  .iconbtn:hover{border-color:var(--accent);color:var(--accent)}
   #since{color:var(--muted);font-size:12px;margin-left:auto}
   main{padding:24px;max-width:1280px;margin:0 auto}
   .view{display:none}.view.active{display:block}
@@ -44,7 +54,7 @@
   .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:18px}
   @media(max-width:880px){.grid{grid-template-columns:1fr}}
   .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:18px}
-  .panel h2{font-size:14px;margin:0 0 14px;font-weight:600;color:var(--fg)}
+  .panel h2{font-size:14px;margin:0 0 14px;font-weight:600;color:var(--fg);display:flex;align-items:center}
   .panel h2 span{color:var(--muted);font-weight:400;font-size:12px;margin-left:6px}
   canvas{max-height:300px}
   .wide{grid-column:1 / -1}
@@ -57,16 +67,29 @@
   .topics .t{color:var(--accent);background:var(--panel2);padding:4px 10px;border-radius:20px}
   .empty{color:var(--muted);font-size:13px;padding:8px 0}
   .foot{color:var(--muted);font-size:12px;text-align:center;margin:30px 0 10px}
+  /* info tooltip */
+  .info{display:inline-flex;width:16px;height:16px;border-radius:50%;border:1px solid var(--muted);
+    color:var(--muted);font-size:11px;font-style:normal;align-items:center;justify-content:center;
+    cursor:help;position:relative;margin-left:7px;font-weight:400}
+  .info:hover{border-color:var(--accent);color:var(--accent)}
+  .info .tip{display:none;position:absolute;top:22px;left:-8px;z-index:20;width:300px;
+    background:#0d1117;border:1px solid var(--line);border-radius:10px;padding:11px 13px;
+    font-size:12px;color:var(--fg);line-height:1.7;font-weight:400;box-shadow:0 10px 30px #000a}
+  .info:hover .tip{display:block}
+  /* banner */
   .banner{display:none;border-radius:12px;padding:12px 16px;margin-bottom:18px;font-size:13px;line-height:1.6}
-  .banner.warn{display:block;background:rgba(255,180,84,.12);border:1px solid var(--warn);color:#ffd9a8}
-  .banner.ok{display:block;background:rgba(54,211,153,.10);border:1px solid var(--accent2);color:#aef0d4}
+  .banner.show{display:block}
+  .banner.warn{background:rgba(255,180,84,.12);border:1px solid var(--warn);color:#ffd9a8}
+  .banner.fun{background:linear-gradient(90deg,rgba(255,206,51,.14),rgba(54,211,153,.10));
+    border:1px solid #3a3a2a;color:#f3ecd0;display:flex;align-items:center;gap:12px}
+  .banner.fun img{width:34px;height:34px;border-radius:8px;flex:0 0 auto}
   .banner b{color:#fff}
   .banner code{background:#0008;padding:1px 6px;border-radius:5px}
   /* goal + streak */
   .goalrow{display:flex;gap:24px;align-items:center;flex-wrap:wrap}
   .ring{width:120px;height:120px;border-radius:50%;display:flex;align-items:center;justify-content:center;
     background:conic-gradient(var(--accent) calc(var(--p)*1%), #2a323d 0)}
-  .ring .inner{width:96px;height:96px;border-radius:50%;background:var(--panel);
+  .ring .inner{width:96px;height:96px;border-radius:50%;background:#161b22;
     display:flex;flex-direction:column;align-items:center;justify-content:center}
   .ring .inner b{font-size:22px} .ring .inner small{color:var(--muted);font-size:11px}
   .streaks{display:flex;gap:18px;flex-wrap:wrap}
@@ -95,6 +118,14 @@
   .btn.primary{background:var(--accent);color:#26200a;border-color:var(--accent);font-weight:600}
   .btn.danger{border-color:var(--down);color:var(--down)}
   .btn.danger:hover{background:var(--down);color:#fff}
+  .btn.active{background:var(--accent);color:#26200a;border-color:var(--accent);font-weight:600}
+  /* report */
+  .reportwrap{display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start}
+  .cardprev{flex:0 0 auto}
+  .cardprev img{width:360px;max-width:90vw;border-radius:16px;border:1px solid var(--line);box-shadow:0 12px 40px #0007}
+  .reportside{flex:1;min-width:240px}
+  .rrow{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--line);font-size:14px}
+  .rrow span{color:var(--muted)} .rrow b{font-weight:600}
   /* settings form */
   .form{display:grid;grid-template-columns:220px 1fr;gap:14px 18px;align-items:center;max-width:720px}
   .form label{color:var(--muted);font-size:13px}
@@ -106,14 +137,16 @@
   .switch{display:inline-flex;align-items:center;gap:8px;cursor:pointer}
   .switch input{width:18px;height:18px;accent-color:var(--accent)}
   .saved{color:var(--up);font-size:13px;margin-left:12px}
+  #updMsg{font-size:13px;color:var(--muted);margin-top:10px;white-space:pre-wrap;line-height:1.6}
 </style>
 </head>
 <body>
 <header>
-  <h1>🦆 DuckType <small>码字鸭 · 输入法汉字统计</small></h1>
+  <h1><img class="logo" src="/favicon.png" alt="DuckType"> DuckType <small>码字鸭 · 输入法汉字统计</small></h1>
   <div class="spacer"></div>
   <nav class="tabs" id="tabs">
     <button data-v="board" class="active">看板</button>
+    <button data-v="report">报告</button>
     <button data-v="sequence">序列</button>
     <button data-v="fun">趣味</button>
     <button data-v="settings">设置</button>
@@ -131,18 +164,19 @@
     <input type="date" id="d-start"> 至 <input type="date" id="d-end">
     <button class="btn" id="d-apply">自定义</button>
   </div>
+  <button class="iconbtn" id="refreshBtn" title="刷新">⟳</button>
   <span id="since"></span>
 </div>
 
 <main>
-  <div class="banner" id="healthBanner"></div>
+  <div class="banner" id="banner"></div>
 
   <!-- ======================= BOARD ======================= -->
   <section class="view active" id="view-board">
     <div class="cards" id="cards"></div>
 
     <div class="panel">
-      <h2>今日目标 & 连续打卡 <span>goal · streak</span></h2>
+      <h2>今日目标 &amp; 连续打卡 <span>goal · streak</span></h2>
       <div class="goalrow">
         <div class="ring" id="goalRing" style="--p:0"><div class="inner"><b id="goalPct">0%</b><small>今日目标</small></div></div>
         <div class="streaks">
@@ -168,7 +202,7 @@
         <canvas id="wordChart"></canvas>
       </div>
       <div class="panel">
-        <h2>词性分布 <span>part-of-speech</span></h2>
+        <h2>词性分布 <span>part-of-speech</span><i class="info" id="posInfo">i</i></h2>
         <canvas id="posChart"></canvas>
       </div>
       <div class="panel">
@@ -180,8 +214,29 @@
         <div id="heatmap"></div>
       </div>
       <div class="panel wide">
-        <h2>主题关键词 <span>topics (TF-IDF keywords)</span></h2>
+        <h2>主题关键词 <span>topics (TF-IDF keywords)</span><i class="info"
+          id="topicInfo">i</i></h2>
         <div class="topics" id="topics"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================= REPORT ======================= -->
+  <section class="view" id="view-report">
+    <div class="panel">
+      <h2>报告卡片 <span>shareable cards</span><i class="info" id="reportInfo">i</i></h2>
+      <div class="btnrow" id="periodBtns">
+        <button class="btn active" data-p="today">今日小结</button>
+        <button class="btn" data-p="week">本周周报</button>
+        <button class="btn" data-p="month">本月月报</button>
+        <button class="btn" data-p="year">年度报告</button>
+      </div>
+      <div class="reportwrap">
+        <div class="cardprev">
+          <img id="cardImg" alt="report card">
+          <div style="margin-top:12px"><a class="btn primary" id="cardDl" download>⬇ 保存图片卡片</a></div>
+        </div>
+        <div class="reportside" id="reportRows"></div>
       </div>
     </div>
   </section>
@@ -206,10 +261,11 @@
       <div class="badges" id="badges"></div>
     </div>
     <div class="grid">
+      <div class="panel"><h2>成语 <span>idioms</span><i class="info" id="idiomInfo">i</i></h2><div class="chips" id="idioms"></div></div>
+      <div class="panel"><h2>长词 <span>long words (3+ 字)</span></h2><div class="chips" id="longWords"></div></div>
       <div class="panel"><h2>最爱词 <span>favorite words</span></h2><div class="chips" id="favWords"></div></div>
-      <div class="panel"><h2>成语 & 长词 <span>idioms</span></h2><div class="chips" id="idioms"></div></div>
-      <div class="panel"><h2>生僻字 <span>rare characters</span></h2><div class="chips" id="rareChars"></div></div>
-      <div class="panel"><h2>只打过一次的字 <span>hapax</span></h2><div class="chips" id="hapax"></div></div>
+      <div class="panel"><h2>生僻字 <span>rare characters</span><i class="info" id="rareInfo">i</i></h2><div class="chips" id="rareChars"></div></div>
+      <div class="panel wide"><h2>只打过一次的字 <span>hapax</span></h2><div class="chips" id="hapax"></div></div>
     </div>
   </section>
 
@@ -238,6 +294,16 @@
     </div>
 
     <div class="panel">
+      <h2>检查更新 <span>updates</span></h2>
+      <div class="btnrow">
+        <button class="btn" id="updCheck">检查更新</button>
+        <button class="btn primary" id="updApply" style="display:none">⬇ 立即更新并重启</button>
+        <a class="btn" id="updPage" target="_blank" style="display:none">前往发布页</a>
+      </div>
+      <div id="updMsg"></div>
+    </div>
+
+    <div class="panel">
       <h2>数据管理 <span>data management</span></h2>
       <div id="dataSummary" class="empty"></div>
       <div class="btnrow" style="margin-top:10px">
@@ -255,6 +321,7 @@
 const DOW = ["周日","周一","周二","周三","周四","周五","周六"];
 let range = "7d", custom = {start:null, end:null};
 let charts = {};
+let factTimer = null;
 
 Chart.defaults.color = "#9aa7b8";
 Chart.defaults.borderColor = "#2b333f";
@@ -277,20 +344,29 @@ function makeBar(id, labels, data, color){
     options:{plugins:{legend:{display:false}},scales:{x:{grid:{display:false}},y:{beginAtZero:true}}}
   });
 }
-function escapeHtml(s){return s.replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));}
+function escapeHtml(s){return (s||"").replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));}
+
+// ---- info tooltips ----
+function setTip(id, html){ const e=document.getElementById(id); if(e) e.innerHTML = '<div class="tip">'+html+'</div>'; }
+setTip("posInfo", "<b>词性标签</b>来自 jieba（ICTCLAS 体系）：<br>n 名词 · v 动词 · a 形容词 · d 副词 · m 数词 · q 量词 · r 代词 · p 介词 · c 连词 · t 时间 · f 方位 · i 成语 · nr 人名 · ns 地名 · nt 机构。<br><b>助词 u 的子类</b>：uj=结构助词「的」，ul=「了」，ug=「过」，uv=「地」，uz=「着」。");
+setTip("topicInfo", "用 <b>TF-IDF</b> 从这段时间的全部上屏汉字里提取最有代表性的关键词，字号越大权重越高。需要安装 jieba 且有足够数据。");
+setTip("reportInfo", "卡片由本机生成，可右键或点按钮保存为 PNG，适合发朋友圈 / X / GitHub README。统计基于上屏汉字（粘贴的大段文本不计入）。");
+setTip("idiomInfo", "成语 = jieba 标注为成语，或四字全汉字的词。与「长词」分开统计。");
+setTip("rareInfo", "生僻字 = 落在 CJK 扩展区 / 兼容区的较冷门汉字（按 Unicode 码位判定）。");
 
 // ---- tabs ----
 document.getElementById("tabs").addEventListener("click", e=>{
   const v = e.target.dataset.v; if(!v) return;
   document.querySelectorAll("#tabs button").forEach(b=>b.classList.toggle("active", b.dataset.v===v));
   document.querySelectorAll(".view").forEach(s=>s.classList.toggle("active", s.id==="view-"+v));
-  document.getElementById("rangebar").style.display = (v==="settings") ? "none" : "flex";
+  document.getElementById("rangebar").style.display = (v==="settings"||v==="report") ? "none" : "flex";
   if(v==="settings") loadSettings();
   else if(v==="sequence") loadSequence();
   else if(v==="fun") loadFun();
+  else if(v==="report") loadReport(curPeriod);
 });
 
-// ---- range ----
+// ---- range / refresh ----
 document.getElementById("ranges").addEventListener("click", e=>{
   if(!e.target.dataset.r) return;
   range = e.target.dataset.r;
@@ -304,11 +380,13 @@ document.getElementById("d-apply").addEventListener("click", ()=>{
   document.querySelectorAll("#ranges button").forEach(b=>b.classList.remove("active"));
   refreshActive();
 });
+document.getElementById("refreshBtn").addEventListener("click", ()=>{ refreshActive(); checkHealth(); });
 function refreshActive(){
   const v = document.querySelector("#tabs button.active").dataset.v;
   if(v==="board") refreshBoard();
   else if(v==="sequence") loadSequence();
   else if(v==="fun") loadFun();
+  else if(v==="report") loadReport(curPeriod);
 }
 
 // ---- board ----
@@ -357,7 +435,7 @@ function renderTopics(rows){
   const el = document.getElementById("topics");
   if(!rows.length){ el.innerHTML = "<div class='empty'>暂无（需要安装 jieba 且有足够数据）</div>"; return; }
   const max = rows[0].weight || 1;
-  el.innerHTML = rows.map(r => `<span class="t" style="font-size:${(13+16*(r.weight/max)).toFixed(0)}px">${r.word}</span>`).join("");
+  el.innerHTML = rows.map(r => `<span class="t" style="font-size:${(13+16*(r.weight/max)).toFixed(0)}px">${escapeHtml(r.word)}</span>`).join("");
 }
 function renderGamify(g){
   document.getElementById("goalRing").style.setProperty("--p", (g.goal_pct*100).toFixed(0));
@@ -368,8 +446,8 @@ function renderGamify(g){
   document.getElementById("gUnlocked").textContent = g.unlocked + " / " + g.achievements.length;
   document.getElementById("badges").innerHTML = g.achievements.map(a=>`
     <div class="badge ${a.unlocked?"on":""}">
-      <div class="n">${a.unlocked?"🏅":"🔒"} ${a.name}</div>
-      <div class="dsc">${a.desc}</div>
+      <div class="n">${a.unlocked?"🏅":"🔒"} ${escapeHtml(a.name)}</div>
+      <div class="dsc">${escapeHtml(a.desc)}</div>
       <div class="bar"><i style="width:${(a.progress*100).toFixed(0)}%"></i></div>
     </div>`).join("");
 }
@@ -405,11 +483,40 @@ async function refreshBoard(){
   renderTopics(topics);
 }
 
+// ---- report ----
+let curPeriod = "today";
+document.getElementById("periodBtns").addEventListener("click", e=>{
+  if(!e.target.dataset.p) return;
+  curPeriod = e.target.dataset.p;
+  document.querySelectorAll("#periodBtns button").forEach(b=>b.classList.toggle("active", b===e.target));
+  loadReport(curPeriod);
+});
+async function loadReport(period){
+  const t = Date.now();
+  document.getElementById("cardImg").src = "/api/card?period=" + period + "&t=" + t;
+  document.getElementById("cardDl").href = "/api/card?period=" + period;
+  const r = await fetch("/api/report?period=" + period).then(r=>r.json());
+  const rows = [];
+  rows.push(["这一时段", r.label]);
+  rows.push(["上屏汉字", r.chars.toLocaleString() + " 字"]);
+  if(r.delta_pct!==null && r.delta_pct!==undefined) rows.push(["较上一周期", (r.delta_pct>=0?"+":"")+r.delta_pct+"%"]);
+  if(r.peak_hour!==null && r.peak_hour!==undefined) rows.push(["高峰时段", String(r.peak_hour).padStart(2,"0")+":00"]);
+  if(r.fav_word) rows.push(["最常用词", r.fav_word]);
+  if(r.fav_char) rows.push(["最爱的字", r.fav_char]);
+  if(r.top_app) rows.push(["主力应用", r.top_app + " · " + r.top_app_share + "%"]);
+  if(r.best_day) rows.push(["最高产日", r.best_day + "（" + r.best_day_count + " 字）"]);
+  if(r.longest_session_min) rows.push(["最长连续输入", r.longest_session_min + " 分钟"]);
+  if(r.streak_best) rows.push(["最长连续天数", r.streak_best + " 天"]);
+  if(r.keywords && r.keywords.length) rows.push(["关键词", r.keywords.slice(0,6).join(" · ")]);
+  document.getElementById("reportRows").innerHTML = rows.map(
+    ([k,v])=>`<div class="rrow"><span>${k}</span><b>${escapeHtml(String(v))}</b></div>`).join("");
+}
+
 // ---- sequence ----
 async function loadSequence(){
   const runs = await getJSON("/api/sequence?limit=300");
   const el = document.getElementById("seq");
-  if(!runs.length){ el.innerHTML = "<div class='empty'>暂无序列数据（需要钩子 DLL 已安装且有上屏汉字）。</div>"; }
+  if(!runs.length){ el.innerHTML = "<div class='empty'>暂无序列数据（需要钩子已就绪且有上屏汉字）。</div>"; }
   else el.innerHTML = runs.map(r=>{
     const t = r.ts ? new Date(r.ts*1000).toLocaleString() : "";
     return `<div class="run"><div class="meta"><span>${t}</span><span>${escapeHtml(r.app||"")}</span></div><div class="text">${escapeHtml(r.text)}</div></div>`;
@@ -420,14 +527,71 @@ async function loadSequence(){
 }
 
 // ---- fun ----
-function chips(items, fmt){ return items.length ? items.map(fmt).join("") : "<div class='empty'>暂无</div>"; }
+function chips(items, fmt){ return items && items.length ? items.map(fmt).join("") : "<div class='empty'>暂无</div>"; }
 async function loadFun(){
   const [g, f] = await Promise.all([getJSON("/api/gamify"), getJSON("/api/fun")]);
   renderGamify(g);
-  document.getElementById("favWords").innerHTML = chips(f.favorite_words, w=>`<span class="chip">${escapeHtml(w.word)}<b>${w.count}</b></span>`);
-  document.getElementById("idioms").innerHTML = chips(f.idioms, w=>`<span class="chip">${escapeHtml(w.word)}<b>${w.count}</b></span>`);
+  const wc = w=>`<span class="chip">${escapeHtml(w.word)}<b>${w.count}</b></span>`;
+  document.getElementById("idioms").innerHTML = chips(f.idioms, wc);
+  document.getElementById("longWords").innerHTML = chips(f.long_words, wc);
+  document.getElementById("favWords").innerHTML = chips(f.favorite_words, wc);
   document.getElementById("rareChars").innerHTML = chips(f.rare_chars, c=>`<span class="chip">${escapeHtml(c.ch)}<b>${c.count}</b></span>`);
   document.getElementById("hapax").innerHTML = chips(f.hapax, c=>`<span class="chip">${escapeHtml(c)}</span>`);
+}
+
+// ---- health banner + duck facts ----
+async function buildFacts(){
+  try{
+    const [s, g, rep] = await Promise.all([
+      fetch("/api/status").then(r=>r.json()),
+      fetch("/api/gamify").then(r=>r.json()),
+      fetch("/api/report?period=today").then(r=>r.json()),
+    ]);
+    const facts = [];
+    if(rep.chars>0){
+      const pct = Math.round(g.goal_pct*100);
+      facts.push(pct>=100 ? `今天已码 <b>${rep.chars}</b> 字，达成今日目标，鸭嘎！🎉`
+        : `今天已码 <b>${rep.chars}</b> 字，距今日目标还差 <b>${Math.max(0,g.daily_goal-rep.chars)}</b> 字，冲鸭！`);
+    } else {
+      facts.push("今天还没开张，先去码两行字吧～🦆");
+    }
+    if(g.streak_current>0) facts.push(`已连续码字 <b>${g.streak_current}</b> 天，最长纪录 ${g.streak_best} 天。`);
+    if(rep.peak_hour!==null && rep.peak_hour!==undefined) facts.push(`今天 <b>${String(rep.peak_hour).padStart(2,"0")}:00</b> 时段最高产。`);
+    if(rep.fav_word) facts.push(`今天最常用词是「<b>${escapeHtml(rep.fav_word)}</b>」。`);
+    if(g.unlocked>0) facts.push(`已解锁 <b>${g.unlocked}/${g.achievements.length}</b> 个成就，去「趣味」看看。`);
+    return facts;
+  }catch(e){ return []; }
+}
+function startFacts(facts){
+  const el = document.getElementById("banner");
+  el.className = "banner fun show";
+  let i = 0;
+  const show = ()=>{ el.innerHTML = `<img src="/favicon.png" alt=""><div>${facts[i%facts.length]}</div>`; i++; };
+  show();
+  clearInterval(factTimer);
+  if(facts.length>1) factTimer = setInterval(show, 7000);
+}
+async function checkHealth(){
+  let s; try { s = await fetch("/api/status").then(r=>r.json()); } catch(e){ return; }
+  const el = document.getElementById("banner");
+  clearInterval(factTimer);
+  if(s.paused){
+    el.className = "banner warn show";
+    el.innerHTML = "⏸️ <b>统计已暂停</b>。到「设置」取消暂停，或右键托盘小鸭恢复。";
+  } else if(!s.hook_dll_found){
+    el.className = "banner warn show";
+    el.innerHTML = "⚠️ <b>没找到钩子 DLL</b>，无法记录上屏汉字。请使用 release 版 <code>DuckType.exe</code>，或先运行 <code>native\\build_dll.bat</code>。";
+  } else if(!s.hook_installed){
+    el.className = "banner warn show";
+    el.innerHTML = "⚠️ <b>钩子安装失败</b>。多半是 64/32 位不一致或被安全软件拦截，详见日志 <code>%APPDATA%\\DuckType\\ducktype.log</code>。";
+  } else if((s.chars_captured||0) === 0 && (s.code_units||0) === 0){
+    el.className = "banner warn show";
+    el.innerHTML = "🔎 <b>钩子已装，但还没收到任何字符</b>。按 <b>Win+R</b> 打几个字测试；若仍为 0，多半被安全软件拦截或目标是 32 位程序。";
+  } else {
+    const facts = await buildFacts();
+    if(facts.length) startFacts(facts);
+    else el.className = "banner";
+  }
 }
 
 // ---- settings ----
@@ -470,48 +634,37 @@ document.getElementById("delRange").addEventListener("click", async ()=>{
   alert(`已删除 ${r.deleted} 个汉字。`); loadDataSummary();
 });
 
-// ---- health banner ----
-async function checkHealth(){
-  let s; try { s = await fetch("/api/status").then(r=>r.json()); } catch(e){ return; }
-  const el = document.getElementById("healthBanner");
-  el.className = "banner";
-  if(s.paused){
-    el.classList.add("warn");
-    el.innerHTML = "⏸️ <b>统计已暂停</b>。到「设置」里取消暂停，或右键托盘小鸭恢复。";
-  } else if(!s.hook_dll_found){
-    el.classList.add("warn");
-    el.innerHTML = "⚠️ <b>没找到钩子 DLL</b>，无法记录上屏汉字（退格/速度仍可用）。" +
-      "请用 release 版的 <code>DuckType.exe</code>，或从源码先运行 <code>native\\build_dll.bat</code> 再启动。" +
-      "<br>期望路径：<code>" + (s.dll_path||"") + "</code>";
-  } else if(!s.hook_installed){
-    el.classList.add("warn");
-    el.innerHTML = "⚠️ <b>钩子安装失败</b>。多半是 DLL 与程序位数不一致（64/32 位）。" +
-      "详见日志 <code>%APPDATA%\\DuckType\\ducktype.log</code>。";
-  } else if(s.chars_captured === 0){
-    el.classList.add("warn");
-    const stat = "（收到字符消息 <b>" + (s.code_units||0) + "</b> 个 / 其中汉字 <b>0</b> 个）";
-    if((s.code_units||0) === 0){
-      el.innerHTML = "🔎 <b>钩子已装，但还没收到任何字符消息</b> " + stat +
-        "。请按 <b>Win+R</b> 打开运行框，先打几个<b>英文字母</b>再回来看：" +
-        "<br>· 英文让上面的数字涨起来 → 通路正常，说明是中文走 <b>TSF</b>（需要换捕获引擎）。" +
-        "<br>· 打英文数字仍是 0 → 注入没生效，多半是被安全软件拦截或目标是 32 位程序，请看日志 <code>%APPDATA%\\DuckType\\ducktype.log</code>。";
-    } else {
-      el.innerHTML = "🔎 <b>能收到字符消息，但收不到汉字</b> " + stat +
-        "。这就是 <b>TSF</b> 限制：英文/拼音通过 WM_CHAR 进来了，但中文上屏走 TSF 不发 WM_CHAR。" +
-        "可在 <b>Win+R 运行框</b>里打中文验证（经典输入框能进）。要彻底解决需要换成 TSF 捕获引擎。";
-    }
+// ---- updates ----
+document.getElementById("updCheck").addEventListener("click", async ()=>{
+  const msg = document.getElementById("updMsg");
+  msg.textContent = "正在检查…";
+  let r; try{ r = await fetch("/api/update/check").then(x=>x.json()); }catch(e){ msg.textContent="检查失败：网络不可用。"; return; }
+  const applyBtn = document.getElementById("updApply"), pageBtn = document.getElementById("updPage");
+  applyBtn.style.display = "none"; pageBtn.style.display = "none";
+  if(!r.ok){ msg.textContent = "当前版本 v"+r.current+"。检查失败：" + (r.error||"") + "\n可手动到发布页查看。"; pageBtn.href=r.releases_url; pageBtn.style.display="inline-block"; return; }
+  if(r.has_update){
+    msg.textContent = `发现新版本 v${r.latest}（当前 v${r.current}）。\n更新说明：\n${(r.notes||"").slice(0,500)}`;
+    pageBtn.href = r.html_url; pageBtn.style.display = "inline-block";
+    if(r.frozen) applyBtn.style.display = "inline-block";
   } else {
-    el.classList.add("ok");
-    el.innerHTML = "✅ 钩子工作正常，本次已捕获 <b>" + s.chars_captured + "</b> 个汉字。";
-    setTimeout(()=>{ el.className="banner"; }, 6000);
+    msg.textContent = `已是最新版本 v${r.current}。`;
   }
-}
+});
+document.getElementById("updApply").addEventListener("click", async ()=>{
+  if(!confirm("将下载新版本并重启 DuckType，确定？")) return;
+  const msg = document.getElementById("updMsg");
+  msg.textContent = "正在下载并准备更新，DuckType 即将自动重启…";
+  let r; try{ r = await fetch("/api/update/apply",{method:"POST"}).then(x=>x.json()); }catch(e){ r={ok:false,error:"网络中断"}; }
+  if(r.ok && r.pending){ msg.textContent = "下载完成，正在重启更新… 稍候片刻后托盘里会重新出现小鸭子 🦆"; }
+  else { msg.textContent = "更新失败：" + (r.error||"未知错误"); }
+});
 
 // ---- boot ----
 refreshBoard();
 checkHealth();
+loadReport(curPeriod);
 setInterval(()=>{ if(document.querySelector("#tabs button.active").dataset.v==="board") refreshBoard(); }, 30000);
-setInterval(checkHealth, 15000);
+setInterval(checkHealth, 20000);
 </script>
 </body>
 </html>

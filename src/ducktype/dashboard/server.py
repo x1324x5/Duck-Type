@@ -27,7 +27,7 @@ log = logging.getLogger("ducktype")
 _STATIC = Path(__file__).resolve().parent / "static"
 
 
-def create_app(db, config, status_fn=None) -> Flask:
+def create_app(db, config, status_fn=None, on_quit=None) -> Flask:
     app = Flask(__name__, static_folder=None)
 
     def _bounds():
@@ -51,6 +51,20 @@ def create_app(db, config, status_fn=None) -> Flask:
     @app.route("/api/status")
     def api_status():
         return jsonify(status_fn() if status_fn else {})
+
+    @app.route("/api/update/check")
+    def api_update_check():
+        from .. import updater
+        return jsonify(updater.check())
+
+    @app.route("/api/update/apply", methods=["POST"])
+    def api_update_apply():
+        from .. import updater
+        res = updater.apply()
+        if res.get("pending") and on_quit:
+            # Respond first, then quit so the swap-on-exit script can run.
+            threading.Timer(1.5, on_quit).start()
+        return jsonify(res)
 
     # ---- read-only analytics -------------------------------------------
     @app.route("/api/overview")
@@ -120,6 +134,26 @@ def create_app(db, config, status_fn=None) -> Flask:
     @app.route("/api/gamify")
     def api_gamify():
         return jsonify(stats.gamify(db, config.daily_goal))
+
+    @app.route("/api/report")
+    def api_report():
+        period = request.args.get("period", "today")
+        return jsonify(stats.report(
+            db, period, config.run_gap_seconds, config.session_gap_seconds))
+
+    @app.route("/api/card")
+    def api_card():
+        from .. import cards
+        period = request.args.get("period", "today")
+        rep = stats.report(
+            db, period, config.run_gap_seconds, config.session_gap_seconds)
+        buf = io.BytesIO()
+        cards.render_card(rep).save(buf, format="PNG")
+        return Response(
+            buf.getvalue(), mimetype="image/png",
+            headers={"Content-Disposition":
+                     f'attachment; filename="ducktype_{period}.png"'},
+        )
 
     # ---- committed-character sequence ----------------------------------
     @app.route("/api/sequence")
@@ -200,9 +234,9 @@ class DashboardServer:
     # Try up to this many consecutive ports if the configured one is taken.
     _PORT_TRIES = 10
 
-    def __init__(self, db, config, status_fn=None):
+    def __init__(self, db, config, status_fn=None, on_quit=None):
         self.config = config
-        self._app = create_app(db, config, status_fn)
+        self._app = create_app(db, config, status_fn, on_quit)
         self._server = None
         self._thread: Optional[threading.Thread] = None
         self._bound_port = config.dashboard_port

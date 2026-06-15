@@ -22,10 +22,12 @@ class App:
     def __init__(self):
         self.config = Config.load()
         self.db = Database(db_path())
-        self.dashboard = DashboardServer(self.db, self.config, self.get_status)
+        self.dashboard = DashboardServer(
+            self.db, self.config, self.get_status, self.request_quit)
         self._tracker = None
         self._char_hook = None
         self._key_hook = None
+        self._tray = None
         self._purge_timer: threading.Timer | None = None
 
     # ---- status (for the dashboard health banner) -----------------------
@@ -130,7 +132,15 @@ class App:
         self.start_background()
         # Tray blocks on the main thread until the user quits.
         from .tray import TrayApp
-        TrayApp(self).run()
+        self._tray = TrayApp(self)
+        self._tray.run()
+
+    def request_quit(self) -> None:
+        """Quit from a background thread (e.g. the dashboard's update flow)."""
+        if self._tray is not None:
+            self._tray.stop()
+        else:
+            self.shutdown()
 
     def shutdown(self) -> None:
         log.info("Shutting down ...")

@@ -221,13 +221,25 @@ def top_words(db, since: Optional[float], n: int, run_gap: float,
     return sorted(wc.items(), key=lambda kv: kv[1], reverse=True)[:n]
 
 
-# Friendly Chinese labels for the common jieba POS tags.
+# Friendly Chinese labels for jieba's POS tags (ICTCLAS-style, incl. sub-tags).
 POS_LABELS = {
-    "n": "名词", "nr": "人名", "ns": "地名", "nt": "机构", "nz": "专名",
-    "v": "动词", "vn": "动名词", "a": "形容词", "ad": "副形词", "d": "副词",
-    "m": "数词", "q": "量词", "r": "代词", "p": "介词", "c": "连词",
-    "u": "助词", "t": "时间词", "f": "方位词", "s": "处所词", "x": "其他",
-    "i": "成语", "l": "习用语", "j": "简称", "e": "叹词", "o": "拟声词",
+    "n": "名词", "nr": "人名", "nrfg": "人名", "nrt": "人名", "ns": "地名",
+    "nt": "机构团体", "nz": "其他专名", "ng": "名语素",
+    "v": "动词", "vd": "副动词", "vn": "名动词", "vi": "不及物动词",
+    "vg": "动语素", "vq": "趋向动词",
+    "a": "形容词", "ad": "副形词", "an": "名形词", "ag": "形语素",
+    "d": "副词", "df": "副词", "dg": "副语素",
+    "m": "数词", "mq": "数量词", "q": "量词",
+    "r": "代词", "rr": "人称代词", "rz": "指示代词", "ry": "疑问代词", "rg": "代语素",
+    "p": "介词", "pba": "介词把", "pbei": "介词被",
+    "c": "连词", "cc": "并列连词",
+    "u": "助词", "uj": "结构助词(的)", "ud": "助词(得)", "ul": "时态助词(了)",
+    "uv": "结构助词(地)", "uz": "时态助词(着)", "ug": "时态助词(过)", "ui": "助词",
+    "t": "时间词", "tg": "时间语素",
+    "f": "方位词", "s": "处所词", "b": "区别词",
+    "z": "状态词", "zg": "状态语素", "y": "语气词", "e": "叹词", "o": "拟声词",
+    "h": "前缀", "k": "后缀", "g": "语素", "l": "习用语", "j": "简称",
+    "i": "成语", "x": "字符/其他", "eng": "英文", "w": "标点",
 }
 
 
@@ -315,17 +327,27 @@ def fun_rankings(db, since: Optional[float], run_gap: float,
     )[:30]
 
     wc, wp, _pc = segment.segment_range(db, since, run_gap, until)
+
+    def _is_idiom(w: str) -> bool:
+        # jieba's 成语 tag, or a 4-character all-Han word (the classic shape).
+        return wp.get(w) == "i" or (len(w) == 4 and all(segment._HAN(c) for c in w))
+
     fav_words = sorted(
         ((w, n) for w, n in wc.items() if len(w) >= 2),
         key=lambda kv: kv[1], reverse=True,
     )[:30]
     idioms = sorted(
-        ((w, n) for w, n in wc.items() if wp.get(w) == "i" or len(w) >= 4),
+        ((w, n) for w, n in wc.items() if _is_idiom(w)),
+        key=lambda kv: kv[1], reverse=True,
+    )[:30]
+    long_words = sorted(
+        ((w, n) for w, n in wc.items() if len(w) >= 3 and not _is_idiom(w)),
         key=lambda kv: kv[1], reverse=True,
     )[:30]
     return {
         "favorite_words": [{"word": w, "count": n} for w, n in fav_words],
         "idioms": [{"word": w, "count": n} for w, n in idioms],
+        "long_words": [{"word": w, "count": n} for w, n in long_words],
         "hapax": hapax[:60],
         "rare_chars": [{"ch": c, "count": n} for c, n in rare],
         "distinct": len(char_counts),
@@ -465,6 +487,112 @@ def trend(db, since, until, run_gap, session_gap) -> Optional[Dict]:
         "current": cur,
         "previous": prev,
         "delta_pct": {k: _delta(k) for k in cur},
+    }
+
+
+# ---- periodic reports (today / week / month / year) ----------------------
+def period_bounds(period: str):
+    """Return (since, until, prev_since, prev_until, label) for a named period,
+    using calendar boundaries in local time."""
+    now = datetime.now()
+    if period == "today":
+        s = _day_start(now)
+        return s, None, s - 86400, s, "今日小结"
+    if period == "week":
+        monday = (now - timedelta(days=now.weekday())).date()
+        s = datetime(monday.year, monday.month, monday.day).timestamp()
+        return s, None, s - 7 * 86400, s, "本周周报"
+    if period == "month":
+        s = datetime(now.year, now.month, 1).timestamp()
+        prev = (datetime(now.year - 1, 12, 1) if now.month == 1
+                else datetime(now.year, now.month - 1, 1))
+        return s, None, prev.timestamp(), s, "本月月报"
+    if period == "year":
+        s = datetime(now.year, 1, 1).timestamp()
+        return s, None, datetime(now.year - 1, 1, 1).timestamp(), s, "年度报告"
+    raise ValueError(f"unknown period {period!r}")
+
+
+def _peak_hour(db, since, until):
+    w, p = _where(since, until)
+    con = db.connect()
+    try:
+        row = con.execute(
+            f"SELECT CAST(strftime('%H', ts,'unixepoch','localtime') AS INT) h, "
+            f"COUNT(*) c FROM char_events{w} GROUP BY h ORDER BY c DESC LIMIT 1", p
+        ).fetchone()
+    finally:
+        con.close()
+    return (int(row[0]), row[1]) if row else (None, 0)
+
+
+def _longest_session(db, since, until, gap):
+    w, p = _where(since, until)
+    con = db.connect()
+    try:
+        ts = [r[0] for r in con.execute(
+            f"SELECT ts FROM char_events{w} ORDER BY ts", p).fetchall()]
+    finally:
+        con.close()
+    if not ts:
+        return 0.0, None
+    best_dur, best_start = 0.0, ts[0]
+    s_start, s_prev = ts[0], ts[0]
+    for t in ts[1:]:
+        if t - s_prev > gap:
+            if s_prev - s_start > best_dur:
+                best_dur, best_start = s_prev - s_start, s_start
+            s_start = t
+        s_prev = t
+    if s_prev - s_start > best_dur:
+        best_dur, best_start = s_prev - s_start, s_start
+    return round(best_dur / 60.0, 1), best_start
+
+
+def _top_multichar_word(db, since, until, run_gap):
+    for w, _c in top_words(db, since, 80, run_gap, until):
+        if len(w) >= 2:
+            return w
+    return None
+
+
+def report(db, period: str, run_gap: float, session_gap: float) -> Dict:
+    since, until, ps, pe, label = period_bounds(period)
+    chars = total_chars(db, since, until)
+    prev_chars = total_chars(db, ps, pe)
+    delta = None if not prev_chars else round((chars - prev_chars) / prev_chars * 100, 1)
+
+    peak_hr, peak_cnt = _peak_hour(db, since, until)
+    day_rows = daily(db, since, until)
+    best_day = max(day_rows, key=lambda r: r[1]) if day_rows else (None, 0)
+    apps = per_app(db, since, 50, until)
+    app_total = sum(c for _a, c in apps) or 1
+    top_app = apps[0][0] if apps else None
+    top_app_share = round(apps[0][1] / app_total * 100, 1) if apps else 0.0
+    top_chars_list = top_chars(db, since, 1, until)
+    fav_char = top_chars_list[0][0] if top_chars_list else None
+    fav_word = _top_multichar_word(db, since, until, run_gap)
+    longest_min, _start = _longest_session(db, since, until, session_gap)
+    kw = topics(db, since, 8, until)
+    _cur, streak_best = _streak(_daily_map(db))
+
+    return {
+        "period": period,
+        "label": label,
+        "chars": chars,
+        "delta_pct": delta,
+        "active_days": len(day_rows),
+        "peak_hour": peak_hr,
+        "peak_hour_count": peak_cnt,
+        "best_day": best_day[0],
+        "best_day_count": best_day[1],
+        "top_app": top_app,
+        "top_app_share": top_app_share,
+        "fav_char": fav_char,
+        "fav_word": fav_word,
+        "longest_session_min": longest_min,
+        "streak_best": streak_best,
+        "keywords": [w for w, _wt in kw],
     }
 
 

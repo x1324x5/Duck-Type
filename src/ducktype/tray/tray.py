@@ -57,6 +57,10 @@ class TrayApp:
         self.app.set_autostart(not self.app.config.autostart)
 
     def _quit(self, icon, item):
+        self.stop()
+
+    def stop(self) -> None:
+        """Shut down and remove the tray icon. Safe to call from any thread."""
         self.app.shutdown()
         self._icon.stop()
 

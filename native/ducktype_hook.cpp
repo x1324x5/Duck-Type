@@ -138,6 +138,11 @@ STDMETHODIMP CSink::OnSetFocus(ITfDocumentMgr *pdimFocus, ITfDocumentMgr *)
     return S_OK;
 }
 
+/* A single edit that inserts more than this many code units is treated as a
+ * paste / programmatic insert (not typing) and ignored, so it does not inflate
+ * the statistics. A normal IME commit is at most a few characters. */
+#define DT_PASTE_GUARD 30
+
 STDMETHODIMP CSink::OnEndEdit(ITfContext *, TfEditCookie ec, ITfEditRecord *per)
 {
     if (!per) return S_OK;
@@ -145,19 +150,32 @@ STDMETHODIMP CSink::OnEndEdit(ITfContext *, TfEditCookie ec, ITfEditRecord *per)
     if (FAILED(per->GetTextAndPropertyUpdates(TF_GTP_INCL_TEXT, nullptr, 0, &en)) || !en)
         return S_OK;
 
+    /* Accumulate this edit's inserted text, then decide whether to keep it.
+     * One extra slot lets us detect "more than the guard allows". */
+    WCHAR acc[DT_PASTE_GUARD + 1];
+    ULONG accN = 0;
+    bool tooMuch = false;
+
     ITfRange *rg = nullptr;
     ULONG fetched = 0;
     while (en->Next(1, &rg, &fetched) == S_OK && fetched) {
-        WCHAR buf[512];
+        WCHAR buf[64];
         ULONG cch = 0;
-        /* Typing deltas are tiny; one read covers them. Huge programmatic
-         * inserts / pastes are intentionally truncated to one buffer. */
-        if (SUCCEEDED(rg->GetText(ec, 0, buf, 512, &cch)) && cch)
-            post_units(buf, cch);
+        if (SUCCEEDED(rg->GetText(ec, 0, buf, 64, &cch)) && cch) {
+            for (ULONG i = 0; i < cch; ++i) {
+                if (accN >= DT_PASTE_GUARD) { tooMuch = true; break; }
+                acc[accN++] = buf[i];
+            }
+            if (cch == 64) tooMuch = true;   /* range itself was large */
+        }
         rg->Release();
         rg = nullptr;
+        if (tooMuch) break;
     }
     en->Release();
+
+    if (!tooMuch && accN > 0)
+        post_units(acc, accN);
     return S_OK;
 }
 
@@ -219,6 +237,25 @@ BOOL WINAPI DllMain(HINSTANCE hinst, DWORD reason, LPVOID reserved)
     switch (reason) {
         case DLL_PROCESS_ATTACH:
             DisableThreadLibraryCalls(hinst);
+            /*
+             * CRITICAL: pin ourselves so this DLL is NEVER unloaded mid-process.
+             * We register TSF sinks (ITfTextEditSink, ...) inside every host
+             * application. When DuckType exits it calls UnhookWindowsHookEx,
+             * which would unload this DLL from those apps -- but MSCTF still
+             * holds pointers to our sink objects and would later call into the
+             * now-unmapped code, crashing the host (e.g. WeChat/QQ in MSCTF.dll).
+             * Pinning keeps the code mapped until the host process itself exits,
+             * so those callbacks always land on valid code. After DuckType quits
+             * the sinks simply PostMessage to a window that no longer exists,
+             * which is a harmless no-op.
+             */
+            {
+                HMODULE self = NULL;
+                GetModuleHandleExW(
+                    GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                    GET_MODULE_HANDLE_EX_FLAG_PIN,
+                    reinterpret_cast<LPCWSTR>(&DllMain), &self);
+            }
             break;
         default:
             break;
