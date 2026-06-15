@@ -1,0 +1,22 @@
+# Keep source/docs stable across Windows and CI.
+.gitattributes text eol=lf
+*.bat text eol=crlf
+
+*.c text eol=lf
+*.cpp text eol=lf
+*.css text eol=lf
+*.def text eol=lf
+*.html text eol=lf
+*.js text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.py text eol=lf
+*.toml text eol=lf
+*.txt text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+
+*.dll binary
+*.exe binary
+*.ico binary
+*.png binary

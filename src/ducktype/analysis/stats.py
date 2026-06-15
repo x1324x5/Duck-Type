@@ -134,7 +134,57 @@ def per_app(db, since: Optional[float], n: int = 20,
 
 
 # ---- edit / deletion stats -----------------------------------------------
-def edits(db, since: Optional[float], until: Optional[float] = None) -> Dict[str, float]:
+def _effective_deletions(
+    db,
+    since: Optional[float],
+    until: Optional[float] = None,
+    session_gap: float = 60.0,
+) -> int:
+    cw, cp = _where(since, until)
+    kw, kp = _where(since, until)
+    con = db.connect()
+    try:
+        chars = [
+            (ts, 0, rowid, ch, app)
+            for rowid, ts, ch, app in con.execute(
+                f"SELECT id, ts, ch, app FROM char_events{cw}", cp
+            ).fetchall()
+        ]
+        keys = [
+            (ts, 1, rowid, kind, app)
+            for rowid, ts, kind, app in con.execute(
+                f"SELECT id, ts, kind, app FROM key_events{kw}", kp
+            ).fetchall()
+            if kind in ("backspace", "delete")
+        ]
+    finally:
+        con.close()
+
+    stacks: Dict[str, List[float]] = {}
+    last_ts: Dict[str, float] = {}
+    effective = 0
+    for ts, order, _rowid, value, app in sorted(chars + keys):
+        key = app or ""
+        if key in last_ts and ts - last_ts[key] > session_gap:
+            stacks[key] = []
+        last_ts[key] = ts
+
+        if order == 0:
+            stacks.setdefault(key, []).append(ts)
+        else:
+            stack = stacks.setdefault(key, [])
+            if stack:
+                stack.pop()
+                effective += 1
+    return effective
+
+
+def edits(
+    db,
+    since: Optional[float],
+    until: Optional[float] = None,
+    session_gap: float = 60.0,
+) -> Dict[str, float]:
     w, p = _where(since, until)
     con = db.connect()
     try:
@@ -149,13 +199,15 @@ def edits(db, since: Optional[float], until: Optional[float] = None) -> Dict[str
     back = kinds.get("backspace", 0)
     dele = kinds.get("delete", 0)
     enter = kinds.get("enter", 0)
-    edits_total = back + dele
+    raw_edits = back + dele
+    edits_total = _effective_deletions(db, since, until, session_gap)
     ratio = (edits_total / chars) if chars else 0.0
     return {
         "chars": chars,
         "backspace": back,
         "delete": dele,
         "enter": enter,
+        "raw_edits": raw_edits,
         "edits": edits_total,
         "edit_ratio": round(ratio, 4),
     }
@@ -164,6 +216,7 @@ def edits(db, since: Optional[float], until: Optional[float] = None) -> Dict[str
 # ---- efficiency -----------------------------------------------------------
 def efficiency(db, since: Optional[float], session_gap: float = 60.0,
                until: Optional[float] = None) -> Dict[str, float]:
+    speed_window = 60.0
     w, p = _where(since, until)
     con = db.connect()
     try:
@@ -184,15 +237,20 @@ def efficiency(db, since: Optional[float], session_gap: float = 60.0,
             sessions[-1].append(t)
 
     active_seconds = 0.0
-    peak_cpm = 0.0
     for s in sessions:
         dur = s[-1] - s[0]
-        active_seconds += dur
-        if dur >= 1.0:
-            cpm = len(s) / (dur / 60.0)
-            peak_cpm = max(peak_cpm, cpm)
+        active_seconds += max(dur, speed_window)
     active_minutes = active_seconds / 60.0
     cpm = (len(ts_list) / active_minutes) if active_minutes > 0 else 0.0
+
+    peak_count = 0
+    left = 0
+    for right, t in enumerate(ts_list):
+        while t - ts_list[left] >= speed_window:
+            left += 1
+        peak_count = max(peak_count, right - left + 1)
+    peak_cpm = peak_count * (60.0 / speed_window)
+
     return {
         "cpm": round(cpm, 1),
         "active_minutes": round(active_minutes, 1),
@@ -453,7 +511,7 @@ def gamify(db, daily_goal: int) -> Dict:
 
 # ---- trend comparison (this period vs the preceding one) ------------------
 def _window_metrics(db, since, until, run_gap, session_gap) -> Dict:
-    e = edits(db, since, until)
+    e = edits(db, since, until, session_gap)
     eff = efficiency(db, since, session_gap, until)
     return {
         "chars": e["chars"],
@@ -599,7 +657,7 @@ def report(db, period: str, run_gap: float, session_gap: float) -> Dict:
 # ---- one-shot overview ----------------------------------------------------
 def overview(db, since: Optional[float], run_gap: float, session_gap: float,
              until: Optional[float] = None) -> Dict:
-    e = edits(db, since, until)
+    e = edits(db, since, until, session_gap)
     eff = efficiency(db, since, session_gap, until)
     w, p = _where(since, until)
     con = db.connect()

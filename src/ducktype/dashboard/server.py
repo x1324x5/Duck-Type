@@ -118,7 +118,7 @@ def create_app(db, config, status_fn=None, on_quit=None) -> Flask:
     @app.route("/api/edits")
     def api_edits():
         since, until = _bounds()
-        return jsonify(stats.edits(db, since, until))
+        return jsonify(stats.edits(db, since, until, config.session_gap_seconds))
 
     @app.route("/api/trend")
     def api_trend():

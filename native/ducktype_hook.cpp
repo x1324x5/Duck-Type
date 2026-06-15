@@ -34,9 +34,9 @@ static UINT g_msg  = 0;
 static void ensure_target(void)
 {
     if (g_msg == 0)
-        g_msg = RegisterWindowMessageW(L"DuckType_CommittedChar_V2");
+        g_msg = RegisterWindowMessageW(L"DuckType_CommittedChar_V3");
     if (g_host == NULL || !IsWindow(g_host))
-        g_host = FindWindowW(L"DuckTypeHostWindowV2", NULL);
+        g_host = FindWindowW(L"DuckTypeHostWindowV3", NULL);
 }
 
 static void post_units(const WCHAR *s, ULONG n)
@@ -51,6 +51,12 @@ static void post_units(const WCHAR *s, ULONG n)
 /* ---- per-thread TSF state ------------------------------------------------ */
 class CSink;  /* fwd */
 
+/* A single edit that inserts more than this many code units is treated as a
+ * paste / programmatic insert (not typing) and ignored, so it does not inflate
+ * the statistics. A normal IME commit is at most a few characters. */
+#define DT_PASTE_GUARD 30
+#define DT_SNAPSHOT_MERGE_MS 30000
+
 static thread_local bool          t_tried     = false;
 static thread_local ITfThreadMgr *t_tm        = nullptr;
 static thread_local DWORD         t_tmCookie  = TF_INVALID_COOKIE;
@@ -58,6 +64,9 @@ static thread_local ITfContext   *t_ctx       = nullptr;
 static thread_local DWORD         t_editCookie= TF_INVALID_COOKIE;
 static thread_local CSink        *t_sink      = nullptr;
 static thread_local bool          t_tsfActive = false;  /* TSF observing this thread */
+static thread_local WCHAR         t_lastText[DT_PASTE_GUARD + 1];
+static thread_local ULONG         t_lastN     = 0;
+static thread_local ULONGLONG     t_lastTick  = 0;
 
 /* ---- the COM sink (both thread-mgr and text-edit) ------------------------ */
 class CSink : public ITfThreadMgrEventSink, public ITfTextEditSink
@@ -108,6 +117,8 @@ static void detach_edit(void)
     t_editCookie = TF_INVALID_COOKIE;
     if (t_ctx) { t_ctx->Release(); t_ctx = nullptr; }
     t_tsfActive = false;
+    t_lastN = 0;
+    t_lastTick = 0;
 }
 
 static void attach_edit(ITfDocumentMgr *dim)
@@ -138,10 +149,40 @@ STDMETHODIMP CSink::OnSetFocus(ITfDocumentMgr *pdimFocus, ITfDocumentMgr *)
     return S_OK;
 }
 
-/* A single edit that inserts more than this many code units is treated as a
- * paste / programmatic insert (not typing) and ignored, so it does not inflate
- * the statistics. A normal IME commit is at most a few characters. */
-#define DT_PASTE_GUARD 30
+static bool starts_with_last(const WCHAR *s, ULONG n)
+{
+    if (t_lastN == 0 || n < t_lastN)
+        return false;
+    for (ULONG i = 0; i < t_lastN; ++i) {
+        if (s[i] != t_lastText[i])
+            return false;
+    }
+    return true;
+}
+
+static void post_tsf_text(const WCHAR *s, ULONG n)
+{
+    ULONGLONG now = GetTickCount64();
+    ULONG start = 0;
+
+    /*
+     * Some TSF hosts report the whole active composition snapshot on later
+     * partial commits. Example: user commits "AB" first, then commits the rest
+     * of "ABCD"; the second edit can expose "ABCD". We should append only the
+     * newly committed suffix ("CD"), not count "AB" again.
+     */
+    if (starts_with_last(s, n) && now - t_lastTick <= DT_SNAPSHOT_MERGE_MS)
+        start = t_lastN;
+
+    if (start < n)
+        post_units(s + start, n - start);
+
+    ULONG keep = n > DT_PASTE_GUARD ? DT_PASTE_GUARD : n;
+    for (ULONG i = 0; i < keep; ++i)
+        t_lastText[i] = s[i];
+    t_lastN = keep;
+    t_lastTick = now;
+}
 
 STDMETHODIMP CSink::OnEndEdit(ITfContext *, TfEditCookie ec, ITfEditRecord *per)
 {
@@ -175,7 +216,7 @@ STDMETHODIMP CSink::OnEndEdit(ITfContext *, TfEditCookie ec, ITfEditRecord *per)
     en->Release();
 
     if (!tooMuch && accN > 0)
-        post_units(acc, accN);
+        post_tsf_text(acc, accN);
     return S_OK;
 }
 

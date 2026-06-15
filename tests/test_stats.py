@@ -55,7 +55,43 @@ def test_edits_ratio(db, insert_chars, insert_keys, now):
     insert_keys(db, [(now, "backspace", None)] * 2 + [(now, "delete", None)])
     e = stats.edits(db, None)
     assert e["chars"] == 10 and e["backspace"] == 2 and e["delete"] == 1
+    assert e["raw_edits"] == 3 and e["edits"] == 3
     assert e["edit_ratio"] == 0.3
+
+
+def test_edits_ratio_ignores_empty_backspace(db, insert_chars, insert_keys, now):
+    insert_keys(db, [(now, "backspace", "a.exe")] * 5)
+    insert_chars(db, [(now + 1, "字", "a.exe")])
+    e = stats.edits(db, None)
+    assert e["backspace"] == 5
+    assert e["raw_edits"] == 5
+    assert e["edits"] == 0
+    assert e["edit_ratio"] == 0.0
+
+
+def test_edits_ratio_resets_across_session_gap(db, insert_chars, insert_keys, now):
+    insert_chars(db, [(now, "旧", "a.exe")])
+    insert_keys(db, [(now + 120, "backspace", "a.exe")])
+    e = stats.edits(db, None, session_gap=60.0)
+    assert e["raw_edits"] == 1
+    assert e["edits"] == 0
+
+
+def test_efficiency_uses_minute_windows(db, insert_chars, now):
+    insert_chars(db, [(now + i, "字", None) for i in range(10)])
+    e = stats.efficiency(db, None, session_gap=60.0)
+    assert e["active_minutes"] == 1.0
+    assert e["cpm"] == 10.0
+    assert e["peak_cpm"] == 10.0
+
+
+def test_efficiency_peak_is_sliding_minute(db, insert_chars, now):
+    rows = [(now + i * 10, "字", None) for i in range(12)]
+    insert_chars(db, rows)
+    e = stats.efficiency(db, None, session_gap=60.0)
+    assert e["sessions"] == 1
+    assert e["active_minutes"] == 1.8
+    assert e["peak_cpm"] == 6.0
 
 
 def test_gamify_streak_and_goal(db, insert_chars):
