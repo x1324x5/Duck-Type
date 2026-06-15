@@ -1,0 +1,227 @@
+/*
+ * ducktype_hook.cpp
+ * -----------------
+ * The DuckType capture DLL, injected into every GUI process via a global
+ * WH_GETMESSAGE hook. It captures committed characters through TWO paths and
+ * reports each UTF-16 code unit to the Python host with a single
+ *     PostMessage(host, regMsg, (WPARAM)wch, 0);
+ * (only a scalar crosses the process boundary -- no pointer marshaling).
+ *
+ *   1. TSF path (modern apps): most current IMEs (Sogou, Microsoft Pinyin) and
+ *      modern applications (WeChat, VS Code, the Win11 Notepad, browsers, ...)
+ *      commit text through the Text Services Framework, which does NOT send
+ *      WM_CHAR. We observe it by advising an ITfThreadMgrEventSink on the
+ *      thread's TSF manager and, on focus, an ITfTextEditSink on the focused
+ *      document. OnEndEdit then yields the inserted text.
+ *
+ *   2. WM_CHAR path (classic apps): plain Win32 edit controls (e.g. the Win+R
+ *      Run box) still deliver WM_CHAR / WM_IME_CHAR. We forward those, but only
+ *      when TSF is NOT actively observing this thread's document, so committed
+ *      characters are never counted twice.
+ *
+ * The host side (Python) reassembles surrogate pairs and keeps only Han.
+ */
+
+#include <windows.h>
+#include <msctf.h>
+/* The TSF GUIDs (CLSID_TF_ThreadMgr, IID_ITf*, IID_IUnknown) come from the
+ * platform's uuid import library: -luuid (MinGW) / uuid.lib (MSVC). */
+
+/* ---- host channel -------------------------------------------------------- */
+static HWND g_host = NULL;
+static UINT g_msg  = 0;
+
+static void ensure_target(void)
+{
+    if (g_msg == 0)
+        g_msg = RegisterWindowMessageW(L"DuckType_CommittedChar");
+    if (g_host == NULL || !IsWindow(g_host))
+        g_host = FindWindowW(L"DuckTypeHostWindow", NULL);
+}
+
+static void post_units(const WCHAR *s, ULONG n)
+{
+    ensure_target();
+    if (g_host == NULL || g_msg == 0)
+        return;
+    for (ULONG i = 0; i < n; ++i)
+        PostMessageW(g_host, g_msg, (WPARAM)s[i], 0);
+}
+
+/* ---- per-thread TSF state ------------------------------------------------ */
+class CSink;  /* fwd */
+
+static thread_local bool          t_tried     = false;
+static thread_local ITfThreadMgr *t_tm        = nullptr;
+static thread_local DWORD         t_tmCookie  = TF_INVALID_COOKIE;
+static thread_local ITfContext   *t_ctx       = nullptr;
+static thread_local DWORD         t_editCookie= TF_INVALID_COOKIE;
+static thread_local CSink        *t_sink      = nullptr;
+static thread_local bool          t_tsfActive = false;  /* TSF observing this thread */
+
+/* ---- the COM sink (both thread-mgr and text-edit) ------------------------ */
+class CSink : public ITfThreadMgrEventSink, public ITfTextEditSink
+{
+    LONG m_ref;
+public:
+    CSink() : m_ref(1) {}
+    virtual ~CSink() {}
+
+    /* IUnknown */
+    STDMETHODIMP QueryInterface(REFIID riid, void **ppv)
+    {
+        if (!ppv) return E_POINTER;
+        if (IsEqualIID(riid, IID_IUnknown) ||
+            IsEqualIID(riid, IID_ITfThreadMgrEventSink))
+            *ppv = static_cast<ITfThreadMgrEventSink *>(this);
+        else if (IsEqualIID(riid, IID_ITfTextEditSink))
+            *ppv = static_cast<ITfTextEditSink *>(this);
+        else { *ppv = NULL; return E_NOINTERFACE; }
+        AddRef();
+        return S_OK;
+    }
+    STDMETHODIMP_(ULONG) AddRef()  { return InterlockedIncrement(&m_ref); }
+    STDMETHODIMP_(ULONG) Release() { LONG c = InterlockedDecrement(&m_ref);
+                                     if (c == 0) delete this; return c; }
+
+    /* ITfThreadMgrEventSink */
+    STDMETHODIMP OnInitDocumentMgr(ITfDocumentMgr *)   { return S_OK; }
+    STDMETHODIMP OnUninitDocumentMgr(ITfDocumentMgr *) { return S_OK; }
+    STDMETHODIMP OnSetFocus(ITfDocumentMgr *pdimFocus, ITfDocumentMgr *);
+    STDMETHODIMP OnPushContext(ITfContext *)           { return S_OK; }
+    STDMETHODIMP OnPopContext(ITfContext *)            { return S_OK; }
+
+    /* ITfTextEditSink */
+    STDMETHODIMP OnEndEdit(ITfContext *pic, TfEditCookie ec, ITfEditRecord *per);
+};
+
+/* ---- attach / detach the text-edit sink on the focused document ---------- */
+static void detach_edit(void)
+{
+    if (t_ctx && t_editCookie != TF_INVALID_COOKIE) {
+        ITfSource *src = nullptr;
+        if (SUCCEEDED(t_ctx->QueryInterface(IID_ITfSource, (void **)&src)) && src) {
+            src->UnadviseSink(t_editCookie);
+            src->Release();
+        }
+    }
+    t_editCookie = TF_INVALID_COOKIE;
+    if (t_ctx) { t_ctx->Release(); t_ctx = nullptr; }
+    t_tsfActive = false;
+}
+
+static void attach_edit(ITfDocumentMgr *dim)
+{
+    detach_edit();
+    if (!dim) return;
+
+    ITfContext *ctx = nullptr;
+    if (FAILED(dim->GetTop(&ctx)) || !ctx)
+        return;
+
+    ITfSource *src = nullptr;
+    if (SUCCEEDED(ctx->QueryInterface(IID_ITfSource, (void **)&src)) && src) {
+        if (SUCCEEDED(src->AdviseSink(IID_ITfTextEditSink,
+                static_cast<ITfTextEditSink *>(t_sink), &t_editCookie))) {
+            t_ctx = ctx;          /* keep the reference */
+            t_tsfActive = true;
+            ctx = nullptr;
+        }
+        src->Release();
+    }
+    if (ctx) ctx->Release();
+}
+
+STDMETHODIMP CSink::OnSetFocus(ITfDocumentMgr *pdimFocus, ITfDocumentMgr *)
+{
+    attach_edit(pdimFocus);
+    return S_OK;
+}
+
+STDMETHODIMP CSink::OnEndEdit(ITfContext *, TfEditCookie ec, ITfEditRecord *per)
+{
+    if (!per) return S_OK;
+    IEnumTfRanges *en = nullptr;
+    if (FAILED(per->GetTextAndPropertyUpdates(TF_GTP_INCL_TEXT, nullptr, 0, &en)) || !en)
+        return S_OK;
+
+    ITfRange *rg = nullptr;
+    ULONG fetched = 0;
+    while (en->Next(1, &rg, &fetched) == S_OK && fetched) {
+        WCHAR buf[512];
+        ULONG cch = 0;
+        /* Typing deltas are tiny; one read covers them. Huge programmatic
+         * inserts / pastes are intentionally truncated to one buffer. */
+        if (SUCCEEDED(rg->GetText(ec, 0, buf, 512, &cch)) && cch)
+            post_units(buf, cch);
+        rg->Release();
+        rg = nullptr;
+    }
+    en->Release();
+    return S_OK;
+}
+
+/* ---- lazily set up TSF observation for the current (UI) thread ----------- */
+static void ensure_tsf(void)
+{
+    if (t_tried) return;
+    t_tried = true;
+
+    HRESULT hrco = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    if (hrco == RPC_E_CHANGED_MODE)
+        return;  /* MTA thread -- cannot observe TSF here; WM_CHAR path remains */
+
+    ITfThreadMgr *tm = nullptr;
+    if (FAILED(CoCreateInstance(CLSID_TF_ThreadMgr, nullptr, CLSCTX_INPROC_SERVER,
+                                IID_ITfThreadMgr, (void **)&tm)) || !tm)
+        return;
+    t_tm = tm;
+    t_sink = new CSink();
+
+    ITfSource *src = nullptr;
+    if (SUCCEEDED(tm->QueryInterface(IID_ITfSource, (void **)&src)) && src) {
+        src->AdviseSink(IID_ITfThreadMgrEventSink,
+                        static_cast<ITfThreadMgrEventSink *>(t_sink), &t_tmCookie);
+        src->Release();
+    }
+
+    /* Catch a document that already has focus (sink advised after the fact). */
+    ITfDocumentMgr *dim = nullptr;
+    if (SUCCEEDED(tm->GetFocus(&dim)) && dim) {
+        attach_edit(dim);
+        dim->Release();
+    }
+}
+
+/* ---- the injected hook procedure ---------------------------------------- */
+extern "C" __declspec(dllexport)
+LRESULT CALLBACK GetMsgProc(int code, WPARAM wParam, LPARAM lParam)
+{
+    if (code >= 0 && wParam == PM_REMOVE) {
+        ensure_tsf();
+        MSG *msg = (MSG *)lParam;
+        if (msg != NULL &&
+            (msg->message == WM_CHAR || msg->message == WM_IME_CHAR)) {
+            /* Only use the legacy path when TSF is not handling this thread,
+             * so committed text is never double-counted. */
+            if (!t_tsfActive) {
+                WCHAR wch = (WCHAR)msg->wParam;
+                post_units(&wch, 1);
+            }
+        }
+    }
+    return CallNextHookEx(NULL, code, wParam, lParam);
+}
+
+BOOL WINAPI DllMain(HINSTANCE hinst, DWORD reason, LPVOID reserved)
+{
+    (void)reserved;
+    switch (reason) {
+        case DLL_PROCESS_ATTACH:
+            DisableThreadLibraryCalls(hinst);
+            break;
+        default:
+            break;
+    }
+    return TRUE;
+}

@@ -5,6 +5,13 @@
 ## [Unreleased]
 
 ### Added 新增
+- **TSF 捕获引擎**：原生钩子改用 C++/COM，新增 `ITfThreadMgrEventSink` /
+  `ITfTextEditSink` 监听 TSF 文本提交，从而能记录搜狗/微软拼音在**现代程序**
+  （微信、VS Code、Win11 记事本、浏览器…）里的上屏中文；经典 `WM_CHAR` 通路保留并互斥，
+  不重复计数。DLL 静态链接，注入时自包含。
+- **健康横幅 + `/api/status`**：仪表盘顶部实时显示钩子状态（DLL 是否找到 / 是否安装 /
+  收到字符消息数 / 已捕获汉字数），并据此给出排查指引。
+- **网页图标用自定义鸭子**：新增 `/favicon.png`，与托盘图标一致。
 - 🦆 全新 **DuckType（码字鸭）** 品牌与卡通鸭图标（由 `branding.py` 代码绘制，`tools/make_icon.py` 生成 `.ico`）。
 - **输入序列浏览与导出**：仪表盘「序列」标签按时间线查看上屏汉字，支持导出 TXT / CSV / JSON。
 - **数据管理与隐私**：一键清空、按日期区间删除、`retention_days` 自动保留期限（后台定时清理）。

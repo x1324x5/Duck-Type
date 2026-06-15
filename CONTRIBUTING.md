@@ -27,7 +27,7 @@ pytest -q
 ## 代码风格
 
 - 跟随现有风格：类型注解、模块顶部 docstring、相对导入。
-- 原生钩子（`native/ducktype_hook.c`）保持极简、零副作用——它会被注入到其它进程，
+- 原生钩子（`native/ducktype_hook.cpp`）保持极简、零副作用——它会被注入到其它进程，
   任何阻塞或崩溃都会影响用户的其它程序。
 - 窗口类名 / 注册消息名在 C 与 Python 两侧必须一致
   （`DuckTypeHostWindow` / `DuckType_CommittedChar`）。

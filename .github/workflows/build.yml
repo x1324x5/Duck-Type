@@ -40,10 +40,10 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Build hook DLL (MinGW)
+      - name: Build hook DLL (MinGW, C++/TSF)
         shell: cmd
         run: |
-          where x86_64-w64-mingw32-gcc || choco install mingw -y
+          where g++ || where x86_64-w64-mingw32-g++ || choco install mingw -y
           call native\build_dll.bat
 
       - name: Install dependencies
