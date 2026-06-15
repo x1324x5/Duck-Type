@@ -1,8 +1,7 @@
-"""DuckType branding -- a single place that draws the little duck.
+"""DuckType branding -- a single place that resolves the little duck icon.
 
-Used by the system tray (live, in-memory) and by tools/make_icon.py to bake the
-multi-size .ico that ships with releases. Drawing it in code means the icon needs
-no binary asset checked in and always matches the tray.
+The bundled PNG/ICO is generated from assets/duck.png by tools/make_icon.py. The
+code-drawn duck remains as a fallback for development checkouts without assets.
 """
 from __future__ import annotations
 
@@ -66,15 +65,13 @@ def _dim(img: Image.Image) -> Image.Image:
 
 
 def app_image(size: int = 64, active: bool = True) -> Image.Image:
-    """Tray/app icon. Prefers the bundled icon (your custom art, if you dropped a
-    duck.png and ran tools/make_icon.py); otherwise falls back to the code duck.
-    This keeps the tray icon identical to the packaged .exe icon."""
+    """Tray/app icon. Prefers bundled custom art, then falls back to code duck."""
     try:
-        from .paths import icon_path  # local import avoids any import cycle
-        p = icon_path()
-        if p.exists():
-            img = Image.open(p).convert("RGBA").resize((size, size), Image.LANCZOS)
-            return img if active else _dim(img)
+        from .paths import icon_path, icon_png_path  # local import avoids cycles
+        for p in (icon_png_path(), icon_path()):
+            if p.exists():
+                img = Image.open(p).convert("RGBA").resize((size, size), Image.LANCZOS)
+                return img if active else _dim(img)
     except Exception:
         pass
     return duck_image(size, active)

@@ -21,10 +21,13 @@ for pkg in ("jieba",):
 
 datas += [("src/ducktype/dashboard/static", "ducktype/dashboard/static")]
 
-# Bundle the generated icon so the tray / app can find it at runtime.
+# Bundle generated icons so the tray / app can find them at runtime.
 _ico = os.path.join("src", "ducktype", "assets", "duck.ico")
 if os.path.exists(_ico):
-    datas += [(_ico, "ducktype/assets")]
+    datas += [(_ico, "assets")]
+_png = os.path.join("src", "ducktype", "assets", "duck.png")
+if os.path.exists(_png):
+    datas += [(_png, "assets")]
 
 # Bundle the native hook DLL if it has been built.
 _dll = os.path.join("src", "ducktype", "native", "ducktype_hook.dll")

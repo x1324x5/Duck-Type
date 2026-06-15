@@ -49,3 +49,8 @@ def hook_dll_path() -> Path:
 def icon_path() -> Path:
     """Location of the bundled application icon (.ico)."""
     return resource_dir() / "assets" / "duck.ico"
+
+
+def icon_png_path() -> Path:
+    """Location of the bundled application icon PNG."""
+    return resource_dir() / "assets" / "duck.png"

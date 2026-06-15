@@ -114,8 +114,9 @@ python -m ducktype --report --range 7d
 
 ## 🎨 图标
 
-图标由代码绘制（`src/ducktype/branding.py`），`tools/make_icon.py` 据此生成多尺寸 `duck.ico`。
-想换成自己的鸭子图：把方形 PNG 放到 `assets/duck.png`，再跑一次 `python tools/make_icon.py` 即可。
+图标优先使用 `assets/duck.png`，`tools/make_icon.py` 会据此生成网页/托盘用的
+`src/ducktype/assets/duck.png` 和打包用的多尺寸 `duck.ico`。
+想换成自己的鸭子图：替换 `assets/duck.png`，再跑一次 `python tools/make_icon.py` 即可。
 
 ## 🧪 测试
 

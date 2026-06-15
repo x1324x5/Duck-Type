@@ -1,5 +1,6 @@
 # Python
 __pycache__/
+.pytest_cache/
 *.py[cod]
 *.egg-info/
 .eggs/
@@ -18,7 +19,7 @@ src/ducktype/native/*.obj
 src/ducktype/native/*.lib
 src/ducktype/native/*.exp
 
-# Generated icon (rebuilt from branding.py by tools/make_icon.py)
+# Generated ICO (rebuilt from assets/duck.png by tools/make_icon.py)
 src/ducktype/assets/*.ico
 
 # Local data / editor
@@ -26,3 +27,7 @@ src/ducktype/assets/*.ico
 *.log
 .vscode/
 .idea/
+
+# Local-only dev notes (machine/tool-specific)
+AGENTS.md
+LOCAL_DEV.md
