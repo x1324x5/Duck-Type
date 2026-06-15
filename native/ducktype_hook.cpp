@@ -34,9 +34,9 @@ static UINT g_msg  = 0;
 static void ensure_target(void)
 {
     if (g_msg == 0)
-        g_msg = RegisterWindowMessageW(L"DuckType_CommittedChar");
+        g_msg = RegisterWindowMessageW(L"DuckType_CommittedChar_V2");
     if (g_host == NULL || !IsWindow(g_host))
-        g_host = FindWindowW(L"DuckTypeHostWindow", NULL);
+        g_host = FindWindowW(L"DuckTypeHostWindowV2", NULL);
 }
 
 static void post_units(const WCHAR *s, ULONG n)

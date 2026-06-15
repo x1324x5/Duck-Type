@@ -1,7 +1,7 @@
 """Committed-character capture via the native WH_GETMESSAGE hook DLL.
 
 Flow:
-  1. We create a hidden top-level window of class "DuckTypeHostWindow".
+  1. We create a hidden top-level window of class "DuckTypeHostWindowV2".
   2. We load ducktype_hook.dll and install a global WH_GETMESSAGE hook using the
      DLL's exported GetMsgProc. Windows injects the DLL into every GUI process.
   3. Inside each process the hook posts every WM_CHAR / WM_IME_CHAR code unit to
@@ -30,8 +30,8 @@ _kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
 WH_GETMESSAGE = 3
 WM_CLOSE = 0x0010
 WM_DESTROY = 0x0002
-CLASS_NAME = "DuckTypeHostWindow"
-REG_MSG_NAME = "DuckType_CommittedChar"
+CLASS_NAME = "DuckTypeHostWindowV2"
+REG_MSG_NAME = "DuckType_CommittedChar_V2"
 
 WNDPROC = ctypes.CFUNCTYPE(
     ctypes.c_ssize_t, wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM
@@ -119,6 +119,9 @@ class CharHook:
         if self._reg_msg and msg == self._reg_msg:
             self._handle_code_unit(int(wparam) & 0xFFFF)
             return 0
+        if msg == WM_CLOSE:
+            _user32.DestroyWindow(hwnd)
+            return 0
         if msg == WM_DESTROY:
             _user32.PostQuitMessage(0)
             return 0
@@ -201,6 +204,8 @@ class CharHook:
         if self._hook:
             _user32.UnhookWindowsHookEx(self._hook)
             self._hook = None
+        self.installed = False
+        self._hwnd = None
 
     def start(self) -> bool:
         if not self.available:
@@ -212,3 +217,6 @@ class CharHook:
     def stop(self) -> None:
         if self._hwnd:
             _user32.PostMessageW(self._hwnd, WM_CLOSE, 0, 0)
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=5)
+        self._dll = None

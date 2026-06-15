@@ -104,3 +104,5 @@ class KeyHook:
     def stop(self) -> None:
         if self._thread_id:
             _user32.PostThreadMessageW(self._thread_id, WM_QUIT, 0, 0)
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=5)

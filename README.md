@@ -48,6 +48,10 @@
 2. Python 主程序 —— 创建隐藏窗口接收字符、用纯 ctypes 的低级键盘钩子统计退格/删除、
    写入 SQLite、跑分词与统计、起仪表盘、托盘常驻。
 
+打包版会先把 bundled 钩子 DLL 复制到 `%APPDATA%\DuckType\native\ducktype_hook_<hash>.dll`
+再注入，避免 PyInstaller one-file 的随机 `_MEI...` 临时目录被长驻程序里的 pinned DLL 占住，
+也避免反复重启后在同一目标程序中累积多个钩子副本。
+
 > **位数限制**：64 位的钩子只能捕获 64 位程序里的输入（绝大多数现代程序都是 64 位）。
 > 要覆盖 32 位老程序需要再跑一个 32 位宿主，属于进阶用法。
 

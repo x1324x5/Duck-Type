@@ -5,8 +5,11 @@ identically whether run from source or from a packaged .exe.
 """
 from __future__ import annotations
 
+import hashlib
 import os
+import shutil
 import sys
+from functools import lru_cache
 from pathlib import Path
 
 
@@ -41,9 +44,30 @@ def resource_dir() -> Path:
     return Path(__file__).resolve().parent
 
 
+@lru_cache(maxsize=1)
 def hook_dll_path() -> Path:
-    """Location of the native hook DLL (ducktype_hook.dll)."""
-    return resource_dir() / "native" / "ducktype_hook.dll"
+    """Location of the native hook DLL used for injection.
+
+    PyInstaller one-file apps unpack bundled binaries under a random _MEI...
+    directory on each launch. Injecting that path into long-lived apps is bad:
+    the DLL is pinned there, so the temp dir cannot be deleted, and later
+    launches inject additional copies. For frozen builds we copy the bundled DLL
+    to a stable, content-addressed path under %APPDATA% and inject that instead.
+    """
+    bundled = resource_dir() / "native" / "ducktype_hook.dll"
+    if not getattr(sys, "frozen", False) or not bundled.exists():
+        return bundled
+    return _stable_hook_dll_path(bundled)
+
+
+def _stable_hook_dll_path(bundled: Path) -> Path:
+    digest = hashlib.sha256(bundled.read_bytes()).hexdigest()[:12]
+    native_dir = data_dir() / "native"
+    native_dir.mkdir(parents=True, exist_ok=True)
+    dst = native_dir / f"ducktype_hook_{digest}.dll"
+    if not dst.exists() or dst.stat().st_size != bundled.stat().st_size:
+        shutil.copy2(bundled, dst)
+    return dst
 
 
 def icon_path() -> Path:

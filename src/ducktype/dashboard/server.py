@@ -273,3 +273,11 @@ class DashboardServer:
     def stop(self) -> None:
         if self._server is not None:
             self._server.shutdown()
+            self._server.server_close()
+            self._server = None
+        if (
+            self._thread is not None
+            and self._thread.is_alive()
+            and threading.current_thread() is not self._thread
+        ):
+            self._thread.join(timeout=5)
