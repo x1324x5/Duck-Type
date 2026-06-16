@@ -47,6 +47,15 @@ def log_path() -> Path:
     return data_dir() / "ducktype.log"
 
 
+def phrases_path() -> Path:
+    """User-editable file of fun/literary/trivia lines shown in the board ticker.
+
+    Lives in the default app directory so it survives updates; users add their own
+    lines here. Seeded with defaults on first use (see ``stats.load_phrases``).
+    """
+    return data_dir() / "phrases.txt"
+
+
 def resource_dir() -> Path:
     """Directory that ships read-only bundled resources.
 

@@ -31,3 +31,9 @@ src/ducktype/assets/*.ico
 # Local-only dev notes (machine/tool-specific)
 AGENTS.md
 LOCAL_DEV.md
+
+# Local tooling & scratch (Claude Code, preview launcher, throwaway scripts)
+.claude/
+_preview_server.py
+_postest.py
+_scratch*.py

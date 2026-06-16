@@ -147,6 +147,68 @@ def test_search_single_char_matches_char_count(db, insert_chars, now):
     assert stats.search(db, "  ", None, run_gap=3.0)["total"] == 0
 
 
+def test_search_examples_include_full_run_context(db, insert_chars, now):
+    text = "这是搜索前面的完整上下文鸭这是搜索后面的完整上下文"
+    insert_chars(db, [(now + i, ch, "a") for i, ch in enumerate(text)])
+    ex = stats.search(db, "鸭", None, run_gap=3.0)["examples"][0]
+    assert ex["pre"] == "这是搜索前面的完整上下文"
+    assert ex["post"] == "这是搜索后面的完整上下文"
+    assert ex["text"] == text
+
+
+def test_top_words_filters_single_character_materialized_rows(db):
+    # Simulate already-materialized data: stamp the current seg version so
+    # build_words treats the cache as fresh instead of rebuilding it.
+    from ducktype.analysis import segment
+    db.set_meta("seg_version", segment._SEG_VERSION)
+    con = db.connect()
+    try:
+        con.executemany(
+            "INSERT INTO word_freq(word, count, pos) VALUES (?,?,?)",
+            [("的", 99, "uj"), ("我们", 3, "r"), ("鸭子", 2, "n")],
+        )
+        con.commit()
+    finally:
+        con.close()
+    assert stats.top_words(db, None, 10, run_gap=3.0) == [("我们", 3), ("鸭子", 2)]
+
+
+def test_coarse_pos_buckets_fine_tags():
+    assert stats.coarse_pos("n") == "n"
+    assert stats.coarse_pos("ns") == "n"      # 地名 -> 名词
+    assert stats.coarse_pos("vn") == "v"      # 名动词 -> 动词
+    assert stats.coarse_pos("an") == "a"      # 名形词 -> 形容词
+    assert stats.coarse_pos("zg") == "a"      # 状态语素 -> 形容词/状态
+    assert stats.coarse_pos("uj") == "fx"     # 结构助词 -> 虚词
+    assert stats.coarse_pos("c") == "fx"      # 连词 -> 虚词
+    assert stats.coarse_pos("t") == "t"       # 时间 -> 时间/方位
+    assert stats.coarse_pos("i") == "other"   # 成语 -> 其他
+    assert stats.coarse_pos("") == "other"
+
+
+def test_pos_override_corrects_common_jieba_errors():
+    from ducktype.analysis import segment
+    assert segment._pos_tag("位置", "v") == "n"   # jieba mistags as verb
+    assert segment._pos_tag("可以", "c") == "v"   # jieba mistags as conjunction
+    assert segment._pos_tag("应该", "v") == "v"   # genuinely a verb -> unchanged
+
+
+def test_pos_word_distribution_groups_tail_and_filters_single_chars(db, monkeypatch):
+    def fake_segment_pos_words_range(_db, _since, _run_gap, _until):
+        return {"v": {"喜欢": 5, "使用": 3, "看见": 2, "是": 20, "调整": 1}}
+
+    monkeypatch.setattr(stats.segment, "segment_pos_words_range", fake_segment_pos_words_range)
+    r = stats.pos_word_distribution(db, "v", None, run_gap=3.0, n=2)
+    assert r["label"] == "动词"
+    assert r["total"] == 11
+    assert r["items"] == [
+        {"word": "喜欢", "count": 5, "pct": 45.45},
+        {"word": "使用", "count": 3, "pct": 27.27},
+    ]
+    assert r["other"] == 3
+    assert all(len(x["word"]) >= 2 for x in r["least"])
+
+
 def test_gamify_streak_and_goal(db, insert_chars):
     today = datetime.now().date()
     rows = []

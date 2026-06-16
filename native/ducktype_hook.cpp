@@ -31,18 +31,79 @@
 static HWND g_host = NULL;
 static UINT g_msg  = 0;
 
+/* ---- per-process single-poster election ---------------------------------
+ * Several copies of this DLL can be live in ONE host process at the same time:
+ * a previous DuckType build pinned its hook DLL here (we pin on purpose -- see
+ * DllMain), and an updated DuckType injects a fresh copy without the old one
+ * ever unloading. If every copy posted, the host would count each committed
+ * character 2x/3x... To avoid that -- WITHOUT forcing the user to reboot after
+ * every update -- the copies elect a SINGLE poster per host *generation* (the
+ * host window is recreated each launch, so its HWND is the generation token).
+ * Election state lives in a per-process named shared section so it is visible
+ * across the distinct module mappings; the elected owner is the address of a
+ * module-unique tag (process-wide unique, comparable through the shared
+ * section). When the host restarts the generation changes and the first copy to
+ * handle an event re-claims, so capture always continues with exactly one
+ * poster. NOTE: this only coordinates copies that contain this logic; a legacy
+ * DLL predating it is shed instead by the host-channel version bump (...V5 ->
+ * ...V6 below), so it can no longer find this host window. */
+struct DtElect { LONGLONG host; LONGLONG owner; };
+static char     g_moduleTag  = 0;          /* &g_moduleTag is unique per module */
+static HANDLE   g_electMap   = NULL;
+static DtElect *g_elect      = NULL;
+static HANDLE   g_electMtx   = NULL;
+static HWND     g_electedFor  = (HWND)(LONG_PTR)-1;
+static bool     g_amPoster   = true;       /* fail-open until told otherwise */
+
+static void elect_open(void)
+{
+    if (g_elect && g_electMtx) return;
+    WCHAR name[64], mname[64];
+    DWORD pid = GetCurrentProcessId();
+    wsprintfW(name,  L"Local\\DuckTypeElect6_%lu", pid);
+    wsprintfW(mname, L"Local\\DuckTypeElectMtx6_%lu", pid);
+    if (!g_electMtx)
+        g_electMtx = CreateMutexW(NULL, FALSE, mname);
+    if (!g_electMap) {
+        g_electMap = CreateFileMappingW(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE,
+                                        0, sizeof(DtElect), name);
+        if (g_electMap)
+            g_elect = (DtElect *)MapViewOfFile(g_electMap, FILE_MAP_ALL_ACCESS,
+                                               0, 0, sizeof(DtElect));
+    }
+}
+
+/* Decide, once per host generation, whether THIS module copy is the poster. */
+static void elect_for_host(void)
+{
+    if (g_host == g_electedFor) return;        /* already decided for this gen */
+    g_electedFor = g_host;
+    g_amPoster   = true;                        /* fail-open if no shared state */
+    if (g_host == NULL) return;
+    elect_open();
+    if (!g_elect || !g_electMtx) return;
+    WaitForSingleObject(g_electMtx, 1000);
+    if (g_elect->host != (LONGLONG)(LONG_PTR)g_host) {
+        g_elect->host  = (LONGLONG)(LONG_PTR)g_host;
+        g_elect->owner = (LONGLONG)(LONG_PTR)&g_moduleTag;   /* claim this gen */
+    }
+    g_amPoster = (g_elect->owner == (LONGLONG)(LONG_PTR)&g_moduleTag);
+    ReleaseMutex(g_electMtx);
+}
+
 static void ensure_target(void)
 {
     if (g_msg == 0)
-        g_msg = RegisterWindowMessageW(L"DuckType_CommittedChar_V4");
+        g_msg = RegisterWindowMessageW(L"DuckType_CommittedChar_V6");
     if (g_host == NULL || !IsWindow(g_host))
-        g_host = FindWindowW(L"DuckTypeHostWindowV4", NULL);
+        g_host = FindWindowW(L"DuckTypeHostWindowV6", NULL);
+    elect_for_host();
 }
 
 static void post_units(const WCHAR *s, ULONG n)
 {
     ensure_target();
-    if (g_host == NULL || g_msg == 0)
+    if (g_host == NULL || g_msg == 0 || !g_amPoster)
         return;
     for (ULONG i = 0; i < n; ++i)
         PostMessageW(g_host, g_msg, (WPARAM)s[i], 0);
@@ -61,11 +122,30 @@ static thread_local ITfThreadMgr *t_tm        = nullptr;
 static thread_local DWORD         t_tmCookie  = TF_INVALID_COOKIE;
 static thread_local ITfContext   *t_ctx       = nullptr;
 static thread_local DWORD         t_editCookie= TF_INVALID_COOKIE;
+static thread_local DWORD         t_compCookie= TF_INVALID_COOKIE;
 static thread_local CSink        *t_sink      = nullptr;
 static thread_local bool          t_tsfActive = false;  /* TSF observing this thread */
+/* True once the composition-owner sink was successfully advised on the focused
+ * document, i.e. we are able to observe its IME composition lifecycle. When this
+ * is false we cannot tell typed text from inserted text, so we must NOT gate
+ * (fail open) -- otherwise we'd silently drop real input. */
+static thread_local bool          t_compSinkOk = false;
+/* True once we have seen a real IME COMPOSITION in the currently focused
+ * document (its composition started/ended, or a composing range appeared).
+ * Committed text is only trusted after that. This rejects text a control
+ * inserts on its own -- e.g. QQ's "全员禁言中" placeholder shown in a muted
+ * group's input box -- which the user never typed and which never goes through
+ * a composition. Real Han input always composes first, so genuine typing is
+ * never dropped. The signal is driven primarily by the composition-owner sink
+ * (which fires even in apps -- WeChat, explorer, Electron/Chromium like Claude
+ * -- that don't expose a composing *range* to GUID_PROP_COMPOSING). Reset on
+ * focus change. */
+static thread_local bool          t_everComposed = false;
 
-/* ---- the COM sink (both thread-mgr and text-edit) ------------------------ */
-class CSink : public ITfThreadMgrEventSink, public ITfTextEditSink
+/* ---- the COM sink (thread-mgr + text-edit + composition-owner) ----------- */
+class CSink : public ITfThreadMgrEventSink,
+              public ITfTextEditSink,
+              public ITfContextOwnerCompositionSink
 {
     LONG m_ref;
 public:
@@ -81,6 +161,8 @@ public:
             *ppv = static_cast<ITfThreadMgrEventSink *>(this);
         else if (IsEqualIID(riid, IID_ITfTextEditSink))
             *ppv = static_cast<ITfTextEditSink *>(this);
+        else if (IsEqualIID(riid, IID_ITfContextOwnerCompositionSink))
+            *ppv = static_cast<ITfContextOwnerCompositionSink *>(this);
         else { *ppv = NULL; return E_NOINTERFACE; }
         AddRef();
         return S_OK;
@@ -98,21 +180,36 @@ public:
 
     /* ITfTextEditSink */
     STDMETHODIMP OnEndEdit(ITfContext *pic, TfEditCookie ec, ITfEditRecord *per);
+
+    /* ITfContextOwnerCompositionSink -- the document's IME composition
+     * lifecycle. A composition starting or ending proves this document does
+     * real IME input, which unlocks counting its committed text (t_everComposed)
+     * even when no composing *range* is ever exposed. */
+    STDMETHODIMP OnStartComposition(ITfCompositionView *, WINBOOL *pfOk)
+    { t_everComposed = true; if (pfOk) *pfOk = TRUE; return S_OK; }
+    STDMETHODIMP OnUpdateComposition(ITfCompositionView *, ITfRange *) { return S_OK; }
+    STDMETHODIMP OnEndComposition(ITfCompositionView *)
+    { t_everComposed = true; return S_OK; }
 };
 
 /* ---- attach / detach the text-edit sink on the focused document ---------- */
 static void detach_edit(void)
 {
-    if (t_ctx && t_editCookie != TF_INVALID_COOKIE) {
+    if (t_ctx && (t_editCookie != TF_INVALID_COOKIE ||
+                  t_compCookie != TF_INVALID_COOKIE)) {
         ITfSource *src = nullptr;
         if (SUCCEEDED(t_ctx->QueryInterface(IID_ITfSource, (void **)&src)) && src) {
-            src->UnadviseSink(t_editCookie);
+            if (t_editCookie != TF_INVALID_COOKIE) src->UnadviseSink(t_editCookie);
+            if (t_compCookie != TF_INVALID_COOKIE) src->UnadviseSink(t_compCookie);
             src->Release();
         }
     }
     t_editCookie = TF_INVALID_COOKIE;
+    t_compCookie = TF_INVALID_COOKIE;
     if (t_ctx) { t_ctx->Release(); t_ctx = nullptr; }
     t_tsfActive = false;
+    t_compSinkOk = false;
+    t_everComposed = false;   /* a new document hasn't composed anything yet */
 }
 
 static void attach_edit(ITfDocumentMgr *dim)
@@ -132,6 +229,13 @@ static void attach_edit(ITfDocumentMgr *dim)
             t_tsfActive = true;
             ctx = nullptr;
         }
+        /* Also observe the composition lifecycle, so we can tell real IME input
+         * from text a control inserts on its own even where no composing range
+         * is exposed. Failure here leaves t_compSinkOk false -> gate fails open. */
+        if (t_tsfActive &&
+            SUCCEEDED(src->AdviseSink(IID_ITfContextOwnerCompositionSink,
+                static_cast<ITfContextOwnerCompositionSink *>(t_sink), &t_compCookie)))
+            t_compSinkOk = true;
         src->Release();
     }
     if (ctx) ctx->Release();
@@ -183,13 +287,16 @@ static void post_tsf_text(const WCHAR *s, ULONG n)
 STDMETHODIMP CSink::OnEndEdit(ITfContext *pic, TfEditCookie ec, ITfEditRecord *per)
 {
     if (!per) return S_OK;
-    /* Ask for text changes AND changes to the composing property, so the edit
-     * that *finalizes* a composition (clearing GUID_PROP_COMPOSING over the
-     * committed range, often without changing the text itself) is delivered to
-     * us -- that is the moment we want to count. */
+    /* Enumerate ONLY the ranges whose composing property changed -- i.e. the
+     * moment a composition finalizes (GUID_PROP_COMPOSING cleared over the
+     * committed range). We deliberately do NOT pass TF_GTP_INCL_TEXT: an IME
+     * that re-inserts the committed text on finalize would otherwise expose that
+     * same range twice (once as a text change, once as a property change),
+     * making us count every word twice. The property change alone fires for both
+     * "re-insert on commit" and "just clear the attribute" IMEs. */
     const GUID *props[1] = { &kGuidPropComposing };
     IEnumTfRanges *en = nullptr;
-    if (FAILED(per->GetTextAndPropertyUpdates(TF_GTP_INCL_TEXT, props, 1, &en)) || !en)
+    if (FAILED(per->GetTextAndPropertyUpdates(0, props, 1, &en)) || !en)
         return S_OK;
 
     /* Accumulate this edit's committed text, then decide whether to keep it.
@@ -202,8 +309,11 @@ STDMETHODIMP CSink::OnEndEdit(ITfContext *pic, TfEditCookie ec, ITfEditRecord *p
     ULONG fetched = 0;
     while (en->Next(1, &rg, &fetched) == S_OK && fetched) {
         /* Skip text still in the candidate / preview area; count it only once
-         * the IME finalizes it (range is no longer composing). */
+         * the IME finalizes it (range is no longer composing). Seeing a
+         * composing range also proves this document does real IME input, which
+         * unlocks counting its committed text (see t_everComposed). */
         if (range_is_composing(pic, ec, rg)) {
+            t_everComposed = true;
             rg->Release();
             rg = nullptr;
             continue;
@@ -223,7 +333,12 @@ STDMETHODIMP CSink::OnEndEdit(ITfContext *pic, TfEditCookie ec, ITfEditRecord *p
     }
     en->Release();
 
-    if (!tooMuch && accN > 0)
+    /* Only trust committed text once this document has shown a composition --
+     * unless we couldn't observe its composition lifecycle at all, in which case
+     * we must fail open (post) rather than risk dropping real input. Without the
+     * gate, a control that programmatically inserts non-composing text (e.g. QQ's
+     * "全员禁言中" placeholder) would be miscounted as typing. */
+    if (!tooMuch && accN > 0 && (t_everComposed || !t_compSinkOk))
         post_tsf_text(acc, accN);
     return S_OK;
 }

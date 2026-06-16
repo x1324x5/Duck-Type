@@ -119,6 +119,50 @@ def heatmap(db, since: Optional[float], until: Optional[float] = None) -> List[L
     return grid
 
 
+def timeseries(db, since: Optional[float], until: Optional[float] = None,
+               bucket: str = "hour", cap: int = 2000) -> Dict:
+    """Dense, zero-filled character counts bucketed by hour or day.
+
+    The series is filled across the whole window (or, when a side is unbounded,
+    across the data's own min/max) so the chart never collapses gaps -- an idle
+    hour shows up as a real zero, not a missing point. ``cap`` guards against an
+    unbounded all-time hourly request producing tens of thousands of points.
+    """
+    w, p = _where(since, until)
+    key = ("date(ts,'unixepoch','localtime')" if bucket == "day"
+           else "strftime('%Y-%m-%d %H', ts,'unixepoch','localtime')")
+    con = db.connect()
+    try:
+        bounds = con.execute(
+            f"SELECT MIN(ts), MAX(ts) FROM char_events{w}", p).fetchone()
+        rows = con.execute(
+            f"SELECT {key} k, COUNT(*) c FROM char_events{w} GROUP BY k", p
+        ).fetchall()
+    finally:
+        con.close()
+    counts = {k: c for k, c in rows}
+    lo = since if since is not None else bounds[0]
+    hi = until if until is not None else bounds[1]
+    if lo is None or hi is None:
+        return {"bucket": bucket, "points": []}
+
+    cur = datetime.fromtimestamp(lo)
+    end = datetime.fromtimestamp(hi)
+    if bucket == "day":
+        cur = datetime(cur.year, cur.month, cur.day)
+        step, keyfmt = timedelta(days=1), "%Y-%m-%d"
+    else:
+        cur = cur.replace(minute=0, second=0, microsecond=0)
+        step, keyfmt = timedelta(hours=1), "%Y-%m-%d %H"
+
+    points = []
+    while cur <= end and len(points) < cap:
+        points.append({"ts": cur.timestamp(),
+                       "count": counts.get(cur.strftime(keyfmt), 0)})
+        cur += step
+    return {"bucket": bucket, "points": points}
+
+
 def per_app(db, since: Optional[float], n: int = 20,
             until: Optional[float] = None) -> List[Tuple[str, int]]:
     w, p = _where(since, until)
@@ -131,6 +175,48 @@ def per_app(db, since: Optional[float], n: int = 20,
         ).fetchall()
     finally:
         con.close()
+
+
+def app_detail(db, app: str, since: Optional[float], run_gap: float,
+               until: Optional[float] = None, n: int = 20) -> Dict:
+    """Per-application breakdown: that app's top characters and top (2+ char)
+    words within the window. Powers the drill-down when an app bar is clicked."""
+    app = (app or "").strip()
+    empty = {"app": app, "total": 0, "chars": [], "words": []}
+    if not app:
+        return empty
+    # per_app reports NULL apps as "(unknown)"; map that back to an IS NULL match.
+    clauses = ["app IS NULL"] if app == "(unknown)" else ["app=?"]
+    params: List = [] if app == "(unknown)" else [app]
+    if since is not None:
+        clauses.append("ts>=?"); params.append(since)
+    if until is not None:
+        clauses.append("ts<?"); params.append(until)
+    where = " WHERE " + " AND ".join(clauses)
+    con = db.connect()
+    try:
+        total = con.execute(
+            f"SELECT COUNT(*) FROM char_events{where}", params).fetchone()[0]
+        crows = con.execute(
+            f"SELECT ch, COUNT(*) c FROM char_events{where} "
+            f"GROUP BY ch ORDER BY c DESC LIMIT ?", (*params, n)).fetchall()
+        wrows = con.execute(
+            f"SELECT ts, ch, app FROM char_events{where} ORDER BY ts", params
+        ).fetchall()
+    finally:
+        con.close()
+    wc: Dict[str, int] = {}
+    for run in segment._runs_from_rows(wrows, run_gap):
+        a, _b, _c = segment._segment_text(run)
+        for k, v in a.items():
+            wc[k] = wc.get(k, 0) + v
+    words = sorted(((k, v) for k, v in wc.items() if len(k) >= 2),
+                   key=lambda kv: kv[1], reverse=True)[:n]
+    return {
+        "app": app, "total": total,
+        "chars": [{"ch": c, "count": k} for c, k in crows],
+        "words": [{"word": w, "count": k} for w, k in words],
+    }
 
 
 # ---- edit / deletion stats -----------------------------------------------
@@ -239,15 +325,23 @@ def efficiency(db, since: Optional[float], session_gap: float = 60.0,
     multi-character word shares one timestamp -- we have *commit* timing, not
     per-keystroke timing. Metrics are therefore built to be robust to that:
 
-    * ``cpm`` (average speed) = characters / active minutes, where active time
-      is the sum of inter-character gaps that fall inside a session (gaps larger
-      than ``session_gap`` separate sessions and are excluded). The previous
-      "every session counts at least 60s" floor systematically deflated this.
+    * ``cpm`` (average speed) = characters / active minutes, where a session's
+      active time is its time *span* (last-first) but never less than a tiny
+      per-character minimum. The floor matters because an IME often commits a
+      whole word -- or several characters -- at virtually one instant: the raw
+      span of such a burst is ~0, which would divide a real character count by
+      ~0 and explode cpm to absurd values (seen as e.g. 120,000+ cpm). Charging
+      each committed character at least ``MIN_SEC_PER_CHAR`` caps the apparent
+      speed at a human-plausible ceiling (~60/MIN_SEC_PER_CHAR cpm) while leaving
+      any normally-paced session completely unaffected (its span dominates).
     * ``peak_cpm`` = the most characters committed in any ``peak_window``-second
       sliding window, expressed per minute (the "best minute"). A count over a
       real time window cannot explode the way an instantaneous rate does when
       many characters land on the same timestamp.
     """
+    # Commit-only timing means a multi-char word lands at one timestamp; charge
+    # each character at least this long so a tight burst can't divide by ~0.
+    MIN_SEC_PER_CHAR = 0.12          # -> apparent speed capped near 500 cpm
     w, p = _where(since, until)
     con = db.connect()
     try:
@@ -260,14 +354,21 @@ def efficiency(db, since: Optional[float], session_gap: float = 60.0,
     if not ts_list:
         return {"cpm": 0.0, "active_minutes": 0.0, "sessions": 0, "peak_cpm": 0.0}
 
+    # Walk the characters, accumulating each session's floored active span.
     sessions = 1
     active_seconds = 0.0
-    for a, b in zip(ts_list, ts_list[1:]):
-        gap = b - a
-        if gap > session_gap:
+    seg_start = ts_list[0]
+    seg_count = 1
+    prev = ts_list[0]
+    for t in ts_list[1:]:
+        if t - prev > session_gap:                       # session boundary
+            active_seconds += max(prev - seg_start, seg_count * MIN_SEC_PER_CHAR)
             sessions += 1
+            seg_start, seg_count = t, 1
         else:
-            active_seconds += gap
+            seg_count += 1
+        prev = t
+    active_seconds += max(prev - seg_start, seg_count * MIN_SEC_PER_CHAR)
     active_minutes = active_seconds / 60.0
     cpm = (len(ts_list) / active_minutes) if active_minutes > 0 else 0.0
 
@@ -296,7 +397,8 @@ def top_words(db, since: Optional[float], n: int, run_gap: float,
         con = db.connect()
         try:
             rows = con.execute(
-                "SELECT word, count FROM word_freq ORDER BY count DESC LIMIT ?", (n,)
+                "SELECT word, count FROM word_freq "
+                "WHERE length(word)>=2 ORDER BY count DESC LIMIT ?", (n,)
             ).fetchall()
         finally:
             con.close()
@@ -304,7 +406,8 @@ def top_words(db, since: Optional[float], n: int, run_gap: float,
             return rows
         # ... otherwise fall back to a live pass (e.g. data is one open run).
     wc, _wp, _pc = segment.segment_range(db, since, run_gap, until)
-    return sorted(wc.items(), key=lambda kv: kv[1], reverse=True)[:n]
+    words = ((w, c) for w, c in wc.items() if len(w) >= 2)
+    return sorted(words, key=lambda kv: kv[1], reverse=True)[:n]
 
 
 # Friendly Chinese labels for jieba's POS tags (ICTCLAS-style, incl. sub-tags).
@@ -329,6 +432,40 @@ POS_LABELS = {
 }
 
 
+# Coarse, reader-friendly top-level word classes. jieba emits ~40 fine ICTCLAS
+# tags (名语素, 副形词, 时态助词(着)…) which overwhelm a non-linguist; we roll them
+# up into these big buckets for the chart and only show fine words on drill-down.
+COARSE_LABELS = {
+    "n": "名词", "v": "动词", "a": "形容词 / 状态词", "d": "副词", "r": "代词",
+    "mq": "数量词", "t": "时间 / 方位", "fx": "虚词（介 / 连 / 助）", "other": "其他",
+}
+COARSE_ORDER = ["n", "v", "a", "d", "r", "mq", "t", "fx", "other"]
+
+
+def coarse_pos(pos: str) -> str:
+    """Map a fine jieba POS tag to one of the COARSE_LABELS buckets."""
+    if not pos:
+        return "other"
+    c = pos[0]
+    if c == "n":
+        return "n"
+    if c == "v":
+        return "v"
+    if c == "a" or pos in ("z", "zg", "b"):
+        return "a"            # 形容词 + 状态词 / 区别词
+    if c == "d":
+        return "d"
+    if c == "r":
+        return "r"
+    if c in ("m", "q"):
+        return "mq"
+    if c in ("t", "f", "s"):
+        return "t"            # 时间 / 方位 / 处所
+    if c in ("p", "c", "u") or pos in ("y", "e", "o", "h", "k"):
+        return "fx"           # 介词 / 连词 / 助词 / 语气词…
+    return "other"            # 成语 i, 习用语 l, 简称 j, 英文 eng, 标点 w…
+
+
 def pos_distribution(db, since: Optional[float], run_gap: float,
                      until: Optional[float] = None) -> List[Tuple[str, str, int]]:
     pc = {}
@@ -344,9 +481,65 @@ def pos_distribution(db, since: Optional[float], run_gap: float,
         pc = {r[0]: r[1] for r in rows}
     if not pc:
         _wc, _wp, pc = segment.segment_range(db, since, run_gap, until)
-    out = [(pos, POS_LABELS.get(pos, pos), cnt) for pos, cnt in pc.items()]
+    # Roll the fine tags up into the coarse buckets.
+    coarse: Dict[str, int] = {}
+    for pos, cnt in pc.items():
+        cid = coarse_pos(pos)
+        coarse[cid] = coarse.get(cid, 0) + cnt
+    out = [(cid, COARSE_LABELS.get(cid, cid), cnt) for cid, cnt in coarse.items()]
     out.sort(key=lambda x: x[2], reverse=True)
     return out
+
+
+def pos_word_distribution(db, pos: str, since: Optional[float], run_gap: float,
+                          until: Optional[float] = None, n: int = 12,
+                          min_len: int = 2) -> Dict:
+    """Words inside one coarse POS bucket, with the tail folded into "其他".
+
+    ``pos`` is a coarse id (see ``COARSE_LABELS``); words from every fine tag that
+    rolls up into it are aggregated.
+    """
+    cid = (pos or "").strip()
+    n = max(1, int(n or 12))
+    min_len = max(1, int(min_len or 1))
+    empty = {
+        "pos": cid, "label": COARSE_LABELS.get(cid, cid), "total": 0,
+        "items": [], "other": 0, "least": [],
+    }
+    if not cid:
+        return empty
+
+    by_pos = segment.segment_pos_words_range(db, since, run_gap, until)
+    agg: Dict[str, int] = {}
+    for fine, words in by_pos.items():
+        if coarse_pos(fine) != cid:
+            continue
+        for w, c in words.items():
+            if len(w) >= min_len:
+                agg[w] = agg.get(w, 0) + c
+    rows = list(agg.items())
+    rows.sort(key=lambda kv: kv[1], reverse=True)
+    total = sum(c for _w, c in rows)
+    if not total:
+        return empty
+
+    shown = rows[:n]
+    shown_total = sum(c for _w, c in shown)
+    least = sorted(rows, key=lambda kv: (kv[1], kv[0]))[:min(5, len(rows))]
+    return {
+        "pos": cid,
+        "label": COARSE_LABELS.get(cid, cid),
+        "total": total,
+        "items": [
+            {"word": w, "count": c, "pct": round(c / total * 100, 2)}
+            for w, c in shown
+        ],
+        "other": total - shown_total,
+        "least": [
+            {"word": w, "count": c, "pct": round(c / total * 100, 2)}
+            for w, c in least
+        ],
+    }
 
 
 def topics(db, since: Optional[float], topk: int = 25,
@@ -405,7 +598,8 @@ def search(db, query: str, since: Optional[float], run_gap: float,
     """
     q = (query or "").strip()
     empty = {"query": q, "total": 0, "first_seen": None, "last_seen": None,
-             "apps": [], "daily": []}
+             "apps": [], "daily": [], "by_hour": [0] * 24, "examples": [],
+             "peak_hour": None, "active_days": 0, "share_pct": 0.0, "rank": None}
     if not q:
         return empty
 
@@ -419,6 +613,8 @@ def search(db, query: str, since: Optional[float], run_gap: float,
     occ_ts: List[float] = []
     apps: Dict[str, int] = {}
     days: Dict[str, int] = {}
+    by_hour = [0] * 24
+    examples: List[Dict] = []
 
     def _scan(run: List[Tuple[float, str, Optional[str]]]) -> None:
         if len(run) < qlen:
@@ -431,8 +627,16 @@ def search(db, query: str, since: Optional[float], run_gap: float,
                 occ_ts.append(ts0)
                 a = app0 or "(unknown)"
                 apps[a] = apps.get(a, 0) + 1
-                d = datetime.fromtimestamp(ts0).strftime("%Y-%m-%d")
-                days[d] = days.get(d, 0) + 1
+                dt0 = datetime.fromtimestamp(ts0)
+                days[dt0.strftime("%Y-%m-%d")] = days.get(dt0.strftime("%Y-%m-%d"), 0) + 1
+                by_hour[dt0.hour] += 1
+                if len(examples) < 8:
+                    examples.append({
+                        "ts": ts0, "app": a,
+                        "pre": text[:i], "match": text[i:i + qlen],
+                        "post": text[i + qlen:],
+                        "text": text, "start": i, "end": i + qlen,
+                    })
                 i += qlen          # non-overlapping
             else:
                 i += 1
@@ -448,23 +652,55 @@ def search(db, query: str, since: Optional[float], run_gap: float,
     if run:
         _scan(run)
 
+    total = len(occ_ts)
+    # Share of all typed characters this query accounts for; rank only makes
+    # unambiguous sense for a single character (against the char-frequency table).
+    share_pct, rank = 0.0, None
+    if total:
+        w, p = _where(since, until)
+        con = db.connect()
+        try:
+            total_chars_all = con.execute(
+                f"SELECT COUNT(*) FROM char_events{w}", p).fetchone()[0] or 0
+            if qlen == 1:
+                higher = con.execute(
+                    f"SELECT COUNT(*) FROM (SELECT ch, COUNT(*) c FROM char_events{w} "
+                    f"GROUP BY ch HAVING c > ?)", (*p, total)).fetchone()[0]
+                rank = higher + 1
+        finally:
+            con.close()
+        if total_chars_all:
+            share_pct = round(total * qlen / total_chars_all * 100, 2)
+
+    peak_hour = max(range(24), key=lambda h: by_hour[h]) if total else None
     top_apps = sorted(apps.items(), key=lambda kv: kv[1], reverse=True)[:max_apps]
     return {
         "query": q,
-        "total": len(occ_ts),
+        "total": total,
         "first_seen": min(occ_ts) if occ_ts else None,
         "last_seen": max(occ_ts) if occ_ts else None,
         "apps": [{"app": a, "count": c} for a, c in top_apps],
         "daily": [{"date": d, "count": c} for d, c in sorted(days.items())],
+        "by_hour": by_hour,
+        "peak_hour": peak_hour,
+        "active_days": len(days),
+        "share_pct": share_pct,
+        "rank": rank,
+        "examples": examples,
     }
 
 
 # ---- fun rankings ---------------------------------------------------------
-def _in_rare_block(ch: str) -> bool:
-    cp = ord(ch)
-    return (0x3400 <= cp <= 0x4DBF      # CJK Extension A (uncommon)
-            or 0xF900 <= cp <= 0xFAFF   # Compatibility Ideographs
-            or cp >= 0x20000)           # Extensions B+ (astral, rare)
+from .common_chars import COMMON_CHARS
+
+
+def _is_uncommon(ch: str) -> bool:
+    """A typed character counts as 生僻/uncommon when it is a Han ideograph that
+    is *not* among the 3,500 standard 常用字. This is an intrinsic measure -- it
+    never looks at how often the user typed it -- and is far looser than the old
+    "only CJK extension blocks" rule (which virtually nobody ever triggers) while
+    still excluding every everyday character."""
+    return segment._HAN(ch) and ch not in COMMON_CHARS
 
 
 def fun_rankings(db, since: Optional[float], run_gap: float,
@@ -473,7 +709,7 @@ def fun_rankings(db, since: Optional[float], run_gap: float,
     char_counts = dict(top_chars(db, since, 1_000_000, until))
     hapax = [c for c, n in char_counts.items() if n == 1]
     rare = sorted(
-        ((c, n) for c, n in char_counts.items() if _in_rare_block(c)),
+        ((c, n) for c, n in char_counts.items() if _is_uncommon(c)),
         key=lambda kv: kv[1], reverse=True,
     )[:30]
 
@@ -549,18 +785,35 @@ def _streak(daymap: Dict[str, int]) -> Tuple[int, int]:
 
 # (id, 名称, 描述, 指标键, 阈值)
 _ACHIEVEMENTS = [
+    # 累计字数 total
     ("first_word", "破壳而出", "记录下第一个字", "total", 1),
     ("k1", "牛刀小试", "累计 1,000 字", "total", 1_000),
+    ("k5", "初露锋芒", "累计 5,000 字", "total", 5_000),
     ("k10", "出口成章", "累计 10,000 字", "total", 10_000),
+    ("k50", "笔耕不辍", "累计 50,000 字", "total", 50_000),
     ("k100", "著作等身", "累计 100,000 字", "total", 100_000),
+    ("k300", "学富五车", "累计 300,000 字", "total", 300_000),
     ("k1m", "百万雄师", "累计 1,000,000 字", "total", 1_000_000),
+    # 不同汉字 distinct
+    ("distinct100", "初识百字", "用过 100 个不同的字", "distinct", 100),
     ("distinct500", "博览群字", "用过 500 个不同的字", "distinct", 500),
-    ("distinct1500", "学富五车", "用过 1,500 个不同的字", "distinct", 1_500),
+    ("distinct1500", "胸有千壑", "用过 1,500 个不同的字", "distinct", 1_500),
+    ("distinct3000", "万象包罗", "用过 3,000 个不同的字", "distinct", 3_000),
+    # 连续天数 streak
     ("streak3", "小有恒心", "连续 3 天码字", "streak", 3),
     ("streak7", "持之以恒", "连续 7 天码字", "streak", 7),
+    ("streak14", "习惯成形", "连续 14 天码字", "streak", 14),
     ("streak30", "铁杵成针", "连续 30 天码字", "streak", 30),
+    ("streak100", "百日筑基", "连续 100 天码字", "streak", 100),
+    # 累计活跃天数 active_days
+    ("days7", "崭露头角", "累计 7 天有记录", "active_days", 7),
+    ("days30", "月度常客", "累计 30 天有记录", "active_days", 30),
+    ("days100", "百炼成钢", "累计 100 天有记录", "active_days", 100),
+    ("days365", "周年陪伴", "累计 365 天有记录", "active_days", 365),
+    # 单日字数 day_max
     ("day1k", "文思泉涌", "单日码字过千", "day_max", 1_000),
     ("day5k", "倚马可待", "单日码字过五千", "day_max", 5_000),
+    ("day10k", "日破万言", "单日码字过万", "day_max", 10_000),
 ]
 
 
@@ -579,7 +832,8 @@ def gamify(db, daily_goal: int) -> Dict:
     finally:
         con.close()
 
-    metrics = {"total": total, "distinct": distinct, "streak": best, "day_max": day_max}
+    metrics = {"total": total, "distinct": distinct, "streak": best,
+               "day_max": day_max, "active_days": len(daymap)}
     achievements = []
     for aid, name, desc, key, threshold in _ACHIEVEMENTS:
         value = metrics.get(key, 0)
@@ -745,6 +999,168 @@ def report(db, period: str, run_gap: float, session_gap: float) -> Dict:
         "streak_best": streak_best,
         "keywords": [w for w, _wt in kw],
     }
+
+
+# ---- board ticker (rotating facts + user phrases) -------------------------
+# Seed lines written to phrases.txt on first run. A mix of literary,
+# philosophical, romantic, cute and trivia/tips.
+_DEFAULT_PHRASES = [
+    "# DuckType 看板滚动文字 · 每行一句，以 # 开头的行会被忽略。",
+    "# DuckType 会把这些句子和自动生成的数据事实一起轮播。",
+    "",
+    "# —— 文学 / 哲思 ——",
+    "每一个字，都是思想落在纸上的脚印。",
+    "笔落惊风雨，键响动心弦。",
+    "今天写下的每一句，都是明天的回忆。",
+    "字句汇成河，日久见汪洋。",
+    "慢慢写，认真写，字会记得你的用心。",
+    "一个人真正走远的时候，常常不是脚步先动，而是心先安静下来。",
+    "人总要在某个清晨，原谅昨夜那个想太多的自己。",
+    "答案有时不是被找到的，而是在一次次追问里慢慢长出来的。",
+    "所谓成熟，大概是把许多话咽下去以后，仍然愿意温柔地开口。",
+    "时间不回答问题，它只是把问题变成经历。",
+    "很多事当时像山，后来回头看，不过是一段上坡路。",
+    "真正重要的东西，往往不急着证明自己。",
+    "生活不是把日子过成结论，而是在细节里慢慢练习理解。",
+    "人会被一句话点亮，也会被长久的沉默照见自己。",
+    "有些风景必须走过一段孤独，才看得出它的辽阔。",
+    "别急着成为谁，先认真听见自己。",
+    "世界很吵，能把心安放好，本身就是一种本事。",
+    "念念不忘，不一定会有回响，但一定会改变回望的人。",
+    "真正的告别，不是删掉名字，而是想起时不再慌张。",
+    "许多遗憾后来都变成了方向，提醒我们下一次怎样珍惜。",
+    "最深的理解，常常不是赞同，而是愿意多停留一会儿。",
+    "命运有时像一条河，你不能命令它转弯，但可以学会划船。",
+    "人这一生，总要学会在无解处继续生活。",
+    "把平凡的一天过认真，就是在替未来保存证据。",
+    "热爱不是永远沸腾，而是冷下来以后仍愿意靠近。",
+    "",
+    "# —— 爱情 / 时间 ——",
+    "爱情这东西，时间很关键，认识得太早或太晚，都不行。——《2046》",
+    "世上最遥远的距离，不是生与死，而是我就站在你面前，你却不知道我爱你。——《荷包里的单人床》张小娴",
+    "我是天空里的一片云，偶尔投影在你的波心。——《偶然》徐志摩",
+    "你我相逢在黑夜的海上，你有你的，我有我的，方向。——《偶然》徐志摩",
+    "你记得也好，最好你忘掉，在这交会时互放的光亮。——《偶然》徐志摩",
+    "有些人渐渐不联系了，不是淡了远了，而是没有合适的身份陪伴，没有合适的理由联系，没有合适的机会见面。",
+    "有些人只能放在心里，偶尔回忆，经常想念。",
+    "爱不是把一个人留在身边，而是在想起时仍愿意祝他天晴。",
+    "错过有时不是惩罚，只是时间用另一种方式保存了温柔。",
+    "相遇是两条河短暂并行，告别是各自奔向更宽阔的海。",
+    "最好的喜欢，不是急着占有，而是愿意让对方成为自己。",
+    "有人教会你爱，也有人教会你把爱放回人海。",
+    "爱一个人最难的部分，可能是承认他不必按照你的期待生活。",
+    "心动是一瞬间的光，长久相处才知道那束光能不能照路。",
+    "有些名字不再提起，不是忘了，而是终于学会轻轻放好。",
+    "时间会筛掉很多热闹，留下真正愿意并肩的人。",
+    "爱若只剩执念，就该让风替它松一松手。",
+    "相爱的人未必总能抵达，但真诚的片刻不会白白发生。",
+    "所有来不及说出口的话，后来都在某个夜里变成了月光。",
+    "人和人的缘分，常常是深一脚浅一脚地走到某个路口。",
+    "爱不是答案，它更像一道题，让人一次次重新认识自己。",
+    "愿你遇见的人，既懂你的沉默，也珍惜你的开口。",
+    "",
+    "# —— 写作 / 思考 ——",
+    "写作不是把心事说尽，而是给混乱留出秩序。",
+    "每一次敲键，都是把无形的念头请到人间坐一会儿。",
+    "语言有边界，但沉默太辽阔，所以我们才需要写字。",
+    "一个词被反复使用，可能是生活正在反复叩门。",
+    "把想法写下来，是给未来的自己留一盏灯。",
+    "如果今天没有答案，就先把问题写清楚。",
+    "文字不一定能改变世界，但能让一个人不被世界轻易带走。",
+    "思考不是为了赢过别人，而是为了少误会一点自己。",
+    "好句子像窗，推开以后，心里有风。",
+    "慢一点也没关系，重要的是别把自己的声音弄丢。",
+    "真正的表达，是把复杂的心事交给清楚的句子。",
+    "日子会过去，写下来的东西会替你留下来。",
+    "",
+    "# —— 冷知识 / 小贴士 ——",
+    "「的」是现代汉语里使用频率最高的字。",
+    "小贴士：点击高频字 / 词的条形图，可直接查看它的详情。",
+    "小贴士：拖动高频面板上的滑条，可以看到更多名次。",
+    "小贴士：「按小时」图可单独切换今天 / 近 24 小时 / 近 7 天。",
+    "小贴士：每张图右上角的 ⬇ 可把图表存成图片。",
+    "成语「一目十行」形容读得快——那你打字有多快呢？",
+    "汉字数量逾八万，但日常常用的不过三千余个。",
+]
+
+
+def _phrase_lines(lines: List[str]) -> List[str]:
+    return [ln.strip() for ln in lines if ln.strip() and not ln.lstrip().startswith("#")]
+
+
+def load_phrases() -> List[str]:
+    """Read local rotating phrases and merge in built-in defaults.
+
+    Blank lines and ``#`` comments are ignored. Any read/write error degrades to
+    the built-in defaults so the ticker never breaks the dashboard.
+    """
+    from ..paths import phrases_path
+    p = phrases_path()
+    defaults = _phrase_lines(_DEFAULT_PHRASES)
+    try:
+        if not p.exists():
+            p.write_text("\n".join(_DEFAULT_PHRASES) + "\n", encoding="utf-8")
+        lines = p.read_text(encoding="utf-8").splitlines()
+    except Exception:
+        return defaults
+
+    out: List[str] = []
+    seen = set()
+    for phrase in _phrase_lines(lines) + defaults:
+        if phrase not in seen:
+            out.append(phrase)
+            seen.add(phrase)
+    return out
+
+
+def _since_last_word(db, run_gap: float) -> Optional[str]:
+    """A "remember when" stat: when you last typed a notable word, and how many
+    characters you've committed since. Returns None if there's nothing to show."""
+    import random
+    import time as _time
+    words = [w for w, _c in top_words(db, None, 60, run_gap) if len(w) >= 2]
+    if not words:
+        return None
+    word = random.choice(words[:40])
+    r = search(db, word, None, run_gap)
+    if not r["total"] or not r["last_seen"]:
+        return None
+    hours = (_time.time() - r["last_seen"]) / 3600.0
+    after = total_chars(db, r["last_seen"])
+    when = "不到 1 小时前" if hours < 1 else f"约 {hours:.0f} 小时前"
+    return f"你上次打出「{word}」是在{when}，之后又码了 {after:,} 字。"
+
+
+def ticker(db, run_gap: float, session_gap: float, daily_goal: int) -> Dict:
+    """Content for the board ticker: code-generated data facts + user phrases."""
+    facts: List[str] = []
+    try:
+        g = gamify(db, daily_goal)
+        today, goal = g["today_chars"], g["daily_goal"]
+        if today > 0:
+            facts.append(
+                f"今天已码 {today:,} 字，达成今日目标，鸭嘎！🎉" if today >= goal
+                else f"今天已码 {today:,} 字，距今日目标还差 {goal - today:,} 字，冲鸭！")
+        if g["streak_current"] > 0:
+            facts.append(f"已连续码字 {g['streak_current']} 天，最长纪录 {g['streak_best']} 天。")
+        if g["total_chars"] > 0:
+            facts.append(f"到目前为止，你一共码了 {g['total_chars']:,} 个汉字。")
+        nxt = next((a for a in g["achievements"] if not a["unlocked"]), None)
+        if nxt:
+            facts.append(f"再加把劲，就能解锁成就「{nxt['name']}」：{nxt['desc']}。")
+        since, until, _ps, _pe, _lbl = period_bounds("today")
+        ph, _cnt = _peak_hour(db, since, until)
+        if ph is not None:
+            facts.append(f"今天 {ph:02d}:00 时段你最高产。")
+        fw = _top_multichar_word(db, since, until, run_gap)
+        if fw:
+            facts.append(f"今天你最常用的词是「{fw}」。")
+        sl = _since_last_word(db, run_gap)
+        if sl:
+            facts.append(sl)
+    except Exception:
+        pass
+    return {"facts": facts, "phrases": load_phrases()}
 
 
 # ---- one-shot overview ----------------------------------------------------

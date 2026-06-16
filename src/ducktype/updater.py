@@ -91,27 +91,56 @@ def apply() -> dict:
     except Exception as exc:
         return {"ok": False, "error": "下载失败：" + str(exc)}
 
+    # Guard against a redirect/error page or a truncated download silently
+    # replacing the exe with garbage (which would then fail to launch). A real
+    # build is tens of MB; anything under 1 MB is not the program.
+    try:
+        size = os.path.getsize(new)
+    except OSError:
+        size = 0
+    if size < 1_000_000:
+        try:
+            os.remove(new)
+        except OSError:
+            pass
+        return {"ok": False,
+                "error": f"下载的文件不完整（仅 {size} 字节），已取消。请稍后重试或到发布页手动下载。"}
+
     bat = os.path.join(str(data_dir()), "_update.bat")
     pid = os.getpid()
+    # Wait for THIS process to exit, then replace the exe -- retrying the move so
+    # the brief window where the PyInstaller bootloader still holds the file lock
+    # doesn't abort the swap -- then relaunch. `ping` is used for the delay
+    # because `timeout` needs console stdin, which a hidden-console process lacks.
     script = (
         "@echo off\r\n"
         ":wait\r\n"
         f'tasklist /FI "PID eq {pid}" | find "{pid}" >nul\r\n'
-        "if not errorlevel 1 ( timeout /t 1 /nobreak >nul & goto wait )\r\n"
-        f'move /Y "{new}" "{cur}" >nul\r\n'
+        "if not errorlevel 1 ( ping -n 2 127.0.0.1 >nul & goto wait )\r\n"
+        "set /a tries=0\r\n"
+        ":swap\r\n"
+        f'move /Y "{new}" "{cur}" >nul 2>&1\r\n'
+        "if not errorlevel 1 goto run\r\n"
+        "set /a tries+=1\r\n"
+        "if %tries% geq 30 goto run\r\n"
+        "ping -n 2 127.0.0.1 >nul\r\n"
+        "goto swap\r\n"
+        ":run\r\n"
         f'start "" "{cur}"\r\n'
         'del "%~f0"\r\n'
     )
     try:
         with open(bat, "w", encoding="ascii", errors="ignore") as f:
             f.write(script)
-        DETACHED_PROCESS = 0x00000008
+        # CREATE_NO_WINDOW keeps a (hidden) console so `start` can relaunch the
+        # app; DETACHED_PROCESS would remove the console and the relaunch fails.
         CREATE_NO_WINDOW = 0x08000000
         subprocess.Popen(["cmd", "/c", bat],
-                         creationflags=DETACHED_PROCESS | CREATE_NO_WINDOW,
-                         close_fds=True)
+                         creationflags=CREATE_NO_WINDOW, close_fds=True)
     except Exception as exc:
         return {"ok": False, "error": "启动更新脚本失败：" + str(exc)}
 
-    log.info("Update staged; quitting so %s can be replaced.", cur)
-    return {"ok": True, "pending": True, "latest": info.get("latest")}
+    log.info("Update staged: downloaded %s (%d bytes); will replace %s on exit.",
+             new, size, cur)
+    return {"ok": True, "pending": True, "latest": info.get("latest"),
+            "path": new, "target": cur, "size": size}

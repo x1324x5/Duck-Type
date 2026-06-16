@@ -58,3 +58,15 @@ def test_writer_thread_roundtrip(tmp_path):
     finally:
         d.stop()
     assert stats.total_chars(d, None) == 5
+
+
+def test_malformed_database_is_quarantined(tmp_path):
+    from ducktype.storage import Database
+
+    db_path = tmp_path / "ducktype.db"
+    db_path.write_bytes(b"not a sqlite database")
+    (tmp_path / "ducktype.db-wal").write_bytes(b"bad wal")
+    d = Database(db_path)
+
+    assert d.stats_summary()["char_rows"] == 0
+    assert list(tmp_path.glob("ducktype.db.corrupt_*"))

@@ -20,6 +20,24 @@ except Exception:  # pragma: no cover - jieba optional
 
 _HAN = lambda ch: "一" <= ch <= "鿿" or "㐀" <= ch <= "䶿"
 
+# Bump when segmentation/POS logic changes so the materialized word_freq/pos_freq
+# caches rebuild instead of keeping stale tags (see build_words).
+_SEG_VERSION = "2"
+
+# jieba's bundled dictionary mistags a handful of very common words (its tags come
+# from one corpus and have known per-word errors). Correct only clear, high-
+# frequency mistakes so the POS breakdown isn't misleading -- e.g. it tags 位置 /
+# 东西 as verb / place-name, 可以 as conjunction. Keep this conservative.
+_POS_OVERRIDE = {
+    "位置": "n", "东西": "n", "想法": "n", "城市": "n", "地方": "n",
+    "可以": "v", "好看": "a", "开心": "a", "难看": "a", "大家": "r",
+}
+
+
+def _pos_tag(word: str, flag: str) -> str:
+    """jieba's POS for ``word`` with our small correction table applied."""
+    return _POS_OVERRIDE.get(word, flag)
+
 
 def _runs_from_rows(rows: List[Tuple[float, str, Optional[str]]], run_gap: float):
     """Yield run strings from (ts, ch, app) rows ordered by time."""
@@ -53,15 +71,46 @@ def _segment_text(text: str):
         w = w.strip()
         if not w or not any(_HAN(c) for c in w):
             continue
+        flag = _pos_tag(w, flag)
         word_counts[w] = word_counts.get(w, 0) + 1
         word_pos[w] = flag
         pos_counts[flag] = pos_counts.get(flag, 0) + 1
     return word_counts, word_pos, pos_counts
 
 
+def _segment_text_pos_words(text: str):
+    """Return {pos: {word: count}} for one run string."""
+    out: Dict[str, Dict[str, int]] = {}
+    if not HAS_JIEBA:
+        for ch in text:
+            if _HAN(ch):
+                bucket = out.setdefault("x", {})
+                bucket[ch] = bucket.get(ch, 0) + 1
+        return out
+    for w, flag in _pseg.cut(text):
+        w = w.strip()
+        if not w or not any(_HAN(c) for c in w):
+            continue
+        bucket = out.setdefault(_pos_tag(w, flag), {})
+        bucket[w] = bucket.get(w, 0) + 1
+    return out
+
+
 # ---- incremental, all-time materialization -------------------------------
 def build_words(db, run_gap: float = 3.0) -> None:
     """Segment any newly *closed* runs and fold them into word_freq/pos_freq."""
+    # If the segmentation/POS logic changed, throw away the materialized caches and
+    # rebuild from scratch so corrected tags apply to historical data too.
+    if db.get_meta("seg_version") != _SEG_VERSION:
+        con = db.connect()
+        try:
+            con.execute("DELETE FROM word_freq")
+            con.execute("DELETE FROM pos_freq")
+            con.commit()
+        finally:
+            con.close()
+        db.set_meta("word_cursor", "0")
+        db.set_meta("seg_version", _SEG_VERSION)
     cursor = int(db.get_meta("word_cursor", "0") or "0")
     con = db.connect()
     try:
@@ -146,6 +195,24 @@ def segment_range(db, since: Optional[float], run_gap: float = 3.0,
         for k, v in c.items():
             total_pc[k] = total_pc.get(k, 0) + v
     return total_wc, total_wp, total_pc
+
+
+def segment_pos_words_range(db, since: Optional[float], run_gap: float = 3.0,
+                            until: Optional[float] = None):
+    """Segment all characters in [since, until) into {pos: {word: count}}."""
+    con = db.connect()
+    try:
+        rows = _bounded_rows(con, "ts, ch, app", since, until)
+    finally:
+        con.close()
+    out: Dict[str, Dict[str, int]] = {}
+    for run in _runs_from_rows(rows, run_gap):
+        pw = _segment_text_pos_words(run)
+        for pos, words in pw.items():
+            bucket = out.setdefault(pos, {})
+            for word, count in words.items():
+                bucket[word] = bucket.get(word, 0) + count
+    return out
 
 
 def topics(db, since: Optional[float], topk: int = 25,

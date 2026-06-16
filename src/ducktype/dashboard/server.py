@@ -62,8 +62,9 @@ def create_app(db, config, status_fn=None, on_quit=None) -> Flask:
         from .. import updater
         res = updater.apply()
         if res.get("pending") and on_quit:
-            # Respond first, then quit so the swap-on-exit script can run.
-            threading.Timer(1.5, on_quit).start()
+            # Respond first, then quit so the swap-on-exit script can run. Give
+            # the page a few seconds to show the download path before we exit.
+            threading.Timer(3.5, on_quit).start()
         return jsonify(res)
 
     # ---- read-only analytics -------------------------------------------
@@ -93,6 +94,19 @@ def create_app(db, config, status_fn=None, on_quit=None) -> Flask:
         rows = stats.pos_distribution(db, since, config.run_gap_seconds, until)
         return jsonify([{"pos": p, "label": lbl, "count": c} for p, lbl, c in rows])
 
+    @app.route("/api/pos_words")
+    def api_pos_words():
+        since, until = _bounds()
+        return jsonify(stats.pos_word_distribution(
+            db,
+            request.args.get("pos", ""),
+            since,
+            config.run_gap_seconds,
+            until,
+            int(request.args.get("n", 12)),
+            int(request.args.get("min_len", 2)),
+        ))
+
     @app.route("/api/topics")
     def api_topics():
         since, until = _bounds()
@@ -109,11 +123,31 @@ def create_app(db, config, status_fn=None, on_quit=None) -> Flask:
         since, until = _bounds()
         return jsonify([{"date": d, "count": c} for d, c in stats.daily(db, since, until)])
 
+    @app.route("/api/timeseries")
+    def api_timeseries():
+        # This chart carries its own range, independent of the board's: an
+        # explicit ``hours`` lookback (hour precision) overrides the global range.
+        hours = request.args.get("hours")
+        if hours:
+            import time
+            since, until = time.time() - float(hours) * 3600, None
+        else:
+            since, until = _bounds()
+        bucket = request.args.get("bucket", "hour")
+        return jsonify(stats.timeseries(db, since, until, bucket))
+
     @app.route("/api/apps")
     def api_apps():
         since, until = _bounds()
         n = int(request.args.get("n", 20))
         return jsonify([{"app": a, "count": c} for a, c in stats.per_app(db, since, n, until)])
+
+    @app.route("/api/app_detail")
+    def api_app_detail():
+        since, until = _bounds()
+        n = int(request.args.get("n", 20))
+        return jsonify(stats.app_detail(
+            db, request.args.get("app", ""), since, config.run_gap_seconds, until, n))
 
     @app.route("/api/edits")
     def api_edits():
@@ -140,6 +174,11 @@ def create_app(db, config, status_fn=None, on_quit=None) -> Flask:
     @app.route("/api/gamify")
     def api_gamify():
         return jsonify(stats.gamify(db, config.daily_goal))
+
+    @app.route("/api/ticker")
+    def api_ticker():
+        return jsonify(stats.ticker(
+            db, config.run_gap_seconds, config.session_gap_seconds, config.daily_goal))
 
     @app.route("/api/report")
     def api_report():

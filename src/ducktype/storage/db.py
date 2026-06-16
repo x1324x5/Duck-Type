@@ -16,12 +16,16 @@ Design notes:
 """
 from __future__ import annotations
 
+from datetime import datetime
+import logging
 import queue
 import sqlite3
 import threading
 import time
 from pathlib import Path
 from typing import Optional, Tuple
+
+log = logging.getLogger("ducktype")
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS char_events (
@@ -69,19 +73,73 @@ class Database:
 
     # ---- setup -----------------------------------------------------------
     def _init_schema(self) -> None:
-        con = self.connect()
+        try:
+            con = self.connect()
+        except sqlite3.DatabaseError as exc:
+            if not self._looks_corrupt(exc):
+                raise
+            self._quarantine_corrupt_files(exc)
+            con = self.connect()
         try:
             con.executescript(_SCHEMA)
             con.commit()
+        except sqlite3.DatabaseError as exc:
+            con.close()
+            if not self._looks_corrupt(exc):
+                raise
+            self._quarantine_corrupt_files(exc)
+            con = self.connect()
+            try:
+                con.executescript(_SCHEMA)
+                con.commit()
+            finally:
+                con.close()
+            return
         finally:
             con.close()
 
     def connect(self) -> sqlite3.Connection:
         """Open a fresh connection (callers must close it). Safe for readers."""
         con = sqlite3.connect(self.path, timeout=30)
-        con.execute("PRAGMA journal_mode=WAL")
-        con.execute("PRAGMA synchronous=NORMAL")
-        return con
+        try:
+            con.execute("PRAGMA journal_mode=WAL")
+            con.execute("PRAGMA synchronous=NORMAL")
+            return con
+        except Exception:
+            con.close()
+            raise
+
+    @staticmethod
+    def _looks_corrupt(exc: sqlite3.DatabaseError) -> bool:
+        msg = str(exc).lower()
+        return "malformed" in msg or "not a database" in msg
+
+    def _quarantine_corrupt_files(self, exc: sqlite3.DatabaseError) -> None:
+        """Move a broken SQLite database aside and allow startup with a fresh DB.
+
+        The old files are kept next to the original database for possible manual
+        recovery. WAL/SHM sidecar files must move with it; otherwise SQLite may
+        keep seeing the same broken state on the next open.
+        """
+        db_path = Path(self.path)
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        moved = []
+        for suffix in ("", "-wal", "-shm"):
+            src = Path(str(db_path) + suffix)
+            if not src.exists():
+                continue
+            dst = src.with_name(f"{src.name}.corrupt_{stamp}")
+            idx = 1
+            while dst.exists():
+                dst = src.with_name(f"{src.name}.corrupt_{stamp}_{idx}")
+                idx += 1
+            src.rename(dst)
+            moved.append(str(dst))
+        log.error(
+            "SQLite database is corrupt (%s); moved old files aside: %s",
+            exc,
+            ", ".join(moved) if moved else "(no files found)",
+        )
 
     # ---- writer thread ---------------------------------------------------
     def start(self) -> None:
