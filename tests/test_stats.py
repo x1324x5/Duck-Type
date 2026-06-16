@@ -77,21 +77,74 @@ def test_edits_ratio_resets_across_session_gap(db, insert_chars, insert_keys, no
     assert e["edits"] == 0
 
 
-def test_efficiency_uses_minute_windows(db, insert_chars, now):
+def test_edits_ratio_ignores_settled_char_deletion(db, insert_chars, insert_keys, now):
+    # A Han char typed, then a backspace 30s later (same session, but the char
+    # is "settled"): the backspace is editing other content, not that char.
+    insert_chars(db, [(now, "字", "a.exe")])
+    insert_keys(db, [(now + 30, "backspace", "a.exe")])
+    e = stats.edits(db, None, session_gap=60.0)
+    assert e["raw_edits"] == 1
+    assert e["edits"] == 0
+
+
+def test_efficiency_average_excludes_idle_floor(db, insert_chars, now):
+    # 10 chars one second apart: 9s of active typing, not a floored minute.
     insert_chars(db, [(now + i, "字", None) for i in range(10)])
     e = stats.efficiency(db, None, session_gap=60.0)
-    assert e["active_minutes"] == 1.0
-    assert e["cpm"] == 10.0
-    assert e["peak_cpm"] == 10.0
+    assert e["sessions"] == 1
+    assert e["active_minutes"] == 0.1          # 9s, no 60s-per-session floor
+    assert e["cpm"] == 66.7                     # 10 chars / 0.15 min
+    assert e["peak_cpm"] >= e["cpm"]            # peak never below average
 
 
-def test_efficiency_peak_is_sliding_minute(db, insert_chars, now):
-    rows = [(now + i * 10, "字", None) for i in range(12)]
+def test_efficiency_word_commit_does_not_explode_peak(db, insert_chars, now):
+    # A whole 12-char word commits at ONE timestamp (as real IMEs do), preceded
+    # by ~3s of pinyin typing. The old instantaneous-rate peak divided by ~0 and
+    # blew up to millions; the windowed count must stay finite and sane.
+    rows = [(now, "起", None)]                       # earlier char
+    rows += [(now + 3, "字", None) for _ in range(12)]  # 12-char word, one ts
+    rows += [(now + 4, "好", None)]
     insert_chars(db, rows)
     e = stats.efficiency(db, None, session_gap=60.0)
-    assert e["sessions"] == 1
-    assert e["active_minutes"] == 1.8
-    assert e["peak_cpm"] == 6.0
+    assert e["peak_cpm"] < 1000                      # bounded, not millions
+    assert e["peak_cpm"] == 210.0                    # 14 chars over 4 active s
+    assert e["peak_cpm"] >= e["cpm"]
+
+
+def test_efficiency_peak_is_best_minute(db, insert_chars, now):
+    # A dense minute (120 chars in ~60s) plus a sparse tail far later. Peak is
+    # the dense minute; average is dragged down by the sparse part.
+    dense = [(now + i * 0.5, "字", None) for i in range(120)]   # span 59.5s
+    sparse = [(now + 3000 + i * 50, "字", None) for i in range(5)]
+    insert_chars(db, dense + sparse)
+    e = stats.efficiency(db, None, session_gap=60.0)
+    assert e["sessions"] == 2
+    assert e["peak_cpm"] == 120.0
+    assert e["cpm"] < e["peak_cpm"]
+
+
+def test_search_counts_occurrences(db, insert_chars, now):
+    insert_chars(db, [
+        (now, "从", "a"), (now, "前", "a"), (now + 1, "有", "a"),     # run 1
+        (now + 100, "从", "a"), (now + 100, "前", "a"),               # run 2
+    ])
+    r = stats.search(db, "从前", None, run_gap=3.0)
+    assert r["query"] == "从前"
+    assert r["total"] == 2
+    assert r["first_seen"] == now and r["last_seen"] == now + 100
+    assert r["apps"] == [{"app": "a", "count": 2}]
+
+
+def test_search_does_not_match_across_a_pause(db, insert_chars, now):
+    # '好' then a long gap then '世' must NOT count as the word '好世'.
+    insert_chars(db, [(now, "好", "a"), (now + 100, "世", "a")])
+    assert stats.search(db, "好世", None, run_gap=3.0)["total"] == 0
+
+
+def test_search_single_char_matches_char_count(db, insert_chars, now):
+    insert_chars(db, [(now, "鸭", "a"), (now + 1, "鸭", "a"), (now + 2, "子", "a")])
+    assert stats.search(db, "鸭", None, run_gap=3.0)["total"] == 2
+    assert stats.search(db, "  ", None, run_gap=3.0)["total"] == 0
 
 
 def test_gamify_streak_and_goal(db, insert_chars):

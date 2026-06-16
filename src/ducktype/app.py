@@ -21,7 +21,7 @@ _PURGE_INTERVAL = 6 * 3600
 class App:
     def __init__(self):
         self.config = Config.load()
-        self.db = Database(db_path())
+        self.db = Database(db_path(self.config.data_dir))
         self.dashboard = DashboardServer(
             self.db, self.config, self.get_status, self.request_quit)
         self._tracker = None

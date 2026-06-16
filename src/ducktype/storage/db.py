@@ -190,6 +190,21 @@ class Database:
         cutoff = time.time() - retention_days * 86400
         return self.delete_range(None, cutoff)
 
+    def backup_to(self, dest_path) -> None:
+        """Copy the live database to ``dest_path`` using SQLite's online backup
+        (consistent even while the writer thread is active). Used to move the
+        data to a new location without losing anything."""
+        src = self.connect()
+        try:
+            dst = sqlite3.connect(str(dest_path))
+            try:
+                src.backup(dst)
+                dst.commit()
+            finally:
+                dst.close()
+        finally:
+            src.close()
+
     def stats_summary(self) -> dict:
         """Lightweight counts for the data-management UI."""
         con = self.connect()

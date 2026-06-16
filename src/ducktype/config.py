@@ -36,6 +36,11 @@ class Config:
     # days. 0 (the default) keeps everything forever.
     retention_days: int = 0
 
+    # storage: directory for the database. Empty = the default %APPDATA%\DuckType.
+    # Changed only through the data-management "relocate" flow (which also moves
+    # the existing database), so it is intentionally NOT in EDITABLE below.
+    data_dir: str = ""
+
     # gamification: per-day character goal used by the goal ring / streak.
     daily_goal: int = 500
 

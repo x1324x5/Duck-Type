@@ -139,7 +139,20 @@ def _effective_deletions(
     since: Optional[float],
     until: Optional[float] = None,
     session_gap: float = 60.0,
+    del_window: float = 10.0,
 ) -> int:
+    """Count backspace/delete keys that plausibly removed a just-typed Han char.
+
+    Each committed Han character pushes onto a per-app stack; a deletion pops
+    one. Two guards keep this honest:
+      * a session gap (``session_gap``) clears the stack -- deletions long after
+        the last character aren't fixing it;
+      * a freshness window (``del_window``) drops characters that have been
+        sitting committed for a while: a backspace now is editing other content
+        (e.g. trailing English, which we never capture), not deleting that Han
+        char. Without this, holding backspace over non-Han text would still be
+        charged against earlier Han characters and inflate the edit ratio.
+    """
     cw, cp = _where(since, until)
     kw, kp = _where(since, until)
     con = db.connect()
@@ -173,6 +186,9 @@ def _effective_deletions(
             stacks.setdefault(key, []).append(ts)
         else:
             stack = stacks.setdefault(key, [])
+            # Forget Han chars old enough to be "settled" (top is newest).
+            while stack and ts - stack[-1] > del_window:
+                stack.pop()
             if stack:
                 stack.pop()
                 effective += 1
@@ -215,8 +231,23 @@ def edits(
 
 # ---- efficiency -----------------------------------------------------------
 def efficiency(db, since: Optional[float], session_gap: float = 60.0,
-               until: Optional[float] = None) -> Dict[str, float]:
-    speed_window = 60.0
+               until: Optional[float] = None,
+               peak_window: float = 60.0) -> Dict[str, float]:
+    """Typing-speed metrics.
+
+    Important: the IME commits a whole word at once, so every character of a
+    multi-character word shares one timestamp -- we have *commit* timing, not
+    per-keystroke timing. Metrics are therefore built to be robust to that:
+
+    * ``cpm`` (average speed) = characters / active minutes, where active time
+      is the sum of inter-character gaps that fall inside a session (gaps larger
+      than ``session_gap`` separate sessions and are excluded). The previous
+      "every session counts at least 60s" floor systematically deflated this.
+    * ``peak_cpm`` = the most characters committed in any ``peak_window``-second
+      sliding window, expressed per minute (the "best minute"). A count over a
+      real time window cannot explode the way an instantaneous rate does when
+      many characters land on the same timestamp.
+    """
     w, p = _where(since, until)
     con = db.connect()
     try:
@@ -229,32 +260,29 @@ def efficiency(db, since: Optional[float], session_gap: float = 60.0,
     if not ts_list:
         return {"cpm": 0.0, "active_minutes": 0.0, "sessions": 0, "peak_cpm": 0.0}
 
-    sessions: List[List[float]] = [[ts_list[0]]]
-    for t in ts_list[1:]:
-        if t - sessions[-1][-1] > session_gap:
-            sessions.append([t])
-        else:
-            sessions[-1].append(t)
-
+    sessions = 1
     active_seconds = 0.0
-    for s in sessions:
-        dur = s[-1] - s[0]
-        active_seconds += max(dur, speed_window)
+    for a, b in zip(ts_list, ts_list[1:]):
+        gap = b - a
+        if gap > session_gap:
+            sessions += 1
+        else:
+            active_seconds += gap
     active_minutes = active_seconds / 60.0
     cpm = (len(ts_list) / active_minutes) if active_minutes > 0 else 0.0
 
     peak_count = 0
     left = 0
-    for right, t in enumerate(ts_list):
-        while t - ts_list[left] >= speed_window:
+    for right in range(len(ts_list)):
+        while ts_list[right] - ts_list[left] > peak_window:
             left += 1
         peak_count = max(peak_count, right - left + 1)
-    peak_cpm = peak_count * (60.0 / speed_window)
+    peak_cpm = max(peak_count * (60.0 / peak_window), cpm)
 
     return {
         "cpm": round(cpm, 1),
         "active_minutes": round(active_minutes, 1),
-        "sessions": len(sessions),
+        "sessions": sessions,
         "peak_cpm": round(peak_cpm, 1),
     }
 
@@ -364,6 +392,71 @@ def sequence_recent(db, since: Optional[float], run_gap: float, limit: int = 200
         runs.append({"ts": start_ts, "app": last_app, "text": "".join(cur)})
     runs.reverse()
     return runs[:limit]
+
+
+# ---- keyword / character lookup ------------------------------------------
+def search(db, query: str, since: Optional[float], run_gap: float,
+           until: Optional[float] = None, max_apps: int = 12) -> Dict:
+    """Look up how often a character/word/phrase was typed in the window.
+
+    Counts non-overlapping occurrences of ``query`` within the reconstructed
+    typed runs (so a match never spans a pause or an app switch), and reports
+    when it was first/last seen, a per-app breakdown and a per-day series.
+    """
+    q = (query or "").strip()
+    empty = {"query": q, "total": 0, "first_seen": None, "last_seen": None,
+             "apps": [], "daily": []}
+    if not q:
+        return empty
+
+    con = db.connect()
+    try:
+        rows = segment._bounded_rows(con, "ts, ch, app", since, until)
+    finally:
+        con.close()
+
+    qlen = len(q)
+    occ_ts: List[float] = []
+    apps: Dict[str, int] = {}
+    days: Dict[str, int] = {}
+
+    def _scan(run: List[Tuple[float, str, Optional[str]]]) -> None:
+        if len(run) < qlen:
+            return
+        text = "".join(r[1] for r in run)
+        i = 0
+        while i + qlen <= len(text):
+            if text[i:i + qlen] == q:
+                ts0, _ch, app0 = run[i]
+                occ_ts.append(ts0)
+                a = app0 or "(unknown)"
+                apps[a] = apps.get(a, 0) + 1
+                d = datetime.fromtimestamp(ts0).strftime("%Y-%m-%d")
+                days[d] = days.get(d, 0) + 1
+                i += qlen          # non-overlapping
+            else:
+                i += 1
+
+    run: List[Tuple[float, str, Optional[str]]] = []
+    last_ts: Optional[float] = None
+    last_app = None
+    for ts, ch, app in rows:
+        if run and (last_ts is not None and (ts - last_ts > run_gap or app != last_app)):
+            _scan(run); run = []
+        run.append((ts, ch, app))
+        last_ts, last_app = ts, app
+    if run:
+        _scan(run)
+
+    top_apps = sorted(apps.items(), key=lambda kv: kv[1], reverse=True)[:max_apps]
+    return {
+        "query": q,
+        "total": len(occ_ts),
+        "first_seen": min(occ_ts) if occ_ts else None,
+        "last_seen": max(occ_ts) if occ_ts else None,
+        "apps": [{"app": a, "count": c} for a, c in top_apps],
+        "daily": [{"date": d, "count": c} for d, c in sorted(days.items())],
+    }
 
 
 # ---- fun rankings ---------------------------------------------------------

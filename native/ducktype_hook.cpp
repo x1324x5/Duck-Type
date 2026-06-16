@@ -34,9 +34,9 @@ static UINT g_msg  = 0;
 static void ensure_target(void)
 {
     if (g_msg == 0)
-        g_msg = RegisterWindowMessageW(L"DuckType_CommittedChar_V3");
+        g_msg = RegisterWindowMessageW(L"DuckType_CommittedChar_V4");
     if (g_host == NULL || !IsWindow(g_host))
-        g_host = FindWindowW(L"DuckTypeHostWindowV3", NULL);
+        g_host = FindWindowW(L"DuckTypeHostWindowV4", NULL);
 }
 
 static void post_units(const WCHAR *s, ULONG n)
@@ -55,7 +55,6 @@ class CSink;  /* fwd */
  * paste / programmatic insert (not typing) and ignored, so it does not inflate
  * the statistics. A normal IME commit is at most a few characters. */
 #define DT_PASTE_GUARD 30
-#define DT_SNAPSHOT_MERGE_MS 30000
 
 static thread_local bool          t_tried     = false;
 static thread_local ITfThreadMgr *t_tm        = nullptr;
@@ -64,9 +63,6 @@ static thread_local ITfContext   *t_ctx       = nullptr;
 static thread_local DWORD         t_editCookie= TF_INVALID_COOKIE;
 static thread_local CSink        *t_sink      = nullptr;
 static thread_local bool          t_tsfActive = false;  /* TSF observing this thread */
-static thread_local WCHAR         t_lastText[DT_PASTE_GUARD + 1];
-static thread_local ULONG         t_lastN     = 0;
-static thread_local ULONGLONG     t_lastTick  = 0;
 
 /* ---- the COM sink (both thread-mgr and text-edit) ------------------------ */
 class CSink : public ITfThreadMgrEventSink, public ITfTextEditSink
@@ -117,8 +113,6 @@ static void detach_edit(void)
     t_editCookie = TF_INVALID_COOKIE;
     if (t_ctx) { t_ctx->Release(); t_ctx = nullptr; }
     t_tsfActive = false;
-    t_lastN = 0;
-    t_lastTick = 0;
 }
 
 static void attach_edit(ITfDocumentMgr *dim)
@@ -149,49 +143,56 @@ STDMETHODIMP CSink::OnSetFocus(ITfDocumentMgr *pdimFocus, ITfDocumentMgr *)
     return S_OK;
 }
 
-static bool starts_with_last(const WCHAR *s, ULONG n)
+/*
+ * True when the range is still part of an active composition -- i.e. text that
+ * is sitting in the IME's candidate / preview area, NOT yet committed to the
+ * document. We must not count these: an IME building a long word in pieces
+ * (pick "AB", then complete "ABCD") exposes the growing composition as edits,
+ * which would otherwise be counted as "AB" + "ABCD". The committed text is only
+ * the final, NON-composing range, which is what we want.
+ */
+/* GUID_PROP_COMPOSING -- defined here rather than relying on the import lib, as
+ * MinGW's uuid library does not export the TSF property GUIDs. The composing
+ * property's value is a plain VT_I4 (TRUE while composing), so there is no
+ * allocated VARIANT payload to free. */
+static const GUID kGuidPropComposing =
+    { 0xe12ac060, 0xaf15, 0x11d2, { 0xaf, 0xc5, 0x00, 0x10, 0x5a, 0x27, 0x99, 0xb5 } };
+
+static bool range_is_composing(ITfContext *ctx, TfEditCookie ec, ITfRange *range)
 {
-    if (t_lastN == 0 || n < t_lastN)
+    if (!ctx) return false;
+    ITfProperty *prop = nullptr;
+    if (FAILED(ctx->GetProperty(kGuidPropComposing, &prop)) || !prop)
         return false;
-    for (ULONG i = 0; i < t_lastN; ++i) {
-        if (s[i] != t_lastText[i])
-            return false;
+    bool composing = false;
+    VARIANT var;
+    var.vt = VT_EMPTY;
+    if (SUCCEEDED(prop->GetValue(ec, range, &var))) {
+        if (var.vt == VT_I4 && var.lVal != 0)
+            composing = true;
     }
-    return true;
+    prop->Release();
+    return composing;
 }
 
 static void post_tsf_text(const WCHAR *s, ULONG n)
 {
-    ULONGLONG now = GetTickCount64();
-    ULONG start = 0;
-
-    /*
-     * Some TSF hosts report the whole active composition snapshot on later
-     * partial commits. Example: user commits "AB" first, then commits the rest
-     * of "ABCD"; the second edit can expose "ABCD". We should append only the
-     * newly committed suffix ("CD"), not count "AB" again.
-     */
-    if (starts_with_last(s, n) && now - t_lastTick <= DT_SNAPSHOT_MERGE_MS)
-        start = t_lastN;
-
-    if (start < n)
-        post_units(s + start, n - start);
-
-    ULONG keep = n > DT_PASTE_GUARD ? DT_PASTE_GUARD : n;
-    for (ULONG i = 0; i < keep; ++i)
-        t_lastText[i] = s[i];
-    t_lastN = keep;
-    t_lastTick = now;
+    post_units(s, n);   /* the Python host keeps only Han code units */
 }
 
-STDMETHODIMP CSink::OnEndEdit(ITfContext *, TfEditCookie ec, ITfEditRecord *per)
+STDMETHODIMP CSink::OnEndEdit(ITfContext *pic, TfEditCookie ec, ITfEditRecord *per)
 {
     if (!per) return S_OK;
+    /* Ask for text changes AND changes to the composing property, so the edit
+     * that *finalizes* a composition (clearing GUID_PROP_COMPOSING over the
+     * committed range, often without changing the text itself) is delivered to
+     * us -- that is the moment we want to count. */
+    const GUID *props[1] = { &kGuidPropComposing };
     IEnumTfRanges *en = nullptr;
-    if (FAILED(per->GetTextAndPropertyUpdates(TF_GTP_INCL_TEXT, nullptr, 0, &en)) || !en)
+    if (FAILED(per->GetTextAndPropertyUpdates(TF_GTP_INCL_TEXT, props, 1, &en)) || !en)
         return S_OK;
 
-    /* Accumulate this edit's inserted text, then decide whether to keep it.
+    /* Accumulate this edit's committed text, then decide whether to keep it.
      * One extra slot lets us detect "more than the guard allows". */
     WCHAR acc[DT_PASTE_GUARD + 1];
     ULONG accN = 0;
@@ -200,6 +201,13 @@ STDMETHODIMP CSink::OnEndEdit(ITfContext *, TfEditCookie ec, ITfEditRecord *per)
     ITfRange *rg = nullptr;
     ULONG fetched = 0;
     while (en->Next(1, &rg, &fetched) == S_OK && fetched) {
+        /* Skip text still in the candidate / preview area; count it only once
+         * the IME finalizes it (range is no longer composing). */
+        if (range_is_composing(pic, ec, rg)) {
+            rg->Release();
+            rg = nullptr;
+            continue;
+        }
         WCHAR buf[64];
         ULONG cch = 0;
         if (SUCCEEDED(rg->GetText(ec, 0, buf, 64, &cch)) && cch) {

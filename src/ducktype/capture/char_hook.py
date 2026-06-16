@@ -1,7 +1,7 @@
 """Committed-character capture via the native WH_GETMESSAGE hook DLL.
 
 Flow:
-  1. We create a hidden top-level window of class "DuckTypeHostWindowV3".
+  1. We create a hidden top-level window of class "DuckTypeHostWindowV4".
   2. We load ducktype_hook.dll and install a global WH_GETMESSAGE hook using the
      DLL's exported GetMsgProc. Windows injects the DLL into every GUI process.
   3. Inside each process the hook posts every WM_CHAR / WM_IME_CHAR code unit to
@@ -30,8 +30,15 @@ _kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
 WH_GETMESSAGE = 3
 WM_CLOSE = 0x0010
 WM_DESTROY = 0x0002
-CLASS_NAME = "DuckTypeHostWindowV3"
-REG_MSG_NAME = "DuckType_CommittedChar_V3"
+# Protocol token: BUMP THIS (and the matching strings in native/ducktype_hook.cpp)
+# whenever the native capture logic changes. A previous build's hook DLL stays
+# *pinned* inside every host process until that process exits (we pin it on
+# purpose to avoid an MSCTF crash on unload). If the names did not change, those
+# stale DLLs would keep posting committed text to the new instance's window --
+# producing duplicate (2x/3x...) counts after an update until the user reboots.
+# A new token means old DLLs can't find this window and go silently inert.
+CLASS_NAME = "DuckTypeHostWindowV4"
+REG_MSG_NAME = "DuckType_CommittedChar_V4"
 
 WNDPROC = ctypes.CFUNCTYPE(
     ctypes.c_ssize_t, wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM

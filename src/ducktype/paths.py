@@ -11,17 +11,31 @@ import shutil
 import sys
 from functools import lru_cache
 from pathlib import Path
+from typing import Optional
 
 
 def data_dir() -> Path:
-    """Directory for the database, config and logs (created if missing)."""
+    """Default directory for config and logs (created if missing).
+
+    Config and logs always live here even when the database is relocated, so the
+    program can always find its settings to know where the database went.
+    """
     base = os.environ.get("APPDATA") or os.path.expanduser("~")
     d = Path(base) / "DuckType"
     d.mkdir(parents=True, exist_ok=True)
     return d
 
 
-def db_path() -> Path:
+def db_path(data_dir_override: Optional[str] = None) -> Path:
+    """Location of the SQLite database.
+
+    With an override (the user-chosen data directory) the database lives there;
+    otherwise it sits in the default app directory.
+    """
+    if data_dir_override:
+        base = Path(data_dir_override).expanduser()
+        base.mkdir(parents=True, exist_ok=True)
+        return base / "ducktype.db"
     return data_dir() / "ducktype.db"
 
 

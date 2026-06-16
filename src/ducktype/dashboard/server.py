@@ -126,6 +126,12 @@ def create_app(db, config, status_fn=None, on_quit=None) -> Flask:
         return jsonify(stats.trend(
             db, since, until, config.run_gap_seconds, config.session_gap_seconds) or {})
 
+    @app.route("/api/search")
+    def api_search():
+        since, until = _bounds()
+        q = request.args.get("q", "")
+        return jsonify(stats.search(db, q, since, config.run_gap_seconds, until))
+
     @app.route("/api/fun")
     def api_fun():
         since, until = _bounds()
@@ -214,7 +220,32 @@ def create_app(db, config, status_fn=None, on_quit=None) -> Flask:
     # ---- data management ------------------------------------------------
     @app.route("/api/data/summary")
     def api_data_summary():
-        return jsonify(db.stats_summary())
+        from ..paths import data_dir, db_path
+        s = db.stats_summary()
+        # The configured location (where data lives after the next restart). The
+        # live DB only switches over on restart, so this is what the user set.
+        s["db_path"] = str(db_path(config.data_dir or None))
+        s["data_dir"] = config.data_dir or ""
+        s["default_dir"] = str(data_dir())
+        return jsonify(s)
+
+    @app.route("/api/data/relocate", methods=["POST"])
+    def api_data_relocate():
+        from ..paths import db_path
+        body = request.get_json(force=True, silent=True) or {}
+        target = (body.get("dir") or "").strip()
+        try:
+            dest = db_path(target or None)
+            if str(dest) == str(db_path(config.data_dir or None)):
+                return jsonify({"ok": False, "error": "目标位置与当前相同。"})
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            db.backup_to(dest)               # copy current data to the new place
+            config.data_dir = target
+            config.save()
+            return jsonify({"ok": True, "restart_required": True, "db_path": str(dest)})
+        except Exception as exc:             # invalid path / no permission / disk
+            log.exception("Data relocate failed")
+            return jsonify({"ok": False, "error": str(exc)})
 
     @app.route("/api/data/clear", methods=["POST"])
     def api_data_clear():

@@ -135,6 +135,15 @@
   .form textarea{min-height:90px;resize:vertical}
   .form .hint{font-size:11px;color:var(--muted);grid-column:2}
   .switch{display:inline-flex;align-items:center;gap:8px;cursor:pointer}
+  .relrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .relrow input{flex:1;min-width:220px}
+  .searchbar{display:flex;gap:10px;margin:4px 0;max-width:560px}
+  .searchbar input{flex:1;background:var(--panel2);color:var(--fg);border:1px solid var(--line);
+    border-radius:8px;padding:9px 12px;font-size:14px;font-family:inherit}
+  .bignum{font-size:20px;margin-top:4px}
+  .bignum b{color:var(--accent);font-size:24px}
+  #searchResult h3{font-size:13px;color:var(--muted);font-weight:600}
+  #relocMsg{font-size:12px;color:var(--muted);margin-top:8px}
   .switch input{width:18px;height:18px;accent-color:var(--accent)}
   .saved{color:var(--up);font-size:13px;margin-left:12px}
   #updMsg{font-size:13px;color:var(--muted);margin-top:10px;white-space:pre-wrap;line-height:1.6}
@@ -148,6 +157,7 @@
     <button data-v="board" class="active">看板</button>
     <button data-v="report">报告</button>
     <button data-v="sequence">序列</button>
+    <button data-v="search">搜索</button>
     <button data-v="fun">趣味</button>
     <button data-v="settings">设置</button>
   </nav>
@@ -269,6 +279,19 @@
     </div>
   </section>
 
+  <!-- ======================= SEARCH ======================= -->
+  <section class="view" id="view-search">
+    <div class="panel">
+      <h2>搜索 <span>look up a word or character</span></h2>
+      <div class="searchbar">
+        <input id="searchInput" type="text" placeholder="输入一个字或词，如「鸭」「从前」…" autocomplete="off">
+        <button class="btn primary" id="searchBtn">搜索</button>
+      </div>
+      <div class="hint">在当前时间范围内统计你输入过这个字/词的次数、首次与最近时间、各程序与每日分布。</div>
+      <div id="searchResult" class="empty">输入关键字后回车或点「搜索」。</div>
+    </div>
+  </section>
+
   <!-- ======================= SETTINGS ======================= -->
   <section class="view" id="view-settings">
     <div class="panel">
@@ -306,6 +329,14 @@
     <div class="panel">
       <h2>数据管理 <span>data management</span></h2>
       <div id="dataSummary" class="empty"></div>
+      <div class="form" style="margin-top:12px">
+        <label>当前数据库</label><div><code id="dbPathShow">—</code></div>
+        <label>更改保存位置</label>
+        <span class="relrow"><input type="text" id="c-data_dir" placeholder="留空 = 默认 %APPDATA%\DuckType">
+        <button class="btn" id="relocBtn">移动并应用</button></span>
+      </div>
+      <div class="hint">会把现有数据库整体复制到新目录，<b>需要重启 DuckType 生效</b>（设置/日志仍保留在默认目录）。</div>
+      <div id="relocMsg"></div>
       <div class="btnrow" style="margin-top:10px">
         <span class="custom">删除区间 <input type="date" id="del-start"> 至 <input type="date" id="del-end"></span>
         <button class="btn danger" id="delRange">删除该区间</button>
@@ -364,6 +395,7 @@ document.getElementById("tabs").addEventListener("click", e=>{
   else if(v==="sequence") loadSequence();
   else if(v==="fun") loadFun();
   else if(v==="report") loadReport(curPeriod);
+  else if(v==="search") document.getElementById("searchInput").focus();
 });
 
 // ---- range / refresh ----
@@ -387,6 +419,7 @@ function refreshActive(){
   else if(v==="sequence") loadSequence();
   else if(v==="fun") loadFun();
   else if(v==="report") loadReport(curPeriod);
+  else if(v==="search"){ if(document.getElementById("searchInput").value.trim()) doSearch(); }
 }
 
 // ---- board ----
@@ -609,7 +642,44 @@ async function loadDataSummary(){
   const fmt = ts => ts ? new Date(ts*1000).toLocaleDateString() : "—";
   document.getElementById("dataSummary").textContent =
     `已记录 ${s.char_rows} 个汉字、${s.key_rows} 次按键，时间跨度 ${fmt(s.first_ts)} ~ ${fmt(s.last_ts)}。`;
+  const isDefault = !s.data_dir;
+  document.getElementById("dbPathShow").textContent = s.db_path + (isDefault ? "（默认）" : "");
+  const di = document.getElementById("c-data_dir");
+  if(document.activeElement !== di) di.value = s.data_dir || "";
 }
+document.getElementById("relocBtn").addEventListener("click", async ()=>{
+  const dir = document.getElementById("c-data_dir").value.trim();
+  const msg = document.getElementById("relocMsg");
+  const label = dir || "默认目录（%APPDATA%\\DuckType）";
+  if(!confirm(`将把数据库复制到：\n${label}\n\n复制后需重启 DuckType 生效。继续？`)) return;
+  msg.textContent = "正在移动数据…";
+  let r; try{ r = await fetch("/api/data/relocate",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({dir})}).then(x=>x.json()); }catch(e){ r={ok:false,error:"请求失败"}; }
+  if(r.ok){ msg.innerHTML = `✓ 数据已复制到 <code>${escapeHtml(r.db_path)}</code>。请<b>退出并重新启动 DuckType</b> 以使用新位置。`; loadDataSummary(); }
+  else { msg.textContent = "移动失败：" + (r.error || "未知错误"); }
+});
+
+// ---- search ----
+async function doSearch(){
+  const q = document.getElementById("searchInput").value.trim();
+  const box = document.getElementById("searchResult");
+  if(!q){ box.className="empty"; box.textContent="输入关键字后回车或点「搜索」。"; return; }
+  box.className=""; box.textContent="搜索中…";
+  let r; try{ r = await getJSON("/api/search?q=" + encodeURIComponent(q)); }
+  catch(e){ box.className="empty"; box.textContent="搜索失败。"; return; }
+  if(!r.total){ box.className="empty"; box.innerHTML = `当前范围内没有找到「${escapeHtml(q)}」。换个词或把时间范围调大试试。`; return; }
+  const fmt = ts => ts ? new Date(ts*1000).toLocaleString() : "—";
+  const apps = r.apps.map(a=>`<span class="chip">${escapeHtml(a.app)} · ${a.count}</span>`).join("") || "—";
+  const days = r.daily.slice(-40).map(d=>`<span class="chip">${d.date} · ${d.count}</span>`).join("") || "—";
+  box.className="";
+  box.innerHTML =
+    `<div class="bignum">「${escapeHtml(q)}」共出现 <b>${r.total}</b> 次</div>`+
+    `<div class="hint" style="margin:6px 0 14px">首次输入：${fmt(r.first_seen)} ｜ 最近输入：${fmt(r.last_seen)}</div>`+
+    `<h3 style="margin:10px 0 6px">各程序</h3><div class="chips">${apps}</div>`+
+    `<h3 style="margin:14px 0 6px">每日次数</h3><div class="chips">${days}</div>`;
+}
+document.getElementById("searchBtn").addEventListener("click", doSearch);
+document.getElementById("searchInput").addEventListener("keydown", e=>{ if(e.key==="Enter") doSearch(); });
 document.getElementById("cfgSave").addEventListener("click", async ()=>{
   const body = {};
   CFG_BOOL.forEach(k=>body[k]=document.getElementById("c-"+k).checked);
