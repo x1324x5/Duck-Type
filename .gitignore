@@ -28,6 +28,22 @@ src/ducktype/assets/*.ico
 .vscode/
 .idea/
 
+# Asset source packs / previews (runtime artwork lives under
+# assets/duck_positioned_assets_v2/svg and assets/duck_positioned_assets_v2/png)
+assets/*.zip
+assets/duck_positioned_assets_v2/preview_5x5_positioned.png
+assets/duck_positioned_assets_v2/preview_5x5_positioned.svg
+assets/duck_positioned_assets_v2/crop_metadata.json
+
+# Superseded duck art no longer referenced by the dashboard (replaced by
+# assets/duck_positioned_assets_v2/svg/*.svg + the generated favicon).
+# Kept locally, not shipped.
+assets/mail.png
+assets/sleep.png
+assets/hat.png
+assets/hat_slip.png
+assets/smile.png
+
 # Local-only dev notes (machine/tool-specific)
 AGENTS.md
 LOCAL_DEV.md

@@ -42,6 +42,7 @@ class App:
             "chars_captured": (ch.received if ch else 0),
             "dll_path": str(hook_dll_path()),
             "active_app": self._active_app(),
+            "db_recreated": getattr(self.db, "recreated", False),
         }
 
     # ---- capture filtering ----------------------------------------------

@@ -20,8 +20,24 @@ for pkg in ("jieba",):
     hiddenimports += h
 
 datas += [("src/ducktype/dashboard/static", "ducktype/dashboard/static")]
+# Ship repo-root artwork as extra_assets, but skip source packs and preview
+# files so they don't bloat the exe.
+_ASSET_SKIP = {
+    "mail.png", "sleep.png", "hat.png", "hat_slip.png", "smile.png",
+    "duck_sheet_5x5.svg", "duck_sheet_5x5_clean.png",
+    "preview_5x5_positioned.png", "preview_5x5_positioned.svg",
+    "crop_metadata.json",
+}
 if os.path.isdir("assets"):
-    datas += [("assets", "extra_assets")]
+    for _root, _dirs, _files in os.walk("assets"):
+        _dirs[:] = [d for d in _dirs if d != "png_reference"]
+        for _f in _files:
+            if _f.endswith(".zip") or _f in _ASSET_SKIP:
+                continue
+            _src = os.path.join(_root, _f)
+            _rel = os.path.relpath(_root, "assets")
+            _dest = "extra_assets" if _rel == "." else os.path.join("extra_assets", _rel)
+            datas += [(_src, _dest)]
 
 # Bundle generated icons so the tray / app can find them at runtime.
 _ico = os.path.join("src", "ducktype", "assets", "duck.ico")

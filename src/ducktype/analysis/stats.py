@@ -826,6 +826,13 @@ _ACHIEVEMENTS = [
     ("day1k", "文思泉涌", "单日码字过千", "day_max", 1_000),
     ("day5k", "倚马可待", "单日码字过五千", "day_max", 5_000),
     ("day10k", "日破万言", "单日码字过万", "day_max", 10_000),
+    # 看板语录 quote views (distinct / total / egg)
+    ("quote_d50", "初拾珠玑", "读过 50 条不同的语录", "quotes_distinct", 50),
+    ("quote_d200", "渐入佳境", "读过 200 条不同的语录", "quotes_distinct", 200),
+    ("quote_d500", "博览群句", "读过 500 条不同的语录", "quotes_distinct", 500),
+    ("quote_v200", "日积月累", "累计看过 200 次语录", "quotes_total", 200),
+    ("quote_v1000", "手不释卷", "累计看过 1,000 次语录", "quotes_total", 1_000),
+    ("quote_egg", "一片留白", "在滚动语录里遇见一片空白", "quotes_egg", 1),
 ]
 
 
@@ -844,8 +851,13 @@ def gamify(db, daily_goal: int) -> Dict:
     finally:
         con.close()
 
+    from ..storage.db import quote_hash
+    q_distinct, q_total, q_egg = db.quote_stats(quote_hash(EASTER_EGG_QUOTE))
+
     metrics = {"total": total, "distinct": distinct, "streak": best,
-               "day_max": day_max, "active_days": len(daymap)}
+               "day_max": day_max, "active_days": len(daymap),
+               "quotes_distinct": q_distinct, "quotes_total": q_total,
+               "quotes_egg": 1 if q_egg else 0}
     achievements = []
     for aid, name, desc, key, threshold in _ACHIEVEMENTS:
         value = metrics.get(key, 0)
@@ -1014,6 +1026,12 @@ def report(db, period: str, run_gap: float, session_gap: float) -> Dict:
 
 
 # ---- board ticker (rotating facts + user phrases) -------------------------
+# A hidden "blank" line. It is a zero-width space, so str.strip() keeps it (it
+# is not ASCII/Unicode whitespace) and load_phrases() won't drop it, yet the
+# banner renders empty — a quiet little easter egg. Landing on it unlocks an
+# achievement (see gamify + the frontend ticker).
+EASTER_EGG_QUOTE = chr(0x200b)  # U+200B zero-width space
+
 # Seed lines written to phrases.txt on first run. A mix of literary,
 # philosophical, romantic, cute and trivia/tips.
 _DEFAULT_PHRASES = [
@@ -1093,6 +1111,7 @@ _DEFAULT_PHRASES = [
     "小贴士：每张图右上角的 ⬇ 可把图表存成图片。",
     "成语「一目十行」形容读得快——那你打字有多快呢？",
     "汉字数量逾八万，但日常常用的不过三千余个。",
+    EASTER_EGG_QUOTE,
 ]
 
 

@@ -240,6 +240,8 @@
   .ex .ctx{color:var(--muted)}
   .posnote{color:var(--muted);font-size:12px;line-height:1.7;margin-top:10px}
   .posnote b{color:var(--fg)}
+  .posother{font-size:12px;color:var(--muted);margin-left:10px;cursor:pointer;user-select:none;white-space:nowrap}
+  .posother input{vertical-align:-1px;margin-right:3px;cursor:pointer}
   #relocMsg{font-size:12px;color:var(--muted);margin-top:8px}
   .switch input{width:18px;height:18px;accent-color:var(--accent)}
   .saved{color:var(--up);font-size:13px;margin-left:12px}
@@ -345,6 +347,7 @@
             <button class="btn" id="posBack" style="display:none">返回总览</button>
             <span class="rankctl" id="posWordCtl" style="display:none">
               <input type="range" id="posWordN" min="5" max="50" step="1" value="12"><b id="posWordNv">12</b>
+              <label class="posother"><input type="checkbox" id="posOther" checked> 显示「其他」</label>
             </span>
             <button class="dlbtn" data-dl="posChart" data-name="pos" title="保存为图片">⬇</button>
           </span>
@@ -373,7 +376,7 @@
         <div id="heatmap"></div>
       </div>
       <div class="panel wide">
-        <h2>主题关键词 <span>topics (TF-IDF keywords)</span><i class="info"
+        <h2>主题关键词 <span>topics</span><i class="info"
           id="topicInfo">i</i></h2>
         <div class="topics" id="topics"></div>
       </div>
@@ -501,7 +504,7 @@
     </div>
   </section>
 
-  <div class="foot"><img src="/duck-assets/sleep.png" alt=""> <span>数据保存在本机 %APPDATA%\DuckType · 仅本地访问</span></div>
+  <div class="foot"><img id="footDuck" src="/favicon.png" alt="" onerror="this.onerror=null;this.src='/favicon.png'"> <span>数据保存在本机 %APPDATA%\DuckType · 仅本地访问</span></div>
 </main>
 
 <script>
@@ -643,11 +646,11 @@ function escapeHtml(s){return (s||"").replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt
 
 // ---- info tooltips ----
 function setTip(id, html){ const e=document.getElementById(id); if(e) e.innerHTML = '<div class="tip">'+html+'</div>'; }
-setTip("posInfo", "<b>词性标签</b>来自 jieba（ICTCLAS 体系）：<br>n 名词 · v 动词 · a 形容词 · d 副词 · m 数词 · q 量词 · r 代词 · p 介词 · c 连词 · t 时间 · f 方位 · i 成语 · nr 人名 · ns 地名 · nt 机构。<br>点击某个词性可下钻查看该类别里二字及以上词语的次数和比例。<br><b>助词 u 的子类</b>：uj=结构助词「的」，ul=「了」，ug=「过」，uv=「地」，uz=「着」。");
-setTip("topicInfo", "用 <b>TF-IDF</b> 从这段时间的全部上屏汉字里提取最有代表性的关键词，字号越大权重越高。需要安装 jieba 且有足够数据。");
+setTip("posInfo", "<b>词性标签</b>由分词器自动判定：<br>n 名词 · v 动词 · a 形容词 · d 副词 · m 数词 · q 量词 · r 代词 · p 介词 · c 连词 · t 时间词 · f 方位词 · i 成语 · nr 人名 · ns 地名 · nt 机构。<br>点击任一词性，可下钻查看该类下二字及以上词语的次数与占比。<br><b>助词「u」的细分</b>：uj=结构助词「的」，ul=「了」，ug=「过」，uv=「地」，uz=「着」。");
+setTip("topicInfo", "从这段时间你打过的字里，自动挑出最有代表性的关键词，字号越大代表越突出。数据太少时可能不准。");
 setTip("reportInfo", "卡片由本机生成，可右键或点按钮保存为 PNG，适合发朋友圈 / X / GitHub README。统计基于上屏汉字（粘贴的大段文本不计入）。");
-setTip("idiomInfo", "成语 = jieba 标注为成语，或四字全汉字的词。与「长词」分开统计。");
-setTip("rareInfo", "生僻字 = 不在《现代汉语常用字表》3500 常用字和 DuckType 现代常见补充字之列的汉字。补充字覆盖常见语气词、人名姓氏、地名简称和日常外来词，避免「哦」「蔡」「噻」这类字误上榜。");
+setTip("idiomInfo", "成语 = 被判定为成语、或四字且全为汉字的词；与普通长词分开统计。");
+setTip("rareInfo", "这里收集你用过、但平时较少见的汉字——它们不在《现代汉语常用字表》的 3500 个常用字之内。常见的语气词、姓氏、地名和外来字已做豁免，所以列出的多是真正难得一见的字。");
 
 // ---- tabs ----
 document.getElementById("tabs").addEventListener("click", e=>{
@@ -733,7 +736,7 @@ function renderHeat(grid){
 }
 function renderTopics(rows){
   const el = document.getElementById("topics");
-  if(!rows.length){ el.innerHTML = "<div class='empty'>暂无（需要安装 jieba 且有足够数据）</div>"; return; }
+  if(!rows.length){ el.innerHTML = "<div class='empty'>暂无（数据较少时无法提取关键词）</div>"; return; }
   const max = rows[0].weight || 1;
   el.innerHTML = rows.map(r => `<span class="t" title="点击查看「${escapeHtml(r.word)}」详情" data-w="${escapeHtml(r.word)}" style="font-size:${(13+16*(r.weight/max)).toFixed(0)}px">${escapeHtml(r.word)}</span>`).join("");
   el.querySelectorAll(".t").forEach(t => t.addEventListener("click", ()=>gotoSearch(t.dataset.w)));
@@ -790,10 +793,11 @@ async function loadPosWords(row){
   renderPosWords(r);
 }
 function renderPosWords(r){
+  window.__posLastR = r;
   document.getElementById("posBack").style.display = "inline-block";
   document.getElementById("posWordCtl").style.display = "inline";
   const items = (r.items || []).map(x=>({label:`${x.word} · ${x.count}次 · ${x.pct}%`, count:x.count, word:x.word}));
-  if(r.other){
+  if(r.other && document.getElementById("posOther").checked){
     items.push({label:`其他 · ${r.other}次 · ${pct(r.other, r.total)}%`, count:r.other, word:null});
   }
   if(charts.posChart) charts.posChart.destroy();
@@ -819,6 +823,16 @@ document.getElementById("posWordN").addEventListener("input", e=>{
   document.getElementById("posWordNv").textContent = posWordN;
   if(posCurrent){ clearTimeout(window.__posWordTimer); window.__posWordTimer = setTimeout(()=>loadPosWords(posCurrent), 250); }
 });
+// "其他" slice often dwarfs the named words; let the user hide it. Re-render from
+// the cached response (no refetch) and remember the choice.
+(function(){
+  const cb = document.getElementById("posOther");
+  try{ if(localStorage.getItem("dt-pos-other") === "0") cb.checked = false; }catch(e){}
+  cb.addEventListener("change", ()=>{
+    try{ localStorage.setItem("dt-pos-other", cb.checked ? "1" : "0"); }catch(e){}
+    if(posCurrent && window.__posLastR) renderPosWords(window.__posLastR);
+  });
+})();
 
 async function refreshBoard(){
   const [o, trend, daily, chars, words, pos, apps, heat, topics, g] = await Promise.all([
@@ -998,22 +1012,42 @@ async function loadFun(){
 // Pool = code-generated data facts (from /api/ticker) + rotating phrases,
 // shuffled. Auto-advances, and 🔀 lets the user pull another line on demand.
 let tickerPool = [], tickerIdx = 0, tickerAt = 0;
+let tickerPhrases = new Set(), tickerReported = -1;
 function shuffle(a){ for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; }
+// Little duck illustrations sprinkled around the UI; the spot re-rolls on every
+// rotation/refresh so the page feels alive.
+const DUCKS = ["01_idle","02_smile","03_wave","04_walk","05_run_fixed","06_jump",
+  "07_laugh_slim","08_cry_slim","09_surprised","10_think","11_received_envelope_heart",
+  "12_listen_music","13_dance","14_celebrate","15_read_book_slim","16_coding_laptop_slim",
+  "17_hold_heart","18_mailbox","19_wear_hat","20_hat_slip","21_drink_mug",
+  "22_eat_cookie_slim","23_peek","24_rest_belly","25_sleep"];
+function duckURL(name){ return "/duck-assets/duck_positioned_assets_v2/svg/" + name + ".svg"; }
+function randomDuck(pool){ const a = pool || DUCKS; return duckURL(a[Math.floor(Math.random()*a.length)]); }
+function isBlankQuote(msg){ return !(msg||"").replace(/[​\s]+/g,"").length; }
+// Tell the backend a curated quote/phrase was shown (powers quote achievements).
+// Data facts (server-generated, dynamic) are not in tickerPhrases, so they don't count.
+function reportQuoteSeen(msg){
+  if(!tickerPhrases.has(msg)) return;
+  try{ fetch("/api/quote_seen",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({text:msg})}); }catch(e){}
+}
 async function loadTicker(){
   try{
     const t = await fetch("/api/ticker").then(r=>r.json());
+    tickerPhrases = new Set(t.phrases||[]);
     tickerPool = shuffle([...(t.facts||[]), ...(t.phrases||[])].filter(Boolean));
-    tickerIdx = 0; tickerAt = Date.now();
-  }catch(e){ tickerPool = []; }
+    tickerIdx = 0; tickerAt = Date.now(); tickerReported = -1;
+  }catch(e){ tickerPool = []; tickerPhrases = new Set(); }
 }
 function renderTicker(){
   const el = document.getElementById("banner");
   if(!tickerPool.length){ el.className = "banner"; return; }
   el.className = "banner fun show";
   const msg = tickerPool[tickerIdx % tickerPool.length];
-  const duck = (tickerIdx % 3 === 1) ? "/duck-assets/mail.png" : "/favicon.png";
-  el.innerHTML = `<img src="${duck}" alt="">`+
-    `<div class="bn-text">${escapeHtml(msg)}</div>`+
+  const blank = isBlankQuote(msg);   // the hidden "留白" easter-egg line
+  const duck = blank ? duckURL("25_sleep") : randomDuck();
+  el.innerHTML = `<img src="${duck}" alt="" onerror="this.onerror=null;this.src='/favicon.png'">`+
+    `<div class="bn-text">${blank ? "" : escapeHtml(msg)}</div>`+
     `<button class="bn-refresh" id="bnRefresh" title="换一句">`+
     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"`+
     ` stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">`+
@@ -1021,6 +1055,9 @@ function renderTicker(){
     `<path d="M3 21v-5h5"/>`+
     `<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>`+
     `<path d="M21 3v5h-5"/></svg></button>`;
+  // Count this view once per new position (renderTicker can re-run for the same
+  // line, e.g. on resize, without it counting again).
+  if(tickerIdx !== tickerReported){ tickerReported = tickerIdx; reportQuoteSeen(msg); }
 }
 function nextTicker(resetTimer=false){
   tickerIdx++;
@@ -1042,6 +1079,14 @@ document.addEventListener("click", e=>{ if(e.target.closest("#bnRefresh")) nextT
 async function checkHealth(){
   let s; try { s = await fetch("/api/status").then(r=>r.json()); } catch(e){ return; }
   const el = document.getElementById("banner");
+  if(s.db_recreated){
+    clearInterval(factTimer);
+    el.className = "banner warn show";
+    el.innerHTML = "⚠️ <b>检测到数据库文件丢失</b>，已自动新建一个空白数据库。"+
+      "若你移动或删除过 <code>%APPDATA%\\DuckType\\ducktype.db</code>，之前的统计数据可能已无法找回。"+
+      "重启码字鸭后此提示会消失。";
+    return;
+  }
   if(s.paused || !s.hook_dll_found || !s.hook_installed ||
      ((s.chars_captured||0)===0 && (s.code_units||0)===0)){
     clearInterval(factTimer);
@@ -1211,6 +1256,7 @@ document.getElementById("updApply").addEventListener("click", async ()=>{
 });
 
 // ---- boot ----
+try{ const fd=document.getElementById("footDuck"); fd.onerror=()=>{fd.onerror=null;fd.src="/favicon.png";}; fd.src=randomDuck(); }catch(e){}
 loadDashboardPrefs().then(()=>resetTickerTimer());
 refreshBoard();
 checkHealth();

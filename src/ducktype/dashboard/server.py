@@ -185,6 +185,18 @@ def create_app(db, config, status_fn=None, on_quit=None) -> Flask:
         return jsonify(stats.ticker(
             db, config.run_gap_seconds, config.session_gap_seconds, config.daily_goal))
 
+    @app.route("/api/quote_seen", methods=["POST"])
+    def api_quote_seen():
+        """Record that the ticker showed a quote (powers quote achievements)."""
+        data = request.get_json(silent=True) or {}
+        text = data.get("text")
+        if isinstance(text, str) and text:
+            try:
+                db.record_quote_view(text)
+            except Exception:
+                pass
+        return jsonify({"ok": True})
+
     @app.route("/api/report")
     def api_report():
         period = request.args.get("period", "today")
