@@ -48,6 +48,8 @@ class Config:
     dashboard_host: str = "127.0.0.1"
     dashboard_port: int = 8765
     open_dashboard_on_start: bool = False
+    theme_mode: str = "system"  # system / light / dark
+    ticker_refresh_seconds: int = 60
 
     # startup
     autostart: bool = False
@@ -81,6 +83,7 @@ class Config:
         "paused", "exclude_password_fields", "blacklist_apps",
         "run_gap_seconds", "session_gap_seconds", "retention_days",
         "daily_goal", "dashboard_port", "open_dashboard_on_start", "autostart",
+        "theme_mode", "ticker_refresh_seconds",
     )
     # Changing these takes effect only after a restart.
     RESTART_REQUIRED = ("dashboard_port",)
@@ -107,6 +110,12 @@ class Config:
                 value = float(value)
             elif isinstance(old, list):
                 value = [str(x).strip().lower() for x in value if str(x).strip()]
+            elif isinstance(old, str):
+                value = str(value)
+            if key == "theme_mode" and value not in ("system", "light", "dark"):
+                value = "system"
+            if key == "ticker_refresh_seconds":
+                value = max(10, min(3600, int(value)))
             if value != old and key in self.RESTART_REQUIRED:
                 restart = True
             setattr(self, key, value)

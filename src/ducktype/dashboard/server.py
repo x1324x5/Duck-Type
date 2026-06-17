@@ -48,6 +48,11 @@ def create_app(db, config, status_fn=None, on_quit=None) -> Flask:
         app_image(64, active=True).save(buf, format="PNG")
         return Response(buf.getvalue(), mimetype="image/png")
 
+    @app.route("/duck-assets/<path:name>")
+    def duck_assets(name):
+        from ..paths import extra_assets_dir
+        return send_from_directory(extra_assets_dir(), name)
+
     @app.route("/api/status")
     def api_status():
         return jsonify(status_fn() if status_fn else {})

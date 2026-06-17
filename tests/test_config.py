@@ -42,6 +42,17 @@ def test_apply_reports_restart_for_port(tmp_path, monkeypatch):
     assert cfg.apply({"daily_goal": 700}) is False
 
 
+def test_apply_dashboard_preferences(tmp_path, monkeypatch):
+    cm = _fresh_config(tmp_path, monkeypatch)
+    cfg = cm.Config.load()
+    cfg.apply({"theme_mode": "dark", "ticker_refresh_seconds": 5})
+    assert cfg.theme_mode == "dark"
+    assert cfg.ticker_refresh_seconds == 10
+    cfg.apply({"theme_mode": "neon", "ticker_refresh_seconds": 120})
+    assert cfg.theme_mode == "system"
+    assert cfg.ticker_refresh_seconds == 120
+
+
 def test_load_roundtrip(tmp_path, monkeypatch):
     cm = _fresh_config(tmp_path, monkeypatch)
     cfg = cm.Config.load()

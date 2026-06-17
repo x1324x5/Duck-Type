@@ -101,3 +101,10 @@ def icon_path() -> Path:
 def icon_png_path() -> Path:
     """Location of the bundled application icon PNG."""
     return resource_dir() / "assets" / "duck.png"
+
+
+def extra_assets_dir() -> Path:
+    """Additional dashboard artwork shipped from the repository's assets dir."""
+    if getattr(sys, "frozen", False):
+        return resource_dir() / "extra_assets"
+    return Path(__file__).resolve().parents[2] / "assets"

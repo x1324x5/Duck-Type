@@ -693,6 +693,18 @@ def search(db, query: str, since: Optional[float], run_gap: float,
 # ---- fun rankings ---------------------------------------------------------
 from .common_chars import COMMON_CHARS
 
+# A small modern/common supplement on top of the 3,500-character reference. The
+# reference table is intentionally conservative; these characters are common in
+# names, modal particles, transliterations, food/internet writing, or everyday
+# proper nouns and should not make the "生僻字" panel feel noisy.
+_COMMON_SUPPLEMENT = frozenset(
+    "哦噢嗯欸诶哎唉呀呃哇喔呗嘛哟啦咯啰"
+    "蔡噻甄邱邵彭蒋韩萧阎廖薛冯覃翟邹贾袁"
+    "咖啡巧克力披萨薯堡酱橙柠檬莓椰"
+    "粤闽沪渝圳澳台港甬蓉穗杭"
+    "梗梳槽怼囧萌酷飒"
+)
+
 
 def _is_uncommon(ch: str) -> bool:
     """A typed character counts as 生僻/uncommon when it is a Han ideograph that
@@ -700,7 +712,7 @@ def _is_uncommon(ch: str) -> bool:
     never looks at how often the user typed it -- and is far looser than the old
     "only CJK extension blocks" rule (which virtually nobody ever triggers) while
     still excluding every everyday character."""
-    return segment._HAN(ch) and ch not in COMMON_CHARS
+    return segment._HAN(ch) and ch not in COMMON_CHARS and ch not in _COMMON_SUPPLEMENT
 
 
 def fun_rankings(db, since: Optional[float], run_gap: float,
@@ -1096,7 +1108,11 @@ def load_phrases() -> List[str]:
     """
     from ..paths import phrases_path
     p = phrases_path()
-    defaults = _phrase_lines(_DEFAULT_PHRASES)
+    try:
+        from .quote_bank import QUOTES as quote_bank
+    except Exception:
+        quote_bank = ()
+    defaults = _phrase_lines(_DEFAULT_PHRASES) + list(quote_bank)
     try:
         if not p.exists():
             p.write_text("\n".join(_DEFAULT_PHRASES) + "\n", encoding="utf-8")

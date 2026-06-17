@@ -20,6 +20,8 @@ for pkg in ("jieba",):
     hiddenimports += h
 
 datas += [("src/ducktype/dashboard/static", "ducktype/dashboard/static")]
+if os.path.isdir("assets"):
+    datas += [("assets", "extra_assets")]
 
 # Bundle generated icons so the tray / app can find them at runtime.
 _ico = os.path.join("src", "ducktype", "assets", "duck.ico")

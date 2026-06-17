@@ -244,3 +244,11 @@ def test_fun_rankings_hapax_and_rare(db, insert_chars, now):
     assert "孤" in f["hapax"]
     assert "鸭" not in f["hapax"]
     assert any(rc["ch"] == "㐀" for rc in f["rare_chars"])
+
+
+def test_fun_rankings_common_supplement_excludes_modern_common_chars(db, insert_chars, now):
+    insert_chars(db, [(now, ch, None) for ch in "哦蔡噻㐀"])
+    f = stats.fun_rankings(db, None, run_gap=3.0)
+    rare = {rc["ch"] for rc in f["rare_chars"]}
+    assert {"哦", "蔡", "噻"}.isdisjoint(rare)
+    assert "㐀" in rare

@@ -62,7 +62,18 @@ def _rows_for(rep: dict) -> List[Tuple[str, str]]:
         rows.append(("最长连续输入", f"{rep['longest_session_min']:.0f} 分钟"))
     if period == "year" and rep.get("streak_best"):
         rows.append(("最长连续天数", f"{rep['streak_best']} 天"))
-    return rows[:5]
+    return rows[:4]
+
+
+def _fit_text(d: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont,
+              max_width: int) -> str:
+    """Trim a single-line label so right-aligned values never crash into labels."""
+    if d.textlength(text, font=font) <= max_width:
+        return text
+    ell = "…"
+    while text and d.textlength(text + ell, font=font) > max_width:
+        text = text[:-1]
+    return text + ell if text else ell
 
 
 def render_card(rep: dict) -> Image.Image:
@@ -94,18 +105,20 @@ def render_card(rep: dict) -> Image.Image:
                font=_font(34), fill=col, anchor="mm")
 
     # stat rows
-    y = 660
+    y = 640
     for label, value in _rows_for(rep):
         d.text((150, y), label, font=_font(38), fill=_MUTED, anchor="lm")
-        d.text((_W - 150, y), str(value), font=_font(40, True), fill=_FG, anchor="rm")
-        y += 72
+        fnt = _font(38, True)
+        value = _fit_text(d, str(value), fnt, 520)
+        d.text((_W - 150, y), value, font=fnt, fill=_FG, anchor="rm")
+        y += 68
 
     # keywords (month/year)
     kws = rep.get("keywords") or []
-    if kws and rep.get("period") in ("month", "year"):
+    if kws and rep.get("period") in ("month", "year") and y < _H - 170:
         d.text((150, y + 6), "关键词", font=_font(38), fill=_MUTED, anchor="lm")
-        d.text((_W - 150, y + 6), " · ".join(kws[:5]), font=_font(34, True),
-               fill=_ACCENT, anchor="rm")
+        kw = _fit_text(d, " · ".join(kws[:4]), _font(32, True), 520)
+        d.text((_W - 150, y + 6), kw, font=_font(32, True), fill=_ACCENT, anchor="rm")
 
     # footer (a small duck glyph drawn, not an emoji, so any font renders fine)
     foot = "DuckType · 码字鸭"
