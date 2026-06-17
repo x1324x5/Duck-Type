@@ -59,12 +59,18 @@
   nav.tabs button.active{background:var(--panel2);color:var(--fg);border-color:var(--line)}
   .rangebar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
     padding:12px 24px;border-bottom:1px solid var(--line);background:var(--rangebar-bg)}
+  .ranges{display:flex;gap:4px;flex-wrap:wrap}
   .ranges button{background:var(--panel2);color:var(--muted);border:1px solid var(--line);
-    padding:6px 13px;border-radius:8px;cursor:pointer;font-size:13px;margin-right:4px}
+    padding:6px 13px;border-radius:8px;cursor:pointer;font-size:13px}
   .ranges button.active{background:var(--accent);color:var(--ink);border-color:var(--accent);font-weight:600}
-  .custom{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
-  .custom input{background:var(--panel2);color:var(--fg);border:1px solid var(--line);
-    border-radius:7px;padding:5px 8px;font-size:13px}
+  .custom{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);flex-wrap:wrap}
+  .datebox{display:inline-flex;align-items:center;gap:7px;background:var(--panel2);
+    border:1px solid var(--line);border-radius:8px;padding:4px 8px}
+  .datebox span{font-size:11px;color:var(--muted)}
+  .datebox input,.custom input{background:transparent;color:var(--fg);border:0;
+    padding:2px 0;font-size:13px;font-family:inherit;color-scheme:inherit}
+  .datebox input:focus,.custom input:focus{outline:0}
+  .date-sep{color:var(--muted);font-size:12px}
   .iconbtn{background:var(--panel2);color:var(--fg);border:1px solid var(--line);
     border-radius:8px;width:34px;height:32px;cursor:pointer;font-size:15px;line-height:1;
     display:inline-flex;align-items:center;justify-content:center;text-decoration:none;
@@ -128,7 +134,9 @@
   .subhd{color:var(--fg);font-size:13px;font-weight:600;margin:12px 0 4px}
   .subhd span{color:var(--muted);font-weight:400;font-size:11px;margin-left:4px}
   .empty{color:var(--muted);font-size:13px;padding:8px 0}
-  .foot{color:var(--muted);font-size:12px;text-align:center;margin:30px 0 10px}
+  .foot{color:var(--muted);font-size:12px;text-align:center;margin:30px 0 10px;
+    display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap}
+  .foot img{width:28px;height:28px;object-fit:contain}
   /* info tooltip */
   .info{display:inline-flex;width:16px;height:16px;border-radius:50%;border:1px solid var(--muted);
     color:var(--muted);font-size:11px;font-style:normal;align-items:center;justify-content:center;
@@ -146,9 +154,13 @@
     border:1px solid var(--banner-fun-border);color:var(--banner-fun-fg);display:flex;align-items:center;gap:12px}
   .banner.fun img{width:34px;height:34px;border-radius:8px;flex:0 0 auto}
   .banner b{color:var(--banner-b)}
-  .banner.fun .bn-text{flex:1}
+  .banner.fun .bn-text{flex:1;
+    font-family:Georgia,"Songti SC","Noto Serif SC","Source Han Serif SC","Source Han Serif CN",STSong,SimSun,serif;
+    font-size:15.5px;line-height:1.75;letter-spacing:.01em}
   .bn-refresh{background:transparent;border:1px solid var(--banner-fun-border);color:var(--banner-fun-fg);
-    border-radius:8px;width:30px;height:28px;cursor:pointer;font-size:14px;flex:0 0 auto;line-height:1;padding:0}
+    border-radius:8px;width:32px;height:30px;cursor:pointer;flex:0 0 auto;line-height:1;padding:0;
+    display:inline-flex;align-items:center;justify-content:center}
+  .bn-refresh svg{width:17px;height:17px}
   .bn-refresh:hover{border-color:var(--accent);color:var(--accent)}
   .banner code{background:var(--code-bg);padding:1px 6px;border-radius:5px}
   /* goal + streak */
@@ -201,6 +213,11 @@
   .form input[type=number],.form input[type=text],.form textarea{
     background:var(--panel2);color:var(--fg);border:1px solid var(--line);border-radius:8px;
     padding:8px 10px;font-size:13px;width:100%;font-family:inherit}
+  .seg{display:inline-flex;gap:4px;background:var(--panel2);border:1px solid var(--line);
+    border-radius:8px;padding:3px;align-items:center}
+  .seg button{border:0;background:transparent;color:var(--muted);border-radius:6px;
+    padding:6px 10px;font-size:13px;cursor:pointer;font-family:inherit}
+  .seg button.active{background:var(--accent);color:var(--ink);font-weight:600}
   .form textarea{min-height:90px;resize:vertical}
   .form .hint{font-size:11px;color:var(--muted);grid-column:2}
   .switch{display:inline-flex;align-items:center;gap:8px;cursor:pointer}
@@ -246,7 +263,7 @@
     <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
     <span>发布页</span>
   </a>
-  <button class="iconbtn" id="themeBtn" title="切换浅色 / 深色">🌙</button>
+  <button class="iconbtn" id="themeBtn" title="切换主题">🌙</button>
 </header>
 
 <div class="rangebar" id="rangebar">
@@ -257,10 +274,18 @@
     <button data-r="all">全部</button>
   </div>
   <div class="custom">
-    <input type="date" id="d-start"> 至 <input type="date" id="d-end">
+    <label class="datebox"><span>开始</span><input type="date" id="d-start"></label>
+    <span class="date-sep">至</span>
+    <label class="datebox"><span>结束</span><input type="date" id="d-end"></label>
     <button class="btn" id="d-apply">自定义</button>
   </div>
-  <button class="iconbtn" id="refreshBtn" title="刷新">⟳</button>
+  <button class="iconbtn" id="refreshBtn" title="刷新">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+      stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M21 12a9 9 0 1 1-2.64-6.36"/>
+      <path d="M21 3v6h-6"/>
+    </svg>
+  </button>
   <span id="since"></span>
 </div>
 
@@ -426,6 +451,13 @@
         <label>跳过密码输入框</label><span class="switch"><input type="checkbox" id="c-exclude_password_fields"></span>
         <label>开机自启</label><span class="switch"><input type="checkbox" id="c-autostart"></span>
         <label>启动即打开仪表盘</label><span class="switch"><input type="checkbox" id="c-open_dashboard_on_start"></span>
+        <label>界面主题</label>
+        <div class="seg" id="themeMode">
+          <button type="button" data-theme-mode="system">跟随系统</button>
+          <button type="button" data-theme-mode="light">亮色</button>
+          <button type="button" data-theme-mode="dark">暗色</button>
+        </div>
+        <label>语录刷新间隔（秒）</label><input type="number" id="c-ticker_refresh_seconds" min="10" max="3600" step="5">
         <label>数据保留天数</label><input type="number" id="c-retention_days" min="0">
         <div class="hint">0 = 永久保留；大于 0 时会自动删除更早的数据。</div>
         <label>分段间隔（秒）</label><input type="number" id="c-run_gap_seconds" step="0.5" min="0">
@@ -469,7 +501,7 @@
     </div>
   </section>
 
-  <div class="foot">🦆 数据保存在本机 %APPDATA%\DuckType · 仅本地访问</div>
+  <div class="foot"><img src="/duck-assets/sleep.png" alt=""> <span>数据保存在本机 %APPDATA%\DuckType · 仅本地访问</span></div>
 </main>
 
 <script>
@@ -477,6 +509,8 @@ const DOW = ["周日","周一","周二","周三","周四","周五","周六"];
 let range = "7d", custom = {start:null, end:null};
 let charts = {};
 let factTimer = null;
+let themeMode = "system";
+let tickerRefreshSeconds = 60;
 
 Chart.defaults.font.family = '"Segoe UI","Microsoft YaHei",sans-serif';
 Chart.defaults.font.size = 12;
@@ -504,23 +538,63 @@ function donutDataset(data, n){
     hoverBorderWidth: 3,
   };
 }
-function setTheme(t, persist){
+const themeMedia = window.matchMedia ? window.matchMedia("(prefers-color-scheme: light)") : null;
+function effectiveTheme(mode){
+  if(mode === "light") return "light";
+  if(mode === "dark") return "";
+  return (themeMedia && themeMedia.matches) ? "light" : "";
+}
+function syncThemeModeButtons(){
+  document.querySelectorAll("#themeMode button").forEach(b=>{
+    b.classList.toggle("active", b.dataset.themeMode === themeMode);
+  });
+}
+function setThemeMode(mode, persist){
+  themeMode = ["system","light","dark"].includes(mode) ? mode : "system";
+  const t = effectiveTheme(themeMode);
   document.documentElement.dataset.theme = t;        // "" (dark) or "light"
-  document.getElementById("themeBtn").textContent = (t==="light") ? "☀️" : "🌙";
-  if(persist) try{ localStorage.setItem("dt-theme", t); }catch(e){}
+  const icon = themeMode === "system" ? "◐" : (t==="light" ? "☀️" : "🌙");
+  document.getElementById("themeBtn").textContent = icon;
+  document.getElementById("themeBtn").title =
+    themeMode === "system" ? "主题：跟随系统" : (themeMode === "light" ? "主题：亮色" : "主题：暗色");
+  if(persist) try{ localStorage.setItem("dt-theme-mode", themeMode); }catch(e){}
+  syncThemeModeButtons();
   applyChartTheme();
 }
 (function initTheme(){
-  let t = "";
-  try{ t = localStorage.getItem("dt-theme") || ""; }catch(e){}
-  if(!t && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) t = "light";
-  setTheme(t, false);
+  let m = "system";
+  try{ m = localStorage.getItem("dt-theme-mode") || "system"; }catch(e){}
+  setThemeMode(m, false);
 })();
+if(themeMedia) themeMedia.addEventListener("change", ()=>{
+  if(themeMode === "system"){ setThemeMode("system", false); refreshActive(); }
+});
 document.getElementById("themeBtn").addEventListener("click", ()=>{
-  const next = document.documentElement.dataset.theme==="light" ? "" : "light";
-  setTheme(next, true);
+  const order = ["system","light","dark"];
+  const next = order[(order.indexOf(themeMode) + 1) % order.length];
+  setThemeMode(next, true);
+  saveDashboardPrefs({theme_mode: themeMode});
   refreshActive();   // re-render charts/heatmap with the new theme colours
 });
+document.getElementById("themeMode").addEventListener("click", e=>{
+  const mode = e.target.dataset.themeMode;
+  if(!mode) return;
+  setThemeMode(mode, true);
+  refreshActive();
+});
+async function loadDashboardPrefs(){
+  try{
+    const c = await fetch("/api/config").then(r=>r.json());
+    setThemeMode(c.theme_mode || "system", true);
+    tickerRefreshSeconds = Math.max(10, Number(c.ticker_refresh_seconds || 60));
+  }catch(e){}
+}
+async function saveDashboardPrefs(body){
+  try{
+    await fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify(body)});
+  }catch(e){}
+}
 
 function qs(){
   let q = "range=" + range;
@@ -573,7 +647,7 @@ setTip("posInfo", "<b>词性标签</b>来自 jieba（ICTCLAS 体系）：<br>n �
 setTip("topicInfo", "用 <b>TF-IDF</b> 从这段时间的全部上屏汉字里提取最有代表性的关键词，字号越大权重越高。需要安装 jieba 且有足够数据。");
 setTip("reportInfo", "卡片由本机生成，可右键或点按钮保存为 PNG，适合发朋友圈 / X / GitHub README。统计基于上屏汉字（粘贴的大段文本不计入）。");
 setTip("idiomInfo", "成语 = jieba 标注为成语，或四字全汉字的词。与「长词」分开统计。");
-setTip("rareInfo", "生僻字 = 不在《现代汉语常用字表》3500 常用字之列的汉字。按标准字表判定（不看你输入了多少次），只要不是日常常用字就会上榜。");
+setTip("rareInfo", "生僻字 = 不在《现代汉语常用字表》3500 常用字和 DuckType 现代常见补充字之列的汉字。补充字覆盖常见语气词、人名姓氏、地名简称和日常外来词，避免「哦」「蔡」「噻」这类字误上榜。");
 
 // ---- tabs ----
 document.getElementById("tabs").addEventListener("click", e=>{
@@ -937,17 +1011,34 @@ function renderTicker(){
   if(!tickerPool.length){ el.className = "banner"; return; }
   el.className = "banner fun show";
   const msg = tickerPool[tickerIdx % tickerPool.length];
-  el.innerHTML = `<img src="/favicon.png" alt="">`+
+  const duck = (tickerIdx % 3 === 1) ? "/duck-assets/mail.png" : "/favicon.png";
+  el.innerHTML = `<img src="${duck}" alt="">`+
     `<div class="bn-text">${escapeHtml(msg)}</div>`+
-    `<button class="bn-refresh" id="bnRefresh" title="换一句">🔀</button>`;
+    `<button class="bn-refresh" id="bnRefresh" title="换一句">`+
+    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"`+
+    ` stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">`+
+    `<path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>`+
+    `<path d="M3 21v-5h5"/>`+
+    `<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>`+
+    `<path d="M21 3v5h-5"/></svg></button>`;
 }
-function nextTicker(){ tickerIdx++; renderTicker(); }
+function nextTicker(resetTimer=false){
+  tickerIdx++;
+  renderTicker();
+  if(resetTimer) resetTickerTimer();
+}
+function resetTickerTimer(){
+  clearInterval(factTimer);
+  if(tickerPool.length>1){
+    const ms = Math.max(10, Number(tickerRefreshSeconds || 60)) * 1000;
+    factTimer = setInterval(()=>nextTicker(false), ms);
+  }
+}
 function startTicker(){
   renderTicker();
-  clearInterval(factTimer);
-  if(tickerPool.length>1) factTimer = setInterval(nextTicker, 9000);
+  resetTickerTimer();
 }
-document.addEventListener("click", e=>{ if(e.target.closest("#bnRefresh")) nextTicker(); });
+document.addEventListener("click", e=>{ if(e.target.closest("#bnRefresh")) nextTicker(true); });
 async function checkHealth(){
   let s; try { s = await fetch("/api/status").then(r=>r.json()); } catch(e){ return; }
   const el = document.getElementById("banner");
@@ -978,11 +1069,13 @@ async function checkHealth(){
 
 // ---- settings ----
 const CFG_BOOL = ["paused","exclude_password_fields","autostart","open_dashboard_on_start"];
-const CFG_NUM = ["daily_goal","retention_days","run_gap_seconds","session_gap_seconds","dashboard_port"];
+const CFG_NUM = ["daily_goal","retention_days","run_gap_seconds","session_gap_seconds","dashboard_port","ticker_refresh_seconds"];
 async function loadSettings(){
   const c = await fetch("/api/config").then(r=>r.json());
   CFG_BOOL.forEach(k=>document.getElementById("c-"+k).checked = !!c[k]);
   CFG_NUM.forEach(k=>document.getElementById("c-"+k).value = c[k]);
+  setThemeMode(c.theme_mode || "system", true);
+  tickerRefreshSeconds = Math.max(10, Number(c.ticker_refresh_seconds || 60));
   document.getElementById("c-blacklist_apps").value = (c.blacklist_apps||[]).join("\n");
   loadDataSummary();
 }
@@ -1064,8 +1157,11 @@ document.getElementById("cfgSave").addEventListener("click", async ()=>{
   const body = {};
   CFG_BOOL.forEach(k=>body[k]=document.getElementById("c-"+k).checked);
   CFG_NUM.forEach(k=>body[k]=Number(document.getElementById("c-"+k).value));
+  body.theme_mode = themeMode;
   body.blacklist_apps = document.getElementById("c-blacklist_apps").value.split("\n").map(s=>s.trim()).filter(Boolean);
   const res = await fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}).then(r=>r.json());
+  tickerRefreshSeconds = Math.max(10, Number(body.ticker_refresh_seconds || 60));
+  resetTickerTimer();
   const saved = document.getElementById("cfgSaved");
   saved.textContent = res.restart_required ? "已保存（端口改动需重启）✓" : "已保存 ✓";
   saved.style.display = "inline"; setTimeout(()=>saved.style.display="none", 3000);
@@ -1115,6 +1211,7 @@ document.getElementById("updApply").addEventListener("click", async ()=>{
 });
 
 // ---- boot ----
+loadDashboardPrefs().then(()=>resetTickerTimer());
 refreshBoard();
 checkHealth();
 loadReport(curPeriod);
