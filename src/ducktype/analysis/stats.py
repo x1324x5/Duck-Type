@@ -11,48 +11,13 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
+from ..perf import timed
 from . import segment
-
-# Map a range key to the number of days back, or None for "all".
-_RANGE_DAYS = {"today": 0, "7d": 7, "30d": 30, "all": None}
+from .time_ranges import day_start as _day_start
+from .time_ranges import resolve_range, since_for
 
 
 # ---- time-window resolution ----------------------------------------------
-def _day_start(dt: datetime) -> float:
-    return datetime(dt.year, dt.month, dt.day).timestamp()
-
-
-def since_for(range_key: str) -> Optional[float]:
-    """Back-compat helper: lower bound only (used by the CLI)."""
-    return resolve_range(range_key)[0]
-
-
-def resolve_range(
-    range_key: str,
-    start: Optional[str] = None,
-    end: Optional[str] = None,
-) -> Tuple[Optional[float], Optional[float]]:
-    """Resolve a range key (+ optional custom YYYY-MM-DD bounds) to (since, until).
-
-    Recognised keys: today, 7d, 30d, all, custom. For ``custom`` the inclusive
-    ``start``/``end`` dates are interpreted in local time; ``end`` is expanded to
-    the end of that day.
-    """
-    now = datetime.now()
-    if range_key == "custom":
-        since = _day_start(datetime.strptime(start, "%Y-%m-%d")) if start else None
-        until = None
-        if end:
-            until = _day_start(datetime.strptime(end, "%Y-%m-%d") + timedelta(days=1))
-        return since, until
-    if range_key == "all":
-        return None, None
-    if range_key == "today":
-        return _day_start(now), None
-    days = _RANGE_DAYS.get(range_key, 7) or 7
-    return (now - timedelta(days=days)).timestamp(), None
-
-
 def _where(since: Optional[float], until: Optional[float] = None):
     clauses, params = [], []
     if since is not None:
@@ -405,7 +370,8 @@ def top_words(db, since: Optional[float], n: int, run_gap: float,
         if rows:
             return rows
         # ... otherwise fall back to a live pass (e.g. data is one open run).
-    wc, _wp, _pc = segment.segment_range(db, since, run_gap, until)
+    with timed("stats.top_words.segment_range"):
+        wc, _wp, _pc = segment.segment_range(db, since, run_gap, until)
     words = ((w, c) for w, c in wc.items() if len(w) >= 2)
     return sorted(words, key=lambda kv: kv[1], reverse=True)[:n]
 
@@ -480,7 +446,8 @@ def pos_distribution(db, since: Optional[float], run_gap: float,
             con.close()
         pc = {r[0]: r[1] for r in rows}
     if not pc:
-        _wc, _wp, pc = segment.segment_range(db, since, run_gap, until)
+        with timed("stats.pos_distribution.segment_range"):
+            _wc, _wp, pc = segment.segment_range(db, since, run_gap, until)
     # Roll the fine tags up into the coarse buckets.
     coarse: Dict[str, int] = {}
     for pos, cnt in pc.items():
@@ -509,7 +476,8 @@ def pos_word_distribution(db, pos: str, since: Optional[float], run_gap: float,
     if not cid:
         return empty
 
-    by_pos = segment.segment_pos_words_range(db, since, run_gap, until)
+    with timed("stats.pos_word_distribution.segment_pos_words_range"):
+        by_pos = segment.segment_pos_words_range(db, since, run_gap, until)
     agg: Dict[str, int] = {}
     for fine, words in by_pos.items():
         if coarse_pos(fine) != cid:
@@ -544,7 +512,8 @@ def pos_word_distribution(db, pos: str, since: Optional[float], run_gap: float,
 
 def topics(db, since: Optional[float], topk: int = 25,
            until: Optional[float] = None):
-    return segment.topics(db, since, topk, until)
+    with timed("stats.topics"):
+        return segment.topics(db, since, topk, until)
 
 
 # ---- committed-character sequence ----------------------------------------
@@ -725,7 +694,8 @@ def fun_rankings(db, since: Optional[float], run_gap: float,
         key=lambda kv: kv[1], reverse=True,
     )[:30]
 
-    wc, wp, _pc = segment.segment_range(db, since, run_gap, until)
+    with timed("stats.fun_rankings.segment_range"):
+        wc, wp, _pc = segment.segment_range(db, since, run_gap, until)
 
     def _is_idiom(w: str) -> bool:
         # jieba's 成语 tag, or a 4-character all-Han word (the classic shape).
@@ -985,7 +955,8 @@ def _top_multichar_word(db, since, until, run_gap):
     return None
 
 
-def report(db, period: str, run_gap: float, session_gap: float) -> Dict:
+def report_fast(db, period: str, run_gap: float, session_gap: float) -> Dict:
+    """Fast report fields that avoid word segmentation/topic extraction."""
     since, until, ps, pe, label = period_bounds(period)
     chars = total_chars(db, since, until)
     prev_chars = total_chars(db, ps, pe)
@@ -1000,9 +971,7 @@ def report(db, period: str, run_gap: float, session_gap: float) -> Dict:
     top_app_share = round(apps[0][1] / app_total * 100, 1) if apps else 0.0
     top_chars_list = top_chars(db, since, 1, until)
     fav_char = top_chars_list[0][0] if top_chars_list else None
-    fav_word = _top_multichar_word(db, since, until, run_gap)
     longest_min, _start = _longest_session(db, since, until, session_gap)
-    kw = topics(db, since, 8, until)
     _cur, streak_best = _streak(_daily_map(db))
 
     return {
@@ -1018,11 +987,33 @@ def report(db, period: str, run_gap: float, session_gap: float) -> Dict:
         "top_app": top_app,
         "top_app_share": top_app_share,
         "fav_char": fav_char,
-        "fav_word": fav_word,
+        "fav_word": None,
         "longest_session_min": longest_min,
         "streak_best": streak_best,
-        "keywords": [w for w, _wt in kw],
+        "keywords": [],
+        "heavy_ready": False,
     }
+
+
+def report_heavy(db, period: str, run_gap: float) -> Dict:
+    """Deferred report fields backed by segmentation and TF-IDF."""
+    since, until, _ps, _pe, _label = period_bounds(period)
+    with timed(f"stats.report_heavy.{period}"):
+        fav_word = _top_multichar_word(db, since, until, run_gap)
+        kw = topics(db, since, 8, until)
+    return {
+        "period": period,
+        "fav_word": fav_word,
+        "keywords": [w for w, _wt in kw],
+        "heavy_ready": True,
+    }
+
+
+def report(db, period: str, run_gap: float, session_gap: float) -> Dict:
+    """Full report payload, preserving the historical report/card behavior."""
+    data = report_fast(db, period, run_gap, session_gap)
+    data.update(report_heavy(db, period, run_gap))
+    return data
 
 
 # ---- board ticker (rotating facts + user phrases) -------------------------

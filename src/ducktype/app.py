@@ -7,6 +7,7 @@ import threading
 
 from . import autostart, paths
 from .config import Config
+from .core import CaptureContext, RecordingPolicy
 from .dashboard import Api
 from .paths import db_path, hook_dll_path, log_path
 from .storage import Database
@@ -20,6 +21,7 @@ _PURGE_INTERVAL = 6 * 3600
 class App:
     def __init__(self):
         self.config = Config.load()
+        self._recording_policy = RecordingPolicy(self.config)
         # The data root is resolved by paths.root_dir() (set during the
         # first-run bootstrap); the database always lives under it.
         self.db = Database(db_path())
@@ -52,14 +54,12 @@ class App:
         return self._tracker.app if self._tracker else None
 
     def _should_record(self) -> bool:
-        if self.config.paused:
-            return False
-        if self._tracker is not None:
-            if self.config.exclude_password_fields and self._tracker.password:
-                return False
-            if self.config.is_blacklisted(self._tracker.app):
-                return False
-        return True
+        return self._recording_policy.should_record(
+            CaptureContext(
+                app=self._active_app(),
+                password_field=bool(self._tracker and self._tracker.password),
+            )
+        )
 
     def _on_char(self, ch: str) -> None:
         if self._should_record():

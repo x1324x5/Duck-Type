@@ -8,7 +8,7 @@ REM processes (no libgcc / vcruntime dependency needed in the target).
 REM
 REM Output: src\ducktype\native\ducktype_hook.dll
 REM ==========================================================================
-setlocal
+setlocal EnableDelayedExpansion
 set HERE=%~dp0
 set OUTDIR=%HERE%..\src\ducktype\native
 if not exist "%OUTDIR%" mkdir "%OUTDIR%"
@@ -19,6 +19,7 @@ if %ERRORLEVEL%==0 (
     x86_64-w64-mingw32-g++ -O2 -shared -static -static-libgcc -static-libstdc++ ^
         -o "%OUTDIR%\ducktype_hook.dll" ^
         "%HERE%ducktype_hook.cpp" "%HERE%ducktype_hook.def" -lole32 -luuid -luser32
+    if !ERRORLEVEL! neq 0 exit /b !ERRORLEVEL!
     goto :done
 )
 
@@ -28,6 +29,7 @@ if %ERRORLEVEL%==0 (
     g++ -O2 -shared -static -static-libgcc -static-libstdc++ ^
         -o "%OUTDIR%\ducktype_hook.dll" ^
         "%HERE%ducktype_hook.cpp" "%HERE%ducktype_hook.def" -lole32 -luuid -luser32
+    if !ERRORLEVEL! neq 0 exit /b !ERRORLEVEL!
     goto :done
 )
 
@@ -37,6 +39,7 @@ if %ERRORLEVEL%==0 (
     pushd "%OUTDIR%"
     cl /LD /O2 /EHsc /MT "%HERE%ducktype_hook.cpp" /Fe:ducktype_hook.dll ^
         /link /DEF:"%HERE%ducktype_hook.def" ole32.lib uuid.lib user32.lib
+    if !ERRORLEVEL! neq 0 exit /b !ERRORLEVEL!
     del ducktype_hook.obj ducktype_hook.lib ducktype_hook.exp 2>nul
     popd
     goto :done

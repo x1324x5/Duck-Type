@@ -6,7 +6,7 @@
 ![Platform](https://img.shields.io/badge/platform-Windows-blue)
 
 一只安静蹲在后台的小鸭子：统计你通过输入法**上屏**的汉字，记录字频、词频、
-输入序列，并提供一个本地网页仪表盘查看各种统计。**只记录汉字**，拼音/英文/数字不入库。
+输入序列，并提供一个本地桌面仪表盘查看各种统计。**只记录汉字**，拼音/英文/数字不入库。
 
 > Windows only（依赖 Win32 输入法消息钩子）。后台运行，不打断正常使用。
 
@@ -24,9 +24,9 @@
 - **趋势环比**：关键指标与上一等长周期对比，卡片上直接显示升/降幅度。
 - **目标 · 连续打卡 · 成就**：每日目标进度环、连续码字 streak、成就徽章墙。
 - **趣味榜单**：最爱词、成语/长词、生僻字、只打过一次的字。
-- **网页设置页**：在仪表盘里直接改黑名单、目标、阈值、端口、自启等，免手动改 JSON。
+- **设置页**：在仪表盘里直接改黑名单、目标、阈值、自启、窗口启动方式等，免手动改 JSON。
 - **数据管理与隐私**：一键清空、按日期区间删除、保留期限自动清理。
-- **托盘常驻**：暂停/继续、开机自启、打开仪表盘、打开数据文件夹、退出。关闭浏览器页面不会停止后台统计。
+- **托盘常驻**：暂停/继续、开机自启、打开仪表盘、打开数据文件夹、退出。关闭仪表盘窗口会收起到托盘，不会停止后台统计。
 - **隐私保护**：自动跳过 Win32 密码框；可配置程序黑名单（默认含常见密码管理器）。
 
 ## 🧠 工作原理（重点）
@@ -46,9 +46,9 @@
 1. `native/ducktype_hook.cpp` —— 注入式钩子 DLL（C++/COM），把每个上屏字符通过一个系统
    范围的注册消息 `PostMessage` 回主程序（只传一个标量，不做跨进程指针传递）。
 2. Python 主程序 —— 创建隐藏窗口接收字符、用纯 ctypes 的低级键盘钩子统计退格/删除、
-   写入 SQLite、跑分词与统计、起仪表盘、托盘常驻。
+   写入 SQLite、跑分词与统计、通过 pywebview/WebView2 打开本地桌面仪表盘、托盘常驻。
 
-打包版会先把 bundled 钩子 DLL 复制到 `%APPDATA%\DuckType\native\ducktype_hook_<hash>.dll`
+打包版会先把 bundled 钩子 DLL 复制到数据根目录下的 `native\ducktype_hook_<hash>.dll`
 再注入，避免 PyInstaller one-file 的随机 `_MEI...` 临时目录被长驻程序里的 pinned DLL 占住，
 也避免反复重启后在同一目标程序中累积多个钩子副本。
 
@@ -61,6 +61,7 @@
 
 在 GitHub 的 Releases 下载 `DuckType.exe`（由 CI 自动编译 DLL + 生成图标并打包）。双击运行，
 托盘出现🦆小鸭图标即在统计。右键托盘可打开仪表盘 / 数据文件夹 / 开机自启 / 暂停 / 退出。
+打包版首次启动会要求选择一个数据文件夹。
 
 ### 方式 B：从源码运行
 
@@ -71,6 +72,7 @@ python -m ducktype
 ```
 
 没有编译器也能运行——只是在装好 DLL 之前不会记录上屏汉字（退格/速度等仍可用）。
+源码运行默认使用系统数据目录；如需指定数据根目录，可设置 `DUCKTYPE_DATA_DIR`。
 
 ### 方式 C：自己打包 exe
 
@@ -89,17 +91,20 @@ python -m ducktype --clear         :: 清空全部已记录数据
 python -m ducktype --report --range 7d
 ```
 
-仪表盘默认地址：`http://127.0.0.1:8765/`（端口被占用会自动顺延）。
+默认运行方式是托盘 + pywebview 原生窗口，不启动 HTTP 服务，也不占用端口。
+如需用普通浏览器调试前端，可运行 `_preview_server.py`，它会启动开发用 Flask shim。
 
 ## 🗂️ 数据与配置
 
-都在 `%APPDATA%\DuckType\`：
+DuckType 使用一个“数据根目录”保存运行期文件。打包版首次启动会让你选择目录；
+源码/CLI 默认回退到 `%APPDATA%\DuckType\`，也可用 `DUCKTYPE_DATA_DIR` 覆盖。
+固定留在 `%APPDATA%\DuckType\location.json` 的只有数据根目录指针。
 
 - `ducktype.db` —— SQLite 数据库（字符序列、按键事件、词频缓存）。
 - `config.json` —— 配置（也可在仪表盘「设置」页里改）。
 - `ducktype.log` —— 运行日志。
 
-数据全部留在本机，仪表盘只监听 `127.0.0.1`，不上传任何内容。
+数据全部留在本机。打包版仪表盘通过进程内 pywebview bridge 与 Python 后端通信，不上传任何内容。
 
 ## ⚙️ 配置项（config.json）
 
@@ -112,13 +117,13 @@ python -m ducktype --report --range 7d
 | `session_gap_seconds` | 超过该空闲秒数视为新的输入会话（影响效率统计） | 60.0 |
 | `retention_days` | 自动删除早于该天数的数据；0 = 永久保留 | 0 |
 | `daily_goal` | 每日字数目标（用于目标环 / streak） | 500 |
-| `dashboard_host` / `dashboard_port` | 仪表盘地址（改端口需重启） | 127.0.0.1 / 8765 |
-| `open_dashboard_on_start` | 启动即打开仪表盘 | false |
+| `dashboard_host` / `dashboard_port` | 旧浏览器预览服务配置；打包版原生窗口不使用端口 | 127.0.0.1 / 8765 |
+| `open_dashboard_on_start` | 启动即显示原生仪表盘窗口；关闭窗口会收起到托盘 | true |
 | `autostart` | 开机自启（写 HKCU Run） | false |
 
 ## 🎨 图标
 
-图标优先使用 `assets/duck.png`，`tools/make_icon.py` 会据此生成网页/托盘用的
+图标优先使用 `assets/duck.png`，`tools/make_icon.py` 会据此生成仪表盘/托盘用的
 `src/ducktype/assets/duck.png` 和打包用的多尺寸 `duck.ico`。
 想换成自己的鸭子图：替换 `assets/duck.png`，再跑一次 `python tools/make_icon.py` 即可。
 

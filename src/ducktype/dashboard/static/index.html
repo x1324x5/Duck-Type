@@ -796,9 +796,20 @@ function rangeParams(extra){
 function qs(){ return new URLSearchParams(rangeParams()).toString(); }
 async function apiGet(endpoint, params){
   params = params || {};
-  if(isNative()) return await nApi().get(endpoint, params);
-  const u = new URLSearchParams(params).toString();
-  return await fetch("/api/"+endpoint+(u?("?"+u):"")).then(_j);
+  const t0 = performance.now();
+  try{
+    const u = new URLSearchParams(params).toString();
+    const res = isNative()
+      ? await nApi().get(endpoint, params)
+      : await fetch("/api/"+endpoint+(u?("?"+u):"")).then(_j);
+    const ms = performance.now() - t0;
+    const msg = `[DuckType] api ${endpoint} ${ms.toFixed(0)}ms`;
+    (ms > 700 ? console.warn : console.debug)(msg, params);
+    return res;
+  }catch(e){
+    console.warn(`[DuckType] api ${endpoint} failed after ${(performance.now()-t0).toFixed(0)}ms`, e);
+    throw e;
+  }
 }
 async function getJSON(path){
   // Accepts the historical "/api/endpoint?a=b" form and routes it to the bridge.
@@ -962,6 +973,8 @@ function renderCards(o, trend){
     o.tracking_since ? ("自 " + o.tracking_since + " 起记录") : "暂无数据";
 }
 let boardLoaded = false;
+let boardReqSeq = 0;
+let appReqSeq = 0;
 function setBoardLoading(show){
   if(!show) return;
   document.getElementById("cards").innerHTML = Array.from({length:8}, ()=>
@@ -976,6 +989,19 @@ function setBoardLoading(show){
   document.getElementById("dailyChart").style.display = "none";
   document.getElementById("heatmap").innerHTML = '<div class="chart-skel">正在生成热力图…</div>';
   document.getElementById("topics").innerHTML = '<div class="skel-line" style="width:70%"></div><div class="skel-line" style="width:48%;margin-top:10px"></div>';
+}
+function setBoardHeavyLoading(){
+  document.getElementById("topics").innerHTML =
+    '<div class="skel-line" style="width:70%"></div><div class="skel-line" style="width:48%;margin-top:10px"></div>';
+  document.getElementById("posDetail").textContent = "正在分析词性和高频词…";
+  if(range === "today"){
+    document.getElementById("dailyPanelTitle").textContent = "今日主题云";
+    document.getElementById("dailyPanelSub").textContent = "analyzing";
+    document.getElementById("dailyChartTools").style.display = "none";
+    document.getElementById("dailyChart").style.display = "none";
+    document.getElementById("todayCloud").hidden = false;
+    document.getElementById("todayCloud").innerHTML = '<div class="chart-skel">正在提取今日词语和主题…</div>';
+  }
 }
 function renderHeat(grid){
   let max = 1; grid.forEach(row => row.forEach(v => { if(v>max) max=v; }));
@@ -1252,33 +1278,47 @@ document.getElementById("posWordN").addEventListener("input", e=>{
 })();
 
 async function refreshBoard(){
+  const seq = ++boardReqSeq;
   if(!boardLoaded) setBoardLoading(true);
+  else setBoardHeavyLoading();
   document.getElementById("refreshBtn").disabled = true;
   try{
-    const b = await apiGet("board", {...rangeParams(), charN, wordN});
+    const params = {...rangeParams(), charN, wordN};
+    const b = await apiGet("board_fast", params);
+    if(seq !== boardReqSeq) return;
     renderCards(b.overview, b.trend);
     renderGamify(b.gamify);
-    renderDailyPanel(b);
+    if(range !== "today") renderDailyPanel(b);
+    else setBoardHeavyLoading();
     renderChars(b.top_chars);
-    renderWords(b.top_words);
     loadHourly();
     makeRankBar("appChart", b.apps.map(a=>a.app), b.apps.map(a=>a.count), "#ffb454", openAppDetail);
     if(appCurrent) openAppDetail(appCurrent);
-    if(posCurrent) loadPosWords(b.pos.find(p=>p.pos===posCurrent.pos) || posCurrent);
-    else renderPosOverview(b.pos);
     renderHeat(b.heatmap.grid);
-    renderTopics(b.topics);
     boardLoaded = true;
+    apiGet("board_heavy", params).then(h=>{
+      if(seq !== boardReqSeq) return;
+      renderWords(h.top_words);
+      if(posCurrent) loadPosWords(h.pos.find(p=>p.pos===posCurrent.pos) || posCurrent);
+      else renderPosOverview(h.pos);
+      renderTopics(h.topics);
+      if(range === "today") renderDailyPanel({...b, ...h});
+    }).catch(e=>{
+      if(seq !== boardReqSeq) return;
+      document.getElementById("topics").innerHTML = "<div class='empty'>主题分析暂时失败，稍后重试。</div>";
+    });
   } finally {
-    document.getElementById("refreshBtn").disabled = false;
+    if(seq === boardReqSeq) document.getElementById("refreshBtn").disabled = false;
   }
 }
 
 // ---- per-app drill-down: click an app to see its words + characters ----
 let appCurrent = null;
 async function openAppDetail(app){
+  const seq = ++appReqSeq;
   appCurrent = app;
   const r = await getJSON("/api/app_detail?app="+encodeURIComponent(app)+"&n=25");
+  if(seq !== appReqSeq || appCurrent !== app) return;
   document.getElementById("appOverviewWrap").style.display = "none";
   document.getElementById("appDetail").style.display = "block";
   document.getElementById("appBack").style.display = "inline-block";
@@ -1366,18 +1406,14 @@ document.addEventListener("click", e=>{
 
 // ---- report ----
 let curPeriod = "today";
+let reportReqSeq = 0;
 document.getElementById("periodBtns").addEventListener("click", e=>{
   if(!e.target.dataset.p) return;
   curPeriod = e.target.dataset.p;
   document.querySelectorAll("#periodBtns button").forEach(b=>b.classList.toggle("active", b===e.target));
   loadReport(curPeriod);
 });
-async function loadReport(period){
-  DT.card_png(period).then(src=>{ document.getElementById("cardImg").src = src; });
-  const cardDl = document.getElementById("cardDl");
-  cardDl.removeAttribute("href");
-  cardDl.onclick = (e)=>{ e.preventDefault(); DT.save_card(period); };
-  const r = await apiGet("report", {period});
+function renderReportRows(r, loadingHeavy=false){
   const rows = [];
   rows.push(["这一时段", r.label]);
   rows.push(["上屏汉字", r.chars.toLocaleString() + " 字"]);
@@ -1390,8 +1426,37 @@ async function loadReport(period){
   if(r.longest_session_min) rows.push(["最长连续输入", r.longest_session_min + " 分钟"]);
   if(r.streak_best) rows.push(["最长连续天数", r.streak_best + " 天"]);
   if(r.keywords && r.keywords.length) rows.push(["关键词", r.keywords.slice(0,6).join(" · ")]);
-  document.getElementById("reportRows").innerHTML = rows.map(
+  const body = rows.map(
     ([k,v])=>`<div class="rrow"><span>${k}</span><b>${escapeHtml(String(v))}</b></div>`).join("");
+  document.getElementById("reportRows").innerHTML = body +
+    (loadingHeavy ? '<div class="rrow"><span>词语 / 关键词</span><b><span class="skel-line" style="display:inline-block;width:120px"></span></b></div>' : "");
+}
+async function loadReport(period){
+  const seq = ++reportReqSeq;
+  document.getElementById("reportRows").innerHTML =
+    '<div class="skel-line" style="width:76%;height:18px"></div><div class="skel-line" style="width:62%;height:18px;margin-top:16px"></div><div class="skel-line" style="width:70%;height:18px;margin-top:16px"></div>';
+  document.getElementById("cardImg").style.opacity = ".45";
+  const cardDl = document.getElementById("cardDl");
+  cardDl.removeAttribute("href");
+  cardDl.onclick = (e)=>{ e.preventDefault(); DT.save_card(period); };
+  const fast = await apiGet("report_fast", {period});
+  if(seq !== reportReqSeq) return;
+  renderReportRows(fast, true);
+  apiGet("report_heavy", {period}).then(h=>{
+    if(seq !== reportReqSeq) return;
+    renderReportRows({...fast, ...h}, false);
+  }).catch(e=>{
+    if(seq !== reportReqSeq) return;
+    renderReportRows(fast, false);
+  });
+  DT.card_png(period).then(src=>{
+    if(seq !== reportReqSeq) return;
+    document.getElementById("cardImg").src = src;
+    document.getElementById("cardImg").style.opacity = "1";
+  }).catch(e=>{
+    if(seq !== reportReqSeq) return;
+    document.getElementById("cardImg").style.opacity = "1";
+  });
 }
 
 // ---- sequence ----

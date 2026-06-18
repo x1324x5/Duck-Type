@@ -1,7 +1,7 @@
-"""System tray icon (pystray). Runs on the main thread and blocks until quit.
+"""System tray icon (pystray). Runs detached while pywebview owns the GUI loop.
 
-Closing the dashboard browser tab does NOT stop DuckType -- the app keeps
-running in the background behind this tray icon until you choose 退出 (Quit).
+Closing the dashboard window does NOT stop DuckType -- the app keeps running in
+the background behind this tray icon until you choose 退出 (Quit).
 """
 from __future__ import annotations
 

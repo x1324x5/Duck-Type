@@ -44,6 +44,9 @@ CREATE TABLE IF NOT EXISTS char_events (
 );
 CREATE INDEX IF NOT EXISTS idx_char_ts ON char_events(ts);
 CREATE INDEX IF NOT EXISTS idx_char_ch ON char_events(ch);
+CREATE INDEX IF NOT EXISTS idx_char_ts_ch ON char_events(ts, ch);
+CREATE INDEX IF NOT EXISTS idx_char_ts_app ON char_events(ts, app);
+CREATE INDEX IF NOT EXISTS idx_char_app_ts ON char_events(app, ts);
 
 CREATE TABLE IF NOT EXISTS key_events (
     id   INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -52,6 +55,7 @@ CREATE TABLE IF NOT EXISTS key_events (
     app  TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_key_ts ON key_events(ts);
+CREATE INDEX IF NOT EXISTS idx_key_ts_kind ON key_events(ts, kind);
 
 CREATE TABLE IF NOT EXISTS word_freq (
     word  TEXT PRIMARY KEY,

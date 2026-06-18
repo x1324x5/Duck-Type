@@ -60,6 +60,14 @@ class Config:
 
     _lock = threading.Lock()
 
+    def __post_init__(self) -> None:
+        self.blacklist_apps = _normalise_blacklist(self.blacklist_apps)
+        if self.theme_mode not in ("system", "light", "dark"):
+            self.theme_mode = "system"
+        self.ticker_refresh_seconds = _bounded_int(
+            self.ticker_refresh_seconds, default=60, lower=10, upper=3600
+        )
+
     # ---- persistence -----------------------------------------------------
     @classmethod
     def load(cls) -> "Config":
@@ -68,6 +76,8 @@ class Config:
             try:
                 raw = json.loads(p.read_text(encoding="utf-8"))
             except (ValueError, OSError):
+                raw = {}
+            if not isinstance(raw, dict):
                 raw = {}
             known = {f for f in cls.__dataclass_fields__}  # type: ignore[attr-defined]
             cfg = cls(**{k: v for k, v in raw.items() if k in known})
@@ -78,9 +88,11 @@ class Config:
 
     def save(self) -> None:
         data = {k: v for k, v in asdict(self).items() if not k.startswith("_")}
-        config_path().write_text(
-            json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+        p = config_path()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        tmp = p.with_name(p.name + ".tmp")
+        tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp.replace(p)
 
     # Fields the dashboard settings page is allowed to write.
     EDITABLE = (
@@ -107,13 +119,19 @@ class Config:
                 continue
             old = getattr(self, key)
             if isinstance(old, bool):
-                value = bool(value)
+                value = _coerce_bool(value)
             elif isinstance(old, int):
-                value = int(value)
+                try:
+                    value = int(value)
+                except (TypeError, ValueError):
+                    value = old
             elif isinstance(old, float):
-                value = float(value)
+                try:
+                    value = float(value)
+                except (TypeError, ValueError):
+                    value = old
             elif isinstance(old, list):
-                value = [str(x).strip().lower() for x in value if str(x).strip()]
+                value = _normalise_blacklist(value)
             elif isinstance(old, str):
                 value = str(value)
             if key == "theme_mode" and value not in ("system", "light", "dark"):
@@ -125,3 +143,28 @@ class Config:
             setattr(self, key, value)
         self.save()
         return restart
+
+
+def _coerce_bool(value) -> bool:
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+    return bool(value)
+
+
+def _normalise_blacklist(value) -> List[str]:
+    if isinstance(value, str):
+        raw = value.replace("\n", ",").split(",")
+    else:
+        try:
+            raw = list(value)
+        except TypeError:
+            raw = []
+    return [str(x).strip().lower() for x in raw if str(x).strip()]
+
+
+def _bounded_int(value, default: int, lower: int, upper: int) -> int:
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        n = default
+    return max(lower, min(upper, n))

@@ -20,6 +20,14 @@ def test_apply_coerces_types(tmp_path, monkeypatch):
     assert cfg.run_gap_seconds == 2.5
 
 
+def test_apply_bool_strings_and_invalid_numbers_keep_old_value(tmp_path, monkeypatch):
+    cm = _fresh_config(tmp_path, monkeypatch)
+    cfg = cm.Config.load()
+    cfg.apply({"paused": "false", "daily_goal": "nope"})
+    assert cfg.paused is False
+    assert cfg.daily_goal == 500
+
+
 def test_apply_ignores_unknown_and_readonly(tmp_path, monkeypatch):
     cm = _fresh_config(tmp_path, monkeypatch)
     cfg = cm.Config.load()
@@ -33,6 +41,13 @@ def test_apply_blacklist_normalised(tmp_path, monkeypatch):
     cfg = cm.Config.load()
     cfg.apply({"blacklist_apps": [" KeePass.exe ", "", "Secret.EXE"]})
     assert cfg.blacklist_apps == ["keepass.exe", "secret.exe"]
+
+
+def test_apply_blacklist_accepts_comma_string(tmp_path, monkeypatch):
+    cm = _fresh_config(tmp_path, monkeypatch)
+    cfg = cm.Config.load()
+    cfg.apply({"blacklist_apps": " KeePass.exe, Secret.EXE\nVault.exe "})
+    assert cfg.blacklist_apps == ["keepass.exe", "secret.exe", "vault.exe"]
 
 
 def test_apply_reports_restart_for_port(tmp_path, monkeypatch):
@@ -59,3 +74,25 @@ def test_load_roundtrip(tmp_path, monkeypatch):
     cfg.apply({"daily_goal": 333})
     cfg2 = cm.Config.load()
     assert cfg2.daily_goal == 333
+
+
+def test_load_ignores_non_object_json(tmp_path, monkeypatch):
+    cm = _fresh_config(tmp_path, monkeypatch)
+    cm.config_path().parent.mkdir(parents=True, exist_ok=True)
+    cm.config_path().write_text("[]", encoding="utf-8")
+    cfg = cm.Config.load()
+    assert cfg.daily_goal == 500
+
+
+def test_load_normalises_malformed_dashboard_preferences(tmp_path, monkeypatch):
+    cm = _fresh_config(tmp_path, monkeypatch)
+    cm.config_path().parent.mkdir(parents=True, exist_ok=True)
+    cm.config_path().write_text(
+        '{"blacklist_apps": "A.exe,B.exe", "theme_mode": "neon", '
+        '"ticker_refresh_seconds": "bad"}',
+        encoding="utf-8",
+    )
+    cfg = cm.Config.load()
+    assert cfg.blacklist_apps == ["a.exe", "b.exe"]
+    assert cfg.theme_mode == "system"
+    assert cfg.ticker_refresh_seconds == 60

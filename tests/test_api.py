@@ -5,7 +5,7 @@ import pytest
 
 from ducktype.analysis import segment
 from ducktype.config import Config
-from ducktype.dashboard.api import Api
+from ducktype.dashboard.api import READ_ENDPOINTS, Api
 
 
 def _api(db):
@@ -22,6 +22,16 @@ def test_board_bundles_all_sections(db, insert_chars, now):
         assert key in board, f"board missing {key}"
     assert board["overview"]["total_chars"] >= 1
     assert isinstance(board["top_chars"], list)
+
+
+def test_board_fast_and_heavy_split_sections(db, insert_chars, now):
+    insert_chars(db, [(now - i, ch, "Code.exe") for i, ch in enumerate("今天天气很好我们去看电影吧")])
+    api = _api(db)
+    fast = api.get("board_fast", {"range": "all", "charN": 5, "wordN": 5})
+    heavy = api.get("board_heavy", {"range": "all", "charN": 5, "wordN": 5})
+    assert {"overview", "trend", "daily", "top_chars", "apps", "heatmap", "gamify"} <= set(fast)
+    assert "top_words" not in fast and "topics" not in fast and "pos" not in fast
+    assert {"top_words", "topics", "pos"} <= set(heavy)
 
 
 def test_board_today_includes_word_cloud_source(db, insert_chars, now):
@@ -66,6 +76,17 @@ def test_config_get_set_roundtrip(db):
     assert api.config_get()["daily_goal"] == 1234
 
 
+def test_report_fast_defers_word_analytics(db, insert_chars, now):
+    insert_chars(db, [(now - i, ch, "Code.exe") for i, ch in enumerate("南京老师朋友作业时间课堂")])
+    api = _api(db)
+    fast = api.get("report_fast", {"period": "today"})
+    heavy = api.get("report_heavy", {"period": "today"})
+    assert fast["heavy_ready"] is False
+    assert fast["keywords"] == []
+    assert heavy["heavy_ready"] is True
+    assert "fav_word" in heavy and "keywords" in heavy
+
+
 def test_data_summary_reports_root(db, insert_chars, now):
     insert_chars(db, [(now, "字", "a")])
     s = _api(db).data_summary()
@@ -81,3 +102,10 @@ def test_bridge_keeps_heavy_runtime_objects_private(db):
     api = _api(db)
     public_attrs = {k for k in vars(api) if not k.startswith("_")}
     assert not (public_attrs & {"window", "db", "config", "relocator"})
+
+
+def test_read_endpoint_contract_matches_handlers(db):
+    api = _api(db)
+    assert "board" in READ_ENDPOINTS
+    assert all(hasattr(api, "_r_" + endpoint) for endpoint in READ_ENDPOINTS)
+    assert api.get("missing") == {"error": "unknown endpoint missing"}

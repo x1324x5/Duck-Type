@@ -16,15 +16,15 @@ import base64
 import io
 import json
 import logging
-import threading
 import time
 from dataclasses import asdict
 from datetime import datetime
-from pathlib import Path
 from typing import Optional
 
 from .. import autostart, updater
 from ..analysis import segment, stats
+from ..perf import timed
+from .relocate import Relocator
 
 log = logging.getLogger("ducktype")
 
@@ -32,78 +32,42 @@ log = logging.getLogger("ducktype")
 # Excludes time-window queries and live status/progress.
 _NO_CACHE = {"timeseries"}
 
-
-class Relocator:
-    """Moves the whole data root to a new folder on a background thread,
-    reporting byte progress. copy -> verify -> mark old root for cleanup ->
-    switch the pointer; the actual deletion of the old root happens on the next
-    startup (so it survives a crash mid-move)."""
-
-    def __init__(self, db):
-        self.db = db
-        self._lock = threading.Lock()
-        self._state = {"phase": "idle", "done": 0, "total": 0,
-                       "error": "", "db_path": ""}
-        self._thread: Optional[threading.Thread] = None
-
-    def progress(self) -> dict:
-        with self._lock:
-            return dict(self._state)
-
-    def _set(self, **kw):
-        with self._lock:
-            self._state.update(kw)
-
-    def start(self, target: Optional[str]) -> dict:
-        from ..paths import root_dir
-        with self._lock:
-            if self._thread is not None and self._thread.is_alive():
-                return {"ok": False, "error": "正在移动中，请稍候。"}
-        target = (target or "").strip()
-        if not target:
-            return {"ok": False, "error": "请选择目标文件夹。"}
-        src = root_dir()
-        dst = Path(target).expanduser()
-        try:
-            if dst.resolve() == src.resolve():
-                return {"ok": False, "error": "目标位置与当前相同。"}
-        except OSError:
-            pass
-        self._set(phase="copying", done=0, total=0, error="",
-                  db_path=str(dst / "ducktype.db"))
-        self._thread = threading.Thread(
-            target=self._run, args=(src, dst), name="relocate", daemon=True)
-        self._thread.start()
-        return {"ok": True, "started": True, "restart_required": True,
-                "db_path": str(dst / "ducktype.db")}
-
-    def _run(self, src: Path, dst: Path):
-        from .. import firstrun, paths
-        try:
-            dst.mkdir(parents=True, exist_ok=True)
-            plan = firstrun.plan_files(src, dst, include_db=False, include_log=False)
-            other_total = sum(s.stat().st_size for s, _ in plan if s.exists())
-            db_size = (src / "ducktype.db").stat().st_size if (src / "ducktype.db").exists() else 0
-            total = other_total + db_size
-            self._set(total=total, done=0)
-
-            self.db.backup_to(dst / "ducktype.db")
-            self._set(done=db_size)
-
-            firstrun.copy_files(
-                plan, on_progress=lambda d, t: self._set(done=db_size + d))
-
-            ok = firstrun.verify_files(plan) and (dst / "ducktype.db").stat().st_size > 0
-            if not ok:
-                self._set(phase="error", error="校验失败，已保留原数据，未切换位置。")
-                return
-            (dst / firstrun.CLEANUP_MARKER).write_text(str(src), encoding="utf-8")
-            paths.write_pointer(str(dst))
-            self._set(phase="done", done=total)
-            log.info("Relocated data root %s -> %s (restart to apply)", src, dst)
-        except Exception as exc:
-            log.exception("Relocate failed")
-            self._set(phase="error", error=str(exc))
+READ_ENDPOINTS = (
+    "overview",
+    "top_chars",
+    "top_words",
+    "pos",
+    "pos_words",
+    "topics",
+    "heatmap",
+    "daily",
+    "timeseries",
+    "apps",
+    "app_detail",
+    "edits",
+    "trend",
+    "search",
+    "fun",
+    "gamify",
+    "ticker",
+    "report",
+    "sequence",
+    "board",
+    "board_fast",
+    "board_heavy",
+    "report_fast",
+    "report_heavy",
+)
+_READ_ENDPOINTS = frozenset(READ_ENDPOINTS)
+_STALE_CACHE_TTL = {
+    "board_heavy": 15.0,
+    "report": 30.0,
+    "report_fast": 10.0,
+    "report_heavy": 60.0,
+    "topics": 15.0,
+    "top_words": 15.0,
+    "pos": 15.0,
+}
 
 
 class Api:
@@ -131,23 +95,46 @@ class Api:
         return stats.resolve_range(p.get("range", "7d"), p.get("start"), p.get("end"))
 
     def _cached(self, endpoint: str, params: dict, fn):
+        now = time.monotonic()
         if endpoint in _NO_CACHE:
             return fn()
         rev = self._db.revision
         if rev != self._cache_rev:
-            self._cache.clear()
+            ttl_keys = set(_STALE_CACHE_TTL)
+            self._cache = {
+                k: v for k, v in self._cache.items()
+                if k.split("|", 1)[0] in ttl_keys and now - v[1] <= _STALE_CACHE_TTL[k.split("|", 1)[0]]
+            }
             self._cache_rev = rev
         key = endpoint + "|" + json.dumps(params, sort_keys=True, ensure_ascii=False)
         if key in self._cache:
-            return self._cache[key]
-        val = fn()
-        self._cache[key] = val
+            cached_rev, cached_at, cached_val = self._cache[key]
+            ttl = _STALE_CACHE_TTL.get(endpoint, 0.0)
+            if cached_rev == rev or (ttl and now - cached_at <= ttl):
+                return cached_val
+        with timed(f"api.{endpoint}"):
+            val = fn()
+        self._cache[key] = (rev, now, val)
+        return val
+
+    def _cached_custom(self, endpoint: str, params: dict, fn, ttl: float):
+        now = time.monotonic()
+        key = endpoint + "|" + json.dumps(params, sort_keys=True, ensure_ascii=False)
+        if key in self._cache:
+            _rev, cached_at, cached_val = self._cache[key]
+            if now - cached_at <= ttl:
+                return cached_val
+        with timed(f"api.{endpoint}"):
+            val = fn()
+        self._cache[key] = (self._db.revision, now, val)
         return val
 
     # ---- read dispatch ---------------------------------------------------
     def get(self, endpoint: str, params: Optional[dict] = None):
         """Single entry point for all read endpoints used by the frontend."""
         p = params or {}
+        if endpoint not in _READ_ENDPOINTS:
+            return {"error": f"unknown endpoint {endpoint}"}
         fn = getattr(self, "_r_" + endpoint, None)
         if fn is None:
             return {"error": f"unknown endpoint {endpoint}"}
@@ -245,8 +232,16 @@ class Api:
                             self._config.session_gap_seconds, self._config.daily_goal)
 
     def _r_report(self, p):
-        return stats.report(self._db, p.get("period", "today"),
-                            self._config.run_gap_seconds, self._config.session_gap_seconds)
+        return self._report_data(p.get("period", "today"))
+
+    def _r_report_fast(self, p):
+        return stats.report_fast(self._db, p.get("period", "today"),
+                                 self._config.run_gap_seconds,
+                                 self._config.session_gap_seconds)
+
+    def _r_report_heavy(self, p):
+        return stats.report_heavy(self._db, p.get("period", "today"),
+                                  self._config.run_gap_seconds)
 
     def _r_sequence(self, p):
         since, until = self._bounds(p)
@@ -255,11 +250,33 @@ class Api:
 
     def _r_board(self, p):
         """Batched payload for the main board: one call instead of ~10."""
+        out = self._r_board_fast(p)
+        out.update(self._r_board_heavy(p))
+        return out
+
+    def _r_board_fast(self, p):
+        """First-paint board payload; avoids live segmentation/TF-IDF work."""
         since, until = self._bounds(p)
         rg, sg = self._config.run_gap_seconds, self._config.session_gap_seconds
-        char_n, word_n = int(p.get("charN", 30)), int(p.get("wordN", 30))
+        char_n = int(p.get("charN", 30))
+        return {
+            "overview": stats.overview(self._db, since, rg, sg, until),
+            "trend": stats.trend(self._db, since, until, rg, sg) or {},
+            "daily": [{"date": d, "count": c} for d, c in stats.daily(self._db, since, until)],
+            "top_chars": [{"ch": c, "count": k} for c, k in stats.top_chars(self._db, since, char_n, until)],
+            "apps": [{"app": a, "count": c} for a, c in stats.per_app(self._db, since, 12, until)],
+            "heatmap": {"grid": stats.heatmap(self._db, since, until)},
+            "gamify": stats.gamify(self._db, self._config.daily_goal),
+        }
+
+    def _r_board_heavy(self, p):
+        """Deferred board analytics: segmentation, POS and topic extraction."""
+        since, until = self._bounds(p)
+        rg = self._config.run_gap_seconds
+        word_n = int(p.get("wordN", 30))
         if since is not None or until is not None:
-            wc, _wp, pc = segment.segment_range(self._db, since, rg, until)
+            with timed("api.board_heavy.segment_range"):
+                wc, _wp, pc = segment.segment_range(self._db, since, rg, until)
             all_word_rows = sorted(
                 ((w, c) for w, c in wc.items() if len(w) >= 2),
                 key=lambda kv: kv[1], reverse=True
@@ -278,19 +295,20 @@ class Api:
             pos_rows = stats.pos_distribution(self._db, since, rg, until)
             topic_rows = stats.topics(self._db, since, 30, until)
         return {
-            "overview": stats.overview(self._db, since, rg, sg, until),
-            "trend": stats.trend(self._db, since, until, rg, sg) or {},
-            "daily": [{"date": d, "count": c} for d, c in stats.daily(self._db, since, until)],
-            "top_chars": [{"ch": c, "count": k} for c, k in stats.top_chars(self._db, since, char_n, until)],
             "top_words": [{"word": w, "count": c} for w, c in word_rows],
             "pos": [{"pos": ps, "label": lbl, "count": c}
                     for ps, lbl, c in pos_rows],
-            "apps": [{"app": a, "count": c} for a, c in stats.per_app(self._db, since, 12, until)],
-            "heatmap": {"grid": stats.heatmap(self._db, since, until)},
             "topics": [{"word": w, "weight": round(float(wt), 4)}
                        for w, wt in topic_rows],
-            "gamify": stats.gamify(self._db, self._config.daily_goal),
         }
+
+    def _report_data(self, period: str):
+        return self._cached_custom(
+            "report_data", {"period": period},
+            lambda: stats.report(self._db, period, self._config.run_gap_seconds,
+                                 self._config.session_gap_seconds),
+            ttl=30.0,
+        )
 
     # ---- live status / updates (never cached) ---------------------------
     def status(self):
@@ -367,8 +385,7 @@ class Api:
     # ---- binary: card image + native-save exports -----------------------
     def card_png(self, period="today"):
         from .. import cards
-        rep = stats.report(self._db, period, self._config.run_gap_seconds,
-                           self._config.session_gap_seconds)
+        rep = self._report_data(period)
         buf = io.BytesIO()
         cards.render_card(rep).save(buf, format="PNG")
         b64 = base64.b64encode(buf.getvalue()).decode("ascii")
@@ -376,8 +393,7 @@ class Api:
 
     def save_card(self, period="today"):
         from .. import cards
-        rep = stats.report(self._db, period, self._config.run_gap_seconds,
-                           self._config.session_gap_seconds)
+        rep = self._report_data(period)
         buf = io.BytesIO()
         cards.render_card(rep).save(buf, format="PNG")
         return self._save_dialog(f"ducktype_{period}.png", buf.getvalue(), binary=True)

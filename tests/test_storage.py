@@ -42,6 +42,23 @@ def test_summary_counts(db, insert_chars, now):
     assert s["first_ts"] == now - 10 and s["last_ts"] == now
 
 
+def test_schema_has_dashboard_query_indexes(db):
+    con = db.connect()
+    try:
+        names = {
+            row[1]
+            for row in con.execute("PRAGMA index_list('char_events')").fetchall()
+        }
+        key_names = {
+            row[1]
+            for row in con.execute("PRAGMA index_list('key_events')").fetchall()
+        }
+    finally:
+        con.close()
+    assert {"idx_char_ts_ch", "idx_char_ts_app", "idx_char_app_ts"} <= names
+    assert "idx_key_ts_kind" in key_names
+
+
 def test_writer_thread_roundtrip(tmp_path):
     """The async writer path actually persists records."""
     from ducktype.storage import Database

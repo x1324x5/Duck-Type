@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ducktype"
-version = "0.2.1"
+version = "0.2.2"
 description = "码字鸭 · 后台统计输入法上屏汉字的字频、词频与序列 (Windows)"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -16,10 +16,11 @@ dependencies = [
     "pystray>=0.19",
     "pillow>=10.0",
     "jieba>=0.42.1",
+    "pywebview>=5.0",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=7.0"]
+dev = ["pytest>=7.0", "pyinstaller>=6.0"]
 
 [project.scripts]
 ducktype = "ducktype.__main__:main"
