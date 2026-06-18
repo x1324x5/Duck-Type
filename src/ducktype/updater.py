@@ -1,8 +1,17 @@
 """Check GitHub Releases for a newer DuckType and (for packaged builds) apply it.
 
 The packaged .exe cannot overwrite itself while running, so applying an update
-downloads the new exe, writes a tiny .bat that waits for this process to exit,
-swaps the file and relaunches, then asks the app to quit.
+streams the new exe to disk (reporting download progress), then writes a tiny
+.bat that waits for this process to exit, swaps the file in place -- keeping the
+name DuckType.exe -- and relaunches, then asks the app to quit.
+
+Critical detail (the cause of the historical "Failed to load Python DLL
+...\\Temp\\_MEI...\\python3xx.dll" crash on relaunch): a PyInstaller one-file
+process exports ``_MEIPASS2`` / ``_PYI_*`` environment variables pointing at its
+private temp-extraction directory. If the relaunch inherits them, the new exe
+tries to reuse that directory -- which the old process deletes on exit -- instead
+of extracting fresh, and fails to find its Python DLL. We therefore launch the
+swap script with those variables stripped from the environment.
 """
 from __future__ import annotations
 
@@ -11,17 +20,35 @@ import logging
 import os
 import subprocess
 import sys
+import threading
 import urllib.request
-from typing import Optional
+from typing import Callable, Optional
 
 from . import __version__
-from .paths import data_dir
+from .paths import root_dir
 
 log = logging.getLogger("ducktype")
 
 REPO = "x1324x5/Duck-Type"
 _API_LATEST = f"https://api.github.com/repos/{REPO}/releases/latest"
 _RELEASES = f"https://github.com/{REPO}/releases"
+
+# Shared progress state for the dashboard, guarded by _lock.
+_lock = threading.Lock()
+_state: dict = {"phase": "idle", "downloaded": 0, "total": 0, "error": "",
+                "latest": "", "path": "", "target": ""}
+_worker: Optional[threading.Thread] = None
+
+
+def _set_state(**kw) -> None:
+    with _lock:
+        _state.update(kw)
+
+
+def progress() -> dict:
+    """Snapshot of the current download/staging progress for the dashboard."""
+    with _lock:
+        return dict(_state)
 
 
 def _version_tuple(v: str):
@@ -70,48 +97,22 @@ def check() -> dict:
     }
 
 
-def apply() -> dict:
-    """Download the new exe and stage a swap-on-exit. Returns pending=True on
-    success; the caller should then quit the app so the swap can proceed."""
-    if not getattr(sys, "frozen", False):
-        return {"ok": False,
-                "error": "源码运行请用 git pull 后重新构建（仅打包版支持一键更新）。"}
-    info = check()
-    if not info.get("ok"):
-        return {"ok": False, "error": "无法连接更新服务器：" + info.get("error", "")}
-    if not info.get("has_update"):
-        return {"ok": False, "error": "已经是最新版本。"}
-    if not info.get("download_url"):
-        return {"ok": False, "error": "该版本没有可下载的 exe 资源。"}
+def _clean_env() -> dict:
+    """A copy of the environment with PyInstaller's one-file bootstrap vars
+    removed, so a relaunched exe extracts fresh instead of reusing this
+    process's (about-to-be-deleted) _MEI temp directory."""
+    return {k: v for k, v in os.environ.items()
+            if not (k.startswith("_MEI") or k.startswith("_PYI"))}
 
-    cur = os.path.abspath(sys.executable)
-    new = os.path.join(str(data_dir()), "DuckType-update.exe")
-    try:
-        urllib.request.urlretrieve(info["download_url"], new)
-    except Exception as exc:
-        return {"ok": False, "error": "下载失败：" + str(exc)}
 
-    # Guard against a redirect/error page or a truncated download silently
-    # replacing the exe with garbage (which would then fail to launch). A real
-    # build is tens of MB; anything under 1 MB is not the program.
-    try:
-        size = os.path.getsize(new)
-    except OSError:
-        size = 0
-    if size < 1_000_000:
-        try:
-            os.remove(new)
-        except OSError:
-            pass
-        return {"ok": False,
-                "error": f"下载的文件不完整（仅 {size} 字节），已取消。请稍后重试或到发布页手动下载。"}
-
-    bat = os.path.join(str(data_dir()), "_update.bat")
+def _write_swap_script(new: str, cur: str) -> str:
+    """Write the wait-then-swap-then-relaunch batch file; return its path."""
+    bat = os.path.join(str(root_dir()), "_update.bat")
     pid = os.getpid()
-    # Wait for THIS process to exit, then replace the exe -- retrying the move so
-    # the brief window where the PyInstaller bootloader still holds the file lock
-    # doesn't abort the swap -- then relaunch. `ping` is used for the delay
-    # because `timeout` needs console stdin, which a hidden-console process lacks.
+    # Wait for THIS process to exit, then replace the exe in place (retrying the
+    # move so the brief window where the bootloader still holds the file lock
+    # doesn't abort the swap), then relaunch under the SAME name. `ping` is the
+    # delay because `timeout` needs console stdin, which a hidden process lacks.
     script = (
         "@echo off\r\n"
         ":wait\r\n"
@@ -129,18 +130,98 @@ def apply() -> dict:
         f'start "" "{cur}"\r\n'
         'del "%~f0"\r\n'
     )
-    try:
-        with open(bat, "w", encoding="ascii", errors="ignore") as f:
-            f.write(script)
-        # CREATE_NO_WINDOW keeps a (hidden) console so `start` can relaunch the
-        # app; DETACHED_PROCESS would remove the console and the relaunch fails.
-        CREATE_NO_WINDOW = 0x08000000
-        subprocess.Popen(["cmd", "/c", bat],
-                         creationflags=CREATE_NO_WINDOW, close_fds=True)
-    except Exception as exc:
-        return {"ok": False, "error": "启动更新脚本失败：" + str(exc)}
+    with open(bat, "w", encoding="ascii", errors="ignore") as f:
+        f.write(script)
+    return bat
 
-    log.info("Update staged: downloaded %s (%d bytes); will replace %s on exit.",
-             new, size, cur)
-    return {"ok": True, "pending": True, "latest": info.get("latest"),
-            "path": new, "target": cur, "size": size}
+
+def _download_and_stage(url: str, cur: str, on_quit: Optional[Callable]) -> None:
+    new = os.path.join(str(root_dir()), "DuckType-new.exe")
+    _set_state(phase="downloading", downloaded=0, total=0, error="",
+               path=new, target=cur)
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "DuckType-Updater"})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            total = int(r.headers.get("Content-Length") or 0)
+            _set_state(total=total)
+            downloaded = 0
+            with open(new, "wb") as f:
+                while True:
+                    chunk = r.read(262144)  # 256 KB
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                    downloaded += len(chunk)
+                    _set_state(downloaded=downloaded)
+    except Exception as exc:
+        _set_state(phase="error", error="下载失败：" + str(exc))
+        log.exception("Update download failed")
+        return
+
+    # Guard against a redirect/error page or truncated download replacing the
+    # exe with garbage. A real build is tens of MB; under 1 MB is not us.
+    _set_state(phase="verifying")
+    try:
+        size = os.path.getsize(new)
+    except OSError:
+        size = 0
+    if size < 1_000_000 or (total and size != total):
+        try:
+            os.remove(new)
+        except OSError:
+            pass
+        _set_state(phase="error",
+                   error=f"下载的文件不完整（{size} 字节），已取消，请稍后重试。")
+        return
+
+    try:
+        bat = _write_swap_script(new, cur)
+        CREATE_NO_WINDOW = 0x08000000
+        subprocess.Popen(["cmd", "/c", bat], creationflags=CREATE_NO_WINDOW,
+                         close_fds=True, env=_clean_env())
+    except Exception as exc:
+        _set_state(phase="error", error="启动更新脚本失败：" + str(exc))
+        log.exception("Failed to launch update script")
+        return
+
+    _set_state(phase="staged")
+    log.info("Update staged: %s (%d bytes) -> %s on exit.", new, size, cur)
+    if on_quit:
+        # Give the dashboard a moment to read the 'staged' state before we exit
+        # so the swap-on-exit script can run.
+        threading.Timer(2.0, on_quit).start()
+
+
+def start_apply(on_quit: Optional[Callable] = None) -> dict:
+    """Begin downloading the update on a background thread. The dashboard polls
+    ``progress()`` for status; the app quits itself once the swap is staged."""
+    global _worker
+    if not getattr(sys, "frozen", False):
+        return {"ok": False,
+                "error": "源码运行请用 git pull 后重新构建（仅打包版支持一键更新）。"}
+    with _lock:
+        if _worker is not None and _worker.is_alive():
+            return {"ok": True, "started": True}  # already running
+
+    info = check()
+    if not info.get("ok"):
+        return {"ok": False, "error": "无法连接更新服务器：" + info.get("error", "")}
+    if not info.get("has_update"):
+        return {"ok": False, "error": "已经是最新版本。"}
+    if not info.get("download_url"):
+        return {"ok": False, "error": "该版本没有可下载的 exe 资源。"}
+
+    cur = os.path.abspath(sys.executable)
+    _set_state(phase="downloading", downloaded=0, total=0, error="",
+               latest=info.get("latest", ""), path="", target=cur)
+    _worker = threading.Thread(
+        target=_download_and_stage, args=(info["download_url"], cur, on_quit),
+        name="updater", daemon=True)
+    _worker.start()
+    return {"ok": True, "started": True, "latest": info.get("latest")}
+
+
+# Back-compat: the old synchronous entry point. Now just kicks off the async
+# flow so any caller still invoking apply() keeps working.
+def apply(on_quit: Optional[Callable] = None) -> dict:
+    return start_apply(on_quit)

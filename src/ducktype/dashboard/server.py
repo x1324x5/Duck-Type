@@ -1,17 +1,18 @@
-"""Flask + werkzeug dashboard server, runnable on a background thread.
+"""Dev/preview Flask shim around the in-process :class:`~ducktype.dashboard.api.Api`.
 
-Serves a single-page UI (static/index.html) plus a small JSON API. All numbers
-are derived on demand from the SQLite database, so the page always reflects the
-latest captured data when reloaded. The settings + data-management endpoints let
-the page edit config.json and prune data without touching the filesystem.
+The packaged app does NOT start this server -- it talks to ``Api`` directly over
+the pywebview bridge (no port). This module exists only so the dashboard can be
+opened in a regular browser during development (``_preview_server.py``) and so
+the existing HTTP-based tests keep working. Every route is a thin delegate to an
+``Api`` method, which is the single source of truth.
 """
 from __future__ import annotations
 
+import base64
 import io
 import json
 import logging
 import threading
-from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -19,8 +20,8 @@ from typing import Optional
 from flask import Flask, Response, jsonify, request, send_from_directory
 from werkzeug.serving import make_server
 
-from .. import autostart
 from ..analysis import stats
+from .api import Api
 
 log = logging.getLogger("ducktype")
 
@@ -29,296 +30,124 @@ _STATIC = Path(__file__).resolve().parent / "static"
 
 def create_app(db, config, status_fn=None, on_quit=None) -> Flask:
     app = Flask(__name__, static_folder=None)
-
-    def _bounds():
-        return stats.resolve_range(
-            request.args.get("range", "7d"),
-            request.args.get("start"),
-            request.args.get("end"),
-        )
+    api = Api(db, config, status_fn, on_quit)
 
     @app.route("/")
     def index():
         return send_from_directory(_STATIC, "index.html")
 
-    @app.route("/favicon.png")
-    def favicon():
-        from ..branding import app_image
-        buf = io.BytesIO()
-        app_image(64, active=True).save(buf, format="PNG")
-        return Response(buf.getvalue(), mimetype="image/png")
-
-    @app.route("/duck-assets/<path:name>")
-    def duck_assets(name):
-        from ..paths import extra_assets_dir
-        return send_from_directory(extra_assets_dir(), name)
-
+    # ---- live status / updates -----------------------------------------
     @app.route("/api/status")
     def api_status():
-        return jsonify(status_fn() if status_fn else {})
+        return jsonify(api.status())
 
     @app.route("/api/update/check")
     def api_update_check():
-        from .. import updater
-        return jsonify(updater.check())
+        return jsonify(api.update_check())
 
     @app.route("/api/update/apply", methods=["POST"])
     def api_update_apply():
-        from .. import updater
-        res = updater.apply()
-        if res.get("pending") and on_quit:
-            # Respond first, then quit so the swap-on-exit script can run. Give
-            # the page a few seconds to show the download path before we exit.
-            threading.Timer(3.5, on_quit).start()
-        return jsonify(res)
+        return jsonify(api.update_apply())
 
-    # ---- read-only analytics -------------------------------------------
-    @app.route("/api/overview")
-    def api_overview():
-        since, until = _bounds()
-        return jsonify(stats.overview(
-            db, since, config.run_gap_seconds, config.session_gap_seconds, until))
+    @app.route("/api/update/progress")
+    def api_update_progress():
+        return jsonify(api.update_progress())
 
-    @app.route("/api/top_chars")
-    def api_top_chars():
-        since, until = _bounds()
-        n = int(request.args.get("n", 50))
-        return jsonify([{"ch": c, "count": k}
-                        for c, k in stats.top_chars(db, since, n, until)])
-
-    @app.route("/api/top_words")
-    def api_top_words():
-        since, until = _bounds()
-        n = int(request.args.get("n", 50))
-        rows = stats.top_words(db, since, n, config.run_gap_seconds, until)
-        return jsonify([{"word": w, "count": c} for w, c in rows])
-
-    @app.route("/api/pos")
-    def api_pos():
-        since, until = _bounds()
-        rows = stats.pos_distribution(db, since, config.run_gap_seconds, until)
-        return jsonify([{"pos": p, "label": lbl, "count": c} for p, lbl, c in rows])
-
-    @app.route("/api/pos_words")
-    def api_pos_words():
-        since, until = _bounds()
-        return jsonify(stats.pos_word_distribution(
-            db,
-            request.args.get("pos", ""),
-            since,
-            config.run_gap_seconds,
-            until,
-            int(request.args.get("n", 12)),
-            int(request.args.get("min_len", 2)),
-        ))
-
-    @app.route("/api/topics")
-    def api_topics():
-        since, until = _bounds()
-        rows = stats.topics(db, since, int(request.args.get("n", 30)), until)
-        return jsonify([{"word": w, "weight": round(float(wt), 4)} for w, wt in rows])
-
-    @app.route("/api/heatmap")
-    def api_heatmap():
-        since, until = _bounds()
-        return jsonify({"grid": stats.heatmap(db, since, until)})
-
-    @app.route("/api/daily")
-    def api_daily():
-        since, until = _bounds()
-        return jsonify([{"date": d, "count": c} for d, c in stats.daily(db, since, until)])
-
-    @app.route("/api/timeseries")
-    def api_timeseries():
-        # This chart carries its own range, independent of the board's: an
-        # explicit ``hours`` lookback (hour precision) overrides the global range.
-        hours = request.args.get("hours")
-        if hours:
-            import time
-            since, until = time.time() - float(hours) * 3600, None
-        else:
-            since, until = _bounds()
-        bucket = request.args.get("bucket", "hour")
-        return jsonify(stats.timeseries(db, since, until, bucket))
-
-    @app.route("/api/apps")
-    def api_apps():
-        since, until = _bounds()
-        n = int(request.args.get("n", 20))
-        return jsonify([{"app": a, "count": c} for a, c in stats.per_app(db, since, n, until)])
-
-    @app.route("/api/app_detail")
-    def api_app_detail():
-        since, until = _bounds()
-        n = int(request.args.get("n", 20))
-        return jsonify(stats.app_detail(
-            db, request.args.get("app", ""), since, config.run_gap_seconds, until, n))
-
-    @app.route("/api/edits")
-    def api_edits():
-        since, until = _bounds()
-        return jsonify(stats.edits(db, since, until, config.session_gap_seconds))
-
-    @app.route("/api/trend")
-    def api_trend():
-        since, until = _bounds()
-        return jsonify(stats.trend(
-            db, since, until, config.run_gap_seconds, config.session_gap_seconds) or {})
-
-    @app.route("/api/search")
-    def api_search():
-        since, until = _bounds()
-        q = request.args.get("q", "")
-        return jsonify(stats.search(db, q, since, config.run_gap_seconds, until))
-
-    @app.route("/api/fun")
-    def api_fun():
-        since, until = _bounds()
-        return jsonify(stats.fun_rankings(db, since, config.run_gap_seconds, until))
-
-    @app.route("/api/gamify")
-    def api_gamify():
-        return jsonify(stats.gamify(db, config.daily_goal))
-
-    @app.route("/api/ticker")
-    def api_ticker():
-        return jsonify(stats.ticker(
-            db, config.run_gap_seconds, config.session_gap_seconds, config.daily_goal))
-
-    @app.route("/api/quote_seen", methods=["POST"])
-    def api_quote_seen():
-        """Record that the ticker showed a quote (powers quote achievements)."""
-        data = request.get_json(silent=True) or {}
-        text = data.get("text")
-        if isinstance(text, str) and text:
-            try:
-                db.record_quote_view(text)
-            except Exception:
-                pass
-        return jsonify({"ok": True})
-
-    @app.route("/api/report")
-    def api_report():
-        period = request.args.get("period", "today")
-        return jsonify(stats.report(
-            db, period, config.run_gap_seconds, config.session_gap_seconds))
-
-    @app.route("/api/card")
-    def api_card():
-        from .. import cards
-        period = request.args.get("period", "today")
-        rep = stats.report(
-            db, period, config.run_gap_seconds, config.session_gap_seconds)
-        buf = io.BytesIO()
-        cards.render_card(rep).save(buf, format="PNG")
-        return Response(
-            buf.getvalue(), mimetype="image/png",
-            headers={"Content-Disposition":
-                     f'attachment; filename="ducktype_{period}.png"'},
-        )
-
-    # ---- committed-character sequence ----------------------------------
-    @app.route("/api/sequence")
-    def api_sequence():
-        since, until = _bounds()
-        limit = int(request.args.get("limit", 200))
-        return jsonify(stats.sequence_recent(
-            db, since, config.run_gap_seconds, limit, until))
-
-    @app.route("/api/export/sequence.<fmt>")
-    def api_export_sequence(fmt):
-        since, until = _bounds()
-        runs = stats.sequence_recent(db, since, config.run_gap_seconds, 10_000_000, until)
-        runs = list(reversed(runs))  # chronological for export
-        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        if fmt == "txt":
-            body = "\n".join(r["text"] for r in runs)
-            mime = "text/plain"
-        elif fmt == "json":
-            body = json.dumps(runs, ensure_ascii=False, indent=2)
-            mime = "application/json"
-        elif fmt == "csv":
-            buf = io.StringIO()
-            buf.write("﻿time,app,text\n")  # BOM so Excel reads UTF-8
-            for r in runs:
-                t = datetime.fromtimestamp(r["ts"]).strftime("%Y-%m-%d %H:%M:%S") if r["ts"] else ""
-                text = '"' + r["text"].replace('"', '""') + '"'
-                buf.write(f"{t},{r['app'] or ''},{text}\n")
-            body = buf.getvalue()
-            mime = "text/csv"
-        else:
-            return jsonify({"error": "unknown format"}), 400
-        return Response(
-            body, mimetype=mime,
-            headers={"Content-Disposition": f'attachment; filename="ducktype_sequence_{stamp}.{fmt}"'},
-        )
-
-    # ---- settings -------------------------------------------------------
+    # ---- config ---------------------------------------------------------
     @app.route("/api/config", methods=["GET"])
     def api_config_get():
-        data = {k: v for k, v in asdict(config).items() if not k.startswith("_")}
-        data["editable"] = list(config.EDITABLE)
-        data["restart_required"] = list(config.RESTART_REQUIRED)
-        return jsonify(data)
+        return jsonify(api.config_get())
 
     @app.route("/api/config", methods=["POST"])
     def api_config_set():
-        updates = request.get_json(force=True, silent=True) or {}
-        had_autostart = "autostart" in updates
-        restart = config.apply(updates)
-        if had_autostart:
-            try:
-                autostart.set_enabled(config.autostart)
-            except Exception:
-                log.exception("Failed to toggle autostart from dashboard")
-        return jsonify({"ok": True, "restart_required": restart})
+        return jsonify(api.config_set(request.get_json(force=True, silent=True) or {}))
 
     # ---- data management ------------------------------------------------
     @app.route("/api/data/summary")
     def api_data_summary():
-        from ..paths import data_dir, db_path
-        s = db.stats_summary()
-        # The configured location (where data lives after the next restart). The
-        # live DB only switches over on restart, so this is what the user set.
-        s["db_path"] = str(db_path(config.data_dir or None))
-        s["data_dir"] = config.data_dir or ""
-        s["default_dir"] = str(data_dir())
-        return jsonify(s)
+        return jsonify(api.data_summary())
+
+    @app.route("/api/data/pick_dir", methods=["POST"])
+    def api_data_pick_dir():
+        return jsonify(api.data_pick_dir())
 
     @app.route("/api/data/relocate", methods=["POST"])
     def api_data_relocate():
-        from ..paths import db_path
         body = request.get_json(force=True, silent=True) or {}
-        target = (body.get("dir") or "").strip()
-        try:
-            dest = db_path(target or None)
-            if str(dest) == str(db_path(config.data_dir or None)):
-                return jsonify({"ok": False, "error": "目标位置与当前相同。"})
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            db.backup_to(dest)               # copy current data to the new place
-            config.data_dir = target
-            config.save()
-            return jsonify({"ok": True, "restart_required": True, "db_path": str(dest)})
-        except Exception as exc:             # invalid path / no permission / disk
-            log.exception("Data relocate failed")
-            return jsonify({"ok": False, "error": str(exc)})
+        return jsonify(api.data_relocate(body.get("dir")))
+
+    @app.route("/api/data/relocate/progress")
+    def api_data_relocate_progress():
+        return jsonify(api.data_relocate_progress())
 
     @app.route("/api/data/clear", methods=["POST"])
     def api_data_clear():
-        return jsonify({"deleted": db.clear_all()})
+        return jsonify(api.data_clear())
 
     @app.route("/api/data/delete", methods=["POST"])
     def api_data_delete():
         body = request.get_json(force=True, silent=True) or {}
+        return jsonify(api.data_delete(body.get("start"), body.get("end")))
+
+    @app.route("/api/quote_seen", methods=["POST"])
+    def api_quote_seen():
+        data = request.get_json(silent=True) or {}
+        return jsonify(api.quote_seen(data.get("text")))
+
+    # ---- card image (browser variant returns a PNG response) -----------
+    @app.route("/api/card")
+    def api_card():
+        period = request.args.get("period", "today")
+        data_uri = api.card_png(period)
+        raw = base64.b64decode(data_uri.split(",", 1)[1])
+        return Response(raw, mimetype="image/png",
+                        headers={"Content-Disposition":
+                                 f'attachment; filename="ducktype_{period}.png"'})
+
+    # ---- sequence export (browser variant streams the file) ------------
+    @app.route("/api/export/sequence.<fmt>")
+    def api_export_sequence(fmt):
         since, until = stats.resolve_range(
-            "custom", body.get("start"), body.get("end"))
-        return jsonify({"deleted": db.delete_range(since, until)})
+            request.args.get("range", "7d"),
+            request.args.get("start"), request.args.get("end"))
+        runs = list(reversed(stats.sequence_recent(
+            db, since, config.run_gap_seconds, 10_000_000, until)))
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        if fmt == "txt":
+            body, mime = "\n".join(r["text"] for r in runs), "text/plain"
+        elif fmt == "json":
+            body, mime = json.dumps(runs, ensure_ascii=False, indent=2), "application/json"
+        elif fmt == "csv":
+            buf = io.StringIO(); buf.write("﻿time,app,text\n")
+            for r in runs:
+                t = datetime.fromtimestamp(r["ts"]).strftime("%Y-%m-%d %H:%M:%S") if r["ts"] else ""
+                text = '"' + r["text"].replace('"', '""') + '"'
+                buf.write(f"{t},{r['app'] or ''},{text}\n")
+            body, mime = buf.getvalue(), "text/csv"
+        else:
+            return jsonify({"error": "unknown format"}), 400
+        return Response(body, mimetype=mime,
+                        headers={"Content-Disposition":
+                                 f'attachment; filename="ducktype_sequence_{stamp}.{fmt}"'})
+
+    # ---- generic read passthrough (overview/top_chars/board/...) -------
+    @app.route("/api/<endpoint>")
+    def api_read(endpoint):
+        return jsonify(api.get(endpoint, dict(request.args)))
+
+    # ---- bundled static assets (chart.umd.min.js, duck.png, ducks/*) ---
+    # Mirrors the native file:// layout so relative asset paths resolve in the
+    # browser too. Registered last; /api/* and / win by specificity.
+    @app.route("/<path:f>")
+    def static_files(f):
+        return send_from_directory(_STATIC, f)
 
     return app
 
 
 class DashboardServer:
-    # Try up to this many consecutive ports if the configured one is taken.
+    """Browser-served dashboard for development only. The packaged app uses the
+    native window (see ``desktop.py``) instead and never starts this."""
     _PORT_TRIES = 10
 
     def __init__(self, db, config, status_fn=None, on_quit=None):
@@ -339,11 +168,10 @@ class DashboardServer:
             port = self.config.dashboard_port + offset
             try:
                 self._server = make_server(
-                    self.config.dashboard_host, port, self._app, threaded=True
-                )
+                    self.config.dashboard_host, port, self._app, threaded=True)
                 self._bound_port = port
                 break
-            except OSError as exc:  # port already in use
+            except OSError as exc:
                 last_err = exc
         if self._server is None:
             raise RuntimeError(
@@ -353,8 +181,7 @@ class DashboardServer:
             log.warning("Port %d busy; dashboard moved to %d",
                         self.config.dashboard_port, self._bound_port)
         self._thread = threading.Thread(
-            target=self._server.serve_forever, name="dashboard", daemon=True
-        )
+            target=self._server.serve_forever, name="dashboard", daemon=True)
         self._thread.start()
 
     def stop(self) -> None:
@@ -362,9 +189,6 @@ class DashboardServer:
             self._server.shutdown()
             self._server.server_close()
             self._server = None
-        if (
-            self._thread is not None
-            and self._thread.is_alive()
-            and threading.current_thread() is not self._thread
-        ):
+        if (self._thread is not None and self._thread.is_alive()
+                and threading.current_thread() is not self._thread):
             self._thread.join(timeout=5)

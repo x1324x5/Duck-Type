@@ -1,14 +1,13 @@
-"""Application orchestrator: wires capture -> storage -> dashboard -> tray."""
+"""Application orchestrator: wires capture -> storage -> native window -> tray."""
 from __future__ import annotations
 
 import logging
 import sys
 import threading
-import webbrowser
 
-from . import autostart
+from . import autostart, paths
 from .config import Config
-from .dashboard import DashboardServer
+from .dashboard import Api
 from .paths import db_path, hook_dll_path, log_path
 from .storage import Database
 
@@ -21,9 +20,12 @@ _PURGE_INTERVAL = 6 * 3600
 class App:
     def __init__(self):
         self.config = Config.load()
-        self.db = Database(db_path(self.config.data_dir))
-        self.dashboard = DashboardServer(
-            self.db, self.config, self.get_status, self.request_quit)
+        # The data root is resolved by paths.root_dir() (set during the
+        # first-run bootstrap); the database always lives under it.
+        self.db = Database(db_path())
+        # The dashboard UI is rendered in a native window (desktop.py) and talks
+        # to this Api over the pywebview bridge -- no HTTP server, no port.
+        self.api = Api(self.db, self.config, self.get_status, self.request_quit)
         self._tracker = None
         self._char_hook = None
         self._key_hook = None
@@ -81,6 +83,12 @@ class App:
 
         self._char_hook = CharHook(self._on_char)
         if self._char_hook.available:
+            # The live DLL is now the stable content-addressed copy; drop any
+            # older copies left in the native dir by previous builds/updates.
+            try:
+                paths.prune_stale_hooks(keep=hook_dll_path())
+            except Exception:
+                log.exception("Pruning stale hook DLLs failed")
             self._char_hook.start()
             log.info("Committed-character capture active.")
         else:
@@ -94,9 +102,6 @@ class App:
         self._key_hook = KeyHook(on_event=self._on_key)
         self._key_hook.start()
 
-        self.dashboard.start()
-        log.info("Dashboard at %s", self.dashboard.url)
-
         # Keep the registry in sync with the saved preference.
         try:
             autostart.set_enabled(self.config.autostart)
@@ -104,9 +109,6 @@ class App:
             log.exception("Failed to apply autostart preference")
 
         self._schedule_purge()
-
-        if self.config.open_dashboard_on_start:
-            self.open_dashboard()
 
     # ---- retention -------------------------------------------------------
     def _schedule_purge(self) -> None:
@@ -131,23 +133,30 @@ class App:
             print("DuckType 已经在运行了（看一下系统托盘的小鸭子图标）。")
             return
         self.start_background()
-        # Tray blocks on the main thread until the user quits.
+        # Tray runs detached (the webview owns the main GUI loop). The native
+        # window then blocks the main thread until the user quits via the tray.
         from .tray import TrayApp
+        from . import desktop
         self._tray = TrayApp(self)
-        self._tray.run()
+        self._tray.run_detached()
+        # blocks until quit_window(); start hidden only if the user opted out of
+        # showing the window on launch.
+        desktop.run_window(self.api, hidden=not self.config.open_dashboard_on_start)
+        self.shutdown()
 
     def request_quit(self) -> None:
-        """Quit from a background thread (e.g. the dashboard's update flow)."""
+        """Quit (callable from any thread, e.g. tray menu or the update flow):
+        tear down the window so run()'s GUI loop returns, and remove the tray."""
+        from . import desktop
+        desktop.quit_window()
         if self._tray is not None:
-            self._tray.stop()
-        else:
-            self.shutdown()
+            self._tray.stop_icon()
 
     def shutdown(self) -> None:
         log.info("Shutting down ...")
         if self._purge_timer is not None:
             self._purge_timer.cancel()
-        for obj in (self._char_hook, self._key_hook, self._tracker, self.dashboard):
+        for obj in (self._char_hook, self._key_hook, self._tracker):
             try:
                 if obj is not None:
                     obj.stop()
@@ -159,8 +168,9 @@ class App:
             pass
 
     # ---- actions invoked from the tray ----------------------------------
-    def open_dashboard(self) -> None:
-        webbrowser.open(self.dashboard.url)
+    def show_window(self) -> None:
+        from . import desktop
+        desktop.show_window()
 
     def set_paused(self, paused: bool) -> None:
         self.config.paused = paused
@@ -210,5 +220,21 @@ def setup_logging() -> None:
 
 
 def main() -> None:
+    # First-run data-folder choice (packaged builds only). Must happen before
+    # logging/config/db, since all of those now live under the chosen root.
+    if getattr(sys, "frozen", False) and sys.platform.startswith("win"):
+        from . import firstrun
+        root = firstrun.ensure_data_root()
+        if root is None:
+            # User declined to choose a folder -- nothing to do.
+            return
+    else:
+        # Source/dev/CLI runs: finish any pending relocation cleanup, then use
+        # whatever root paths.root_dir() resolves (default anchor or override).
+        try:
+            from . import firstrun
+            firstrun.cleanup_old_root(paths.root_dir())
+        except Exception:
+            pass
     setup_logging()
     App().run()

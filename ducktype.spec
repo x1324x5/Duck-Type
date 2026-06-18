@@ -12,9 +12,13 @@ datas = []
 binaries = []
 hiddenimports = []
 
-# jieba ships dictionaries that must travel with the exe.
-for pkg in ("jieba",):
-    d, b, h = collect_all(pkg)
+# jieba ships dictionaries that must travel with the exe; pywebview/pythonnet
+# ship the WebView2 loader + .NET interop assemblies for the native window.
+for pkg in ("jieba", "webview", "clr_loader", "pythonnet"):
+    try:
+        d, b, h = collect_all(pkg)
+    except Exception:
+        continue
     datas += d
     binaries += b
     hiddenimports += h

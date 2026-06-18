@@ -90,6 +90,11 @@ class Database:
         # once the initial schema setup is done.
         self.recreated = False
         self._initialized = False
+        # Monotonic data-version counter: bumped whenever captured rows change.
+        # Read-side callers (the dashboard Api) use it as a cache key so repeated
+        # queries between writes are served from cache. Exact value is irrelevant
+        # -- only that it changes -- so a plain int (GIL-atomic +=) is fine.
+        self.revision = 0
         self._init_schema()
         self._initialized = True
         self.recreated = False
@@ -214,9 +219,12 @@ class Database:
                 now = time.time()
                 if (chars or keys) and (len(chars) + len(keys) >= 64 or now - last_flush > 1.0):
                     self._flush(con, chars, keys)
+                    self.revision += 1
                     chars, keys = [], []
                     last_flush = now
-            self._flush(con, chars, keys)
+            if chars or keys:
+                self._flush(con, chars, keys)
+                self.revision += 1
         finally:
             con.close()
 
@@ -252,6 +260,7 @@ class Database:
                 (h, now, now),
             )
             con.commit()
+            self.revision += 1
         finally:
             con.close()
 
@@ -298,6 +307,7 @@ class Database:
             self._reset_materialization(con)
             con.commit()
             con.execute("VACUUM")
+            self.revision += 1
             return n
         finally:
             con.close()
@@ -319,6 +329,7 @@ class Database:
             con.execute(f"DELETE FROM key_events{where}", tuple(params))
             self._reset_materialization(con)
             con.commit()
+            self.revision += 1
             return n
         finally:
             con.close()

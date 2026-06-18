@@ -36,18 +36,22 @@ class Config:
     # days. 0 (the default) keeps everything forever.
     retention_days: int = 0
 
-    # storage: directory for the database. Empty = the default %APPDATA%\DuckType.
-    # Changed only through the data-management "relocate" flow (which also moves
-    # the existing database), so it is intentionally NOT in EDITABLE below.
+    # storage: LEGACY. The data root is now driven by paths.root_dir() /
+    # location.json (see firstrun.py), not this field. Kept so an old 0.1.7
+    # config that set it can still be detected and migrated on first 0.1.8 run
+    # (firstrun._legacy_root). Never written by the new relocate flow.
     data_dir: str = ""
 
     # gamification: per-day character goal used by the goal ring / streak.
     daily_goal: int = 500
 
     # dashboard
+    # dashboard_host/port are LEGACY: the app now renders in a native window
+    # (desktop.py) with no HTTP server. Kept only for the dev/preview server.
     dashboard_host: str = "127.0.0.1"
     dashboard_port: int = 8765
-    open_dashboard_on_start: bool = False
+    # Now means "show the native window on launch" (vs start hidden in the tray).
+    open_dashboard_on_start: bool = True
     theme_mode: str = "system"  # system / light / dark
     ticker_refresh_seconds: int = 60
 

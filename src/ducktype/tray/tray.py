@@ -14,7 +14,7 @@ import pystray
 from pystray import Menu, MenuItem
 
 from ..branding import app_image
-from ..paths import data_dir
+from ..paths import root_dir
 
 if TYPE_CHECKING:  # pragma: no cover
     from ..app import App
@@ -37,10 +37,10 @@ class TrayApp:
         )
 
     def _open_dashboard(self, icon, item):
-        self.app.open_dashboard()
+        self.app.show_window()
 
     def _open_data_dir(self, icon, item):
-        path = str(data_dir())
+        path = str(root_dir())
         try:
             if sys.platform.startswith("win"):
                 os.startfile(path)  # noqa: S606
@@ -57,12 +57,17 @@ class TrayApp:
         self.app.set_autostart(not self.app.config.autostart)
 
     def _quit(self, icon, item):
-        self.stop()
+        # Quitting must tear down the native window so the GUI loop returns and
+        # the app shuts down. App.request_quit drives that; just stop the icon.
+        self.app.request_quit()
 
-    def stop(self) -> None:
-        """Shut down and remove the tray icon. Safe to call from any thread."""
-        self.app.shutdown()
-        self._icon.stop()
+    def stop_icon(self) -> None:
+        """Remove the tray icon (does not shut the app down)."""
+        try:
+            self._icon.stop()
+        except Exception:
+            pass
 
-    def run(self) -> None:
-        self._icon.run()
+    def run_detached(self) -> None:
+        """Show the tray icon without blocking (the webview owns the main loop)."""
+        self._icon.run_detached()

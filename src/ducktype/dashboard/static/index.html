@@ -4,8 +4,8 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>DuckType · 码字鸭</title>
-<link rel="icon" type="image/png" href="/favicon.png" />
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<link rel="icon" type="image/png" href="duck.png" />
+<script src="chart.umd.min.js"></script>
 <style>
   :root{
     --bg:#0f1216; --panel:#181d24cc; --panel2:#1f2630; --line:#2b333f;
@@ -36,6 +36,7 @@
     color-scheme:light;
   }
   *{box-sizing:border-box}
+  [hidden]{display:none!important}
   body{margin:0;color:var(--fg);line-height:1.55;font-variant-numeric:tabular-nums;
     -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;text-rendering:optimizeLegibility;
     font-family:"Segoe UI","Microsoft YaHei",system-ui,sans-serif;
@@ -43,7 +44,7 @@
       radial-gradient(1100px 700px at 82% -260px, var(--grad1) 0%, transparent 55%),
       radial-gradient(900px 600px at -10% 110%, var(--grad2) 0%, transparent 50%),
       var(--bg);
-    background-attachment:fixed;}
+    background-attachment:fixed;overflow-x:hidden;}
   header{display:flex;align-items:center;gap:14px;flex-wrap:wrap;
     padding:16px 24px;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:30;
     background:var(--header-bg);backdrop-filter:blur(10px);}
@@ -51,17 +52,65 @@
   header h1 small{color:var(--muted);font-weight:400;font-size:12px}
   .logo{width:34px;height:34px;border-radius:9px;display:block}
   .spacer{flex:1}
-  nav.tabs{display:flex;gap:6px;flex-wrap:wrap}
-  nav.tabs button{background:transparent;color:var(--muted);border:1px solid transparent;
-    padding:7px 14px;border-radius:9px;cursor:pointer;font-size:14px;
-    transition:color .15s,border-color .15s,background .15s}
-  nav.tabs button:hover{color:var(--fg);border-color:var(--line)}
-  nav.tabs button.active{background:var(--panel2);color:var(--fg);border-color:var(--line)}
+  /* ---- native window shell: custom titlebar + left sidebar ---- */
+  .titlebar{display:flex;align-items:center;gap:8px;height:44px;padding:0 8px 0 14px;
+    position:sticky;top:0;z-index:40;background:var(--header-bg);backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--line);user-select:none}
+  .tb-drag{flex:1;display:flex;align-items:center;gap:10px;height:100%;min-width:0}
+  .tb-logo{width:24px;height:24px;border-radius:6px;display:block}
+  .tb-title{font-size:13px;font-weight:600;letter-spacing:.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .tb-title small{color:var(--muted);font-weight:400;font-size:11px;margin-left:6px}
+  .tb-actions{display:flex;align-items:center;gap:4px}
+  .winbtn{width:40px;height:30px;border:none;background:transparent;color:var(--muted);
+    border-radius:7px;cursor:pointer;font-size:15px;line-height:1;
+    transition:background .15s,color .15s,transform .15s}
+  .winbtn:hover{background:var(--panel2);color:var(--fg)}
+  .winbtn:active{transform:translateY(1px)}
+  .winbtn.close:hover{background:var(--down);color:#fff}
+  .app{display:grid;grid-template-columns:190px minmax(0,1fr);min-height:calc(100vh - 44px)}
+  .sidebar{display:flex;flex-direction:column;border-right:1px solid var(--line);
+    padding:14px 10px;background:var(--rangebar-bg);height:calc(100vh - 44px);
+    position:sticky;top:44px;align-self:start;overflow:auto;z-index:20;backdrop-filter:blur(10px)}
+  nav.tabs{display:flex;flex-direction:column;gap:4px}
+  nav.tabs button{display:flex;align-items:center;gap:11px;width:100%;text-align:left;
+    background:transparent;color:var(--muted);border:1px solid transparent;
+    padding:10px 12px;border-radius:10px;cursor:pointer;font-size:14px;
+    transition:color .15s,border-color .15s,background .15s,transform .15s,box-shadow .15s}
+  .ico{width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 20px}
+  .ico svg{width:18px;height:18px;display:block;stroke:currentColor;fill:none;stroke-width:2;
+    stroke-linecap:round;stroke-linejoin:round}
+  nav.tabs button:hover{color:var(--fg);background:var(--panel2);border-color:var(--line);
+    transform:translateX(2px)}
+  nav.tabs button.active{background:var(--panel2);color:var(--fg);border-color:var(--accent);
+    font-weight:600;box-shadow:inset 3px 0 0 var(--accent)}
+  .sidebar-foot{margin-top:auto;padding-top:12px}
+  .topbtn{width:100%;height:34px;border:1px solid var(--line);border-radius:9px;
+    background:var(--panel2);color:var(--muted);display:flex;align-items:center;justify-content:center;
+    gap:7px;cursor:pointer;font-size:12px;font-family:inherit;
+    transition:background .15s,color .15s,border-color .15s,transform .15s,opacity .15s}
+  .topbtn:hover{background:var(--accent);border-color:var(--accent);color:var(--ink);
+    transform:translateY(-1px)}
+  .topbtn svg{width:15px;height:15px}
+  .content{min-width:0;display:flex;flex-direction:column}
+  .backtop{position:fixed;right:18px;bottom:18px;width:38px;height:38px;border-radius:10px;
+    border:1px solid var(--line);background:var(--panel2);color:var(--fg);cursor:pointer;
+    display:flex;align-items:center;justify-content:center;box-shadow:var(--shadow);z-index:35;
+    opacity:0;pointer-events:none;transform:translateY(6px);
+    transition:opacity .16s,transform .16s,background .15s,color .15s,border-color .15s}
+  .backtop.show{opacity:1;pointer-events:auto;transform:translateY(0)}
+  .backtop:hover{background:var(--accent);color:var(--ink);border-color:var(--accent)}
+  .backtop svg{width:18px;height:18px}
+  @media (max-width:700px){.app{grid-template-columns:1fr}.sidebar{height:auto;max-height:45vh;min-height:0;
+      position:sticky;top:44px;border-right:0;border-bottom:1px solid var(--line)}
+    nav.tabs{flex-direction:row;flex-wrap:wrap}.sidebar-foot{display:none}}
   .rangebar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
     padding:12px 24px;border-bottom:1px solid var(--line);background:var(--rangebar-bg)}
   .ranges{display:flex;gap:4px;flex-wrap:wrap}
   .ranges button{background:var(--panel2);color:var(--muted);border:1px solid var(--line);
-    padding:6px 13px;border-radius:8px;cursor:pointer;font-size:13px}
+    padding:6px 13px;border-radius:8px;cursor:pointer;font-size:13px;
+    transition:background .15s,color .15s,border-color .15s,transform .15s}
+  .ranges button:hover{background:var(--panel);color:var(--fg);border-color:var(--accent);
+    transform:translateY(-1px)}
   .ranges button.active{background:var(--accent);color:var(--ink);border-color:var(--accent);font-weight:600}
   .custom{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);flex-wrap:wrap}
   .datebox{display:inline-flex;align-items:center;gap:7px;background:var(--panel2);
@@ -76,15 +125,17 @@
     display:inline-flex;align-items:center;justify-content:center;text-decoration:none;
     transition:border-color .15s,color .15s,background .15s,transform .15s}
   .iconbtn:hover{border-color:var(--accent);color:var(--accent)}
+  .iconbtn:active,.btn:active,.dlbtn:active,.bn-refresh:active{transform:translateY(1px)}
   .iconbtn svg{width:18px;height:18px;display:block}
+  .iconbtn svg.line{stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
   /* Release-page link: a touch more prominent than the plain icon buttons. */
   a.ghbtn{width:auto;gap:7px;padding:0 12px;font-size:13px;font-weight:600}
   a.ghbtn:hover{background:var(--accent);color:var(--ink);border-color:var(--accent);
     transform:translateY(-1px)}
   #since{color:var(--muted);font-size:12px;margin-left:auto}
-  main{padding:24px;max-width:1280px;margin:0 auto}
+  main{padding:24px;max-width:1280px;width:100%;margin:0 auto;min-width:0}
   .view{display:none}.view.active{display:block}
-  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(158px,1fr));gap:16px;margin-bottom:24px}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(138px,1fr));gap:16px;margin-bottom:24px}
   .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:17px 18px;
     box-shadow:var(--card-shadow);transition:transform .15s ease,border-color .15s ease}
   .card:hover{transform:translateY(-2px);border-color:var(--accent)}
@@ -92,19 +143,20 @@
   .card .l{color:var(--muted);font-size:12px;margin-top:5px;letter-spacing:.2px}
   .card .d{font-size:12px;margin-top:7px;font-weight:600}
   .d.up{color:var(--up)} .d.down{color:var(--down)} .d.flat{color:var(--muted)}
-  .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:18px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(420px,100%),1fr));gap:18px}
   @media(max-width:880px){.grid{grid-template-columns:1fr}}
   .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
-    padding:20px;margin-bottom:18px;box-shadow:var(--card-shadow)}
+    padding:20px;margin-bottom:18px;box-shadow:var(--card-shadow);min-width:0}
   .panel h2{font-size:14px;margin:0 0 16px;font-weight:600;color:var(--fg);
-    display:flex;align-items:center;letter-spacing:.2px}
+    display:flex;align-items:center;gap:6px;letter-spacing:.2px;flex-wrap:wrap}
   .panel h2 span{color:var(--muted);font-weight:400;font-size:12px;margin-left:6px;letter-spacing:0}
   canvas{max-height:300px}
   .wide{grid-column:1 / -1}
-  .panel h2 .ctl{margin-left:auto;display:flex;align-items:center;gap:8px;font-weight:400}
+  .panel h2 .ctl{margin-left:auto;display:flex;align-items:center;justify-content:flex-end;
+    gap:8px;font-weight:400;flex-wrap:wrap}
   /* rank slider on top-char / top-word panels */
   .rankctl{font-size:12px;color:var(--muted)}
-  .rankctl input[type=range]{width:120px;accent-color:var(--accent);vertical-align:middle;cursor:pointer}
+  .rankctl input[type=range]{width:min(120px,28vw);accent-color:var(--accent);vertical-align:middle;cursor:pointer}
   .rankctl b{color:var(--accent);font-size:13px;min-width:30px;display:inline-block;text-align:right}
   /* scrollable horizontal bar chart (top chars / words) */
   .hbar{max-height:360px;overflow-y:auto;overflow-x:hidden;margin:-4px -4px 0}
@@ -115,13 +167,18 @@
   /* mini range buttons (hourly chart) */
   .miniranges{display:flex;gap:4px;flex-wrap:wrap}
   .miniranges button{background:var(--panel2);color:var(--muted);border:1px solid var(--line);
-    padding:4px 10px;border-radius:7px;cursor:pointer;font-size:12px}
+    padding:4px 10px;border-radius:7px;cursor:pointer;font-size:12px;
+    transition:background .15s,color .15s,border-color .15s,transform .15s}
+  .miniranges button:hover{background:var(--panel);color:var(--fg);border-color:var(--accent);
+    transform:translateY(-1px)}
   .miniranges button.active{background:var(--accent);color:var(--ink);border-color:var(--accent);font-weight:600}
   /* per-chart "save as image" button */
   .dlbtn{background:var(--panel2);color:var(--muted);border:1px solid var(--line);border-radius:7px;
-    width:28px;height:26px;cursor:pointer;font-size:13px;line-height:1;padding:0;flex:0 0 auto}
-  .dlbtn:hover{border-color:var(--accent);color:var(--accent)}
-  table.heat{border-collapse:collapse;width:100%;font-size:11px}
+    width:28px;height:26px;cursor:pointer;font-size:13px;line-height:1;padding:0;flex:0 0 auto;
+    transition:background .15s,color .15s,border-color .15s,transform .15s}
+  .dlbtn:hover{background:var(--panel);border-color:var(--accent);color:var(--accent)}
+  #heatmap{width:100%;overflow-x:auto;padding-bottom:2px}
+  table.heat{border-collapse:collapse;width:100%;min-width:560px;font-size:11px}
   table.heat td{width:3.6%;padding:0}
   table.heat .cell{height:18px;border-radius:3px;background:var(--cell-empty)}
   table.heat th{color:var(--muted);font-weight:400;text-align:center;padding:2px}
@@ -130,6 +187,32 @@
   .topics .t{color:var(--accent);background:var(--panel2);padding:4px 10px;border-radius:20px;
     cursor:pointer;border:1px solid transparent;transition:border-color .15s,transform .15s,background .15s}
   .topics .t:hover{border-color:var(--accent);transform:translateY(-1px)}
+  .todaycloud{min-height:284px;padding:12px 6px 4px;display:flex;align-items:center;
+    justify-content:center;align-content:center;flex-wrap:wrap;gap:8px 14px}
+  .todaycloud .cloudword{appearance:none;background:transparent;border:0;border-radius:8px;
+    padding:2px 4px;line-height:.95;font-weight:800;cursor:pointer;text-align:center;
+    transform:rotate(var(--rot, 0deg));transition:transform .15s,filter .15s,background .15s}
+  .todaycloud .cloudword:hover{transform:rotate(var(--rot, 0deg)) translateY(-2px) scale(1.04);
+    filter:saturate(1.18);background:var(--panel2)}
+  .todaycloud .cloudword.active{background:var(--panel2);box-shadow:0 0 0 1px currentColor}
+  .todaycloud .cloudword:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+  .todaycloud .cloudnote{width:100%;text-align:center;color:var(--muted);font-size:12px;
+    margin-top:6px}
+  .clouddetail{display:none;margin-top:12px;border:1px solid var(--line);border-radius:12px;
+    background:var(--panel2);padding:12px 14px}
+  .clouddetail.show{display:block}
+  .clouddetail .cd-head{display:flex;align-items:center;gap:10px;justify-content:space-between;flex-wrap:wrap}
+  .clouddetail .cd-title{font-size:14px;font-weight:700;color:var(--fg)}
+  .clouddetail .cd-meta{color:var(--muted);font-size:12px}
+  .clouddetail .cd-actions{display:flex;gap:8px;flex-wrap:wrap}
+  .clouddetail .exs{margin-top:10px}
+  .clouddetail.loading{min-height:92px}
+  .clouddetail.loading:before{content:"";display:block;height:14px;width:42%;
+    background:linear-gradient(90deg,var(--panel),var(--line),var(--panel));border-radius:7px;
+    animation:shine 1.1s linear infinite;background-size:220% 100%}
+  .clouddetail.loading:after{content:"";display:block;height:12px;width:86%;margin-top:16px;
+    background:linear-gradient(90deg,var(--panel),var(--line),var(--panel));border-radius:6px;
+    animation:shine 1.1s linear infinite;background-size:220% 100%}
   /* subheading inside a panel (e.g. per-app drill-down sections) */
   .subhd{color:var(--fg);font-size:13px;font-weight:600;margin:12px 0 4px}
   .subhd span{color:var(--muted);font-weight:400;font-size:11px;margin-left:4px}
@@ -176,7 +259,12 @@
   .badges{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
   .badge{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:12px;opacity:.45}
   .badge.on{opacity:1;border-color:var(--accent)}
-  .badge .n{font-weight:600;font-size:14px}
+  .badge .n{font-weight:600;font-size:14px;display:flex;align-items:center;gap:7px}
+  .badgeico{width:18px;height:18px;border-radius:6px;border:1px solid var(--line);
+    display:inline-flex;align-items:center;justify-content:center;flex:0 0 18px;color:var(--muted)}
+  .badge.on .badgeico{border-color:var(--accent);color:var(--accent);background:rgba(255,206,51,.12)}
+  .badgeico svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2.2;
+    stroke-linecap:round;stroke-linejoin:round}
   .badge .dsc{color:var(--muted);font-size:11px;margin:4px 0 8px}
   .badge .bar{height:5px;border-radius:3px;background:var(--track);overflow:hidden}
   .badge .bar i{display:block;height:100%;background:var(--accent)}
@@ -187,19 +275,22 @@
   /* sequence */
   .seq{display:flex;flex-direction:column;gap:8px;max-height:600px;overflow:auto}
   .run{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
-  .run .meta{color:var(--muted);font-size:11px;margin-bottom:4px;display:flex;gap:10px}
+  .run .meta{color:var(--muted);font-size:11px;margin-bottom:4px;display:flex;gap:10px;flex-wrap:wrap}
   .run .text{font-size:15px;line-height:1.5;word-break:break-all}
   .btnrow{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center}
   .btn{background:var(--panel2);color:var(--fg);border:1px solid var(--line);
     padding:7px 14px;border-radius:8px;cursor:pointer;font-size:13px;text-decoration:none;display:inline-block;
-    transition:border-color .15s,color .15s,background .15s,transform .15s}
-  .btn:hover{border-color:var(--accent);color:var(--accent);transform:translateY(-1px)}
+    transition:border-color .15s,color .15s,background .15s,transform .15s,box-shadow .15s}
+  .btn:hover{background:var(--panel);border-color:var(--accent);color:var(--accent);transform:translateY(-1px)}
   .btn.primary:hover,.btn.active:hover{color:var(--ink)}
   .dlbtn:hover{transform:translateY(-1px)}
   .btn.primary{background:var(--accent);color:var(--ink);border-color:var(--accent);font-weight:600}
   .btn.danger{border-color:var(--down);color:var(--down)}
   .btn.danger:hover{background:var(--down);color:#fff}
   .btn.active{background:var(--accent);color:var(--ink);border-color:var(--accent);font-weight:600}
+  button:disabled,.btn:disabled{opacity:.55;cursor:not-allowed;transform:none}
+  button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible{
+    outline:2px solid var(--accent);outline-offset:2px}
   /* report */
   .reportwrap{display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start}
   .cardprev{flex:0 0 auto}
@@ -216,13 +307,28 @@
   .seg{display:inline-flex;gap:4px;background:var(--panel2);border:1px solid var(--line);
     border-radius:8px;padding:3px;align-items:center}
   .seg button{border:0;background:transparent;color:var(--muted);border-radius:6px;
-    padding:6px 10px;font-size:13px;cursor:pointer;font-family:inherit}
+    padding:6px 10px;font-size:13px;cursor:pointer;font-family:inherit;
+    transition:background .15s,color .15s,transform .15s}
+  .seg button:hover{background:var(--panel);color:var(--fg);transform:translateY(-1px)}
   .seg button.active{background:var(--accent);color:var(--ink);font-weight:600}
   .form textarea{min-height:90px;resize:vertical}
   .form .hint{font-size:11px;color:var(--muted);grid-column:2}
   .switch{display:inline-flex;align-items:center;gap:8px;cursor:pointer}
   .relrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   .relrow input{flex:1;min-width:220px}
+  .progwrap{margin:12px 0 4px}
+  .progbar{height:12px;border-radius:7px;background:var(--panel2);border:1px solid var(--line);overflow:hidden}
+  .progbar i{display:block;height:100%;width:0;border-radius:7px;
+    background:linear-gradient(90deg,#ffce33,#36d399);transition:width .25s ease}
+  .proglabel{font-size:12px;color:var(--muted);margin-top:6px}
+  .upsteps{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 6px}
+  .upstep{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:12px;
+    border:1px solid var(--line);background:var(--panel2);border-radius:999px;padding:5px 9px}
+  .upstep:before{content:"";width:7px;height:7px;border-radius:50%;background:var(--muted)}
+  .upstep.on{color:var(--fg);border-color:var(--accent)}
+  .upstep.on:before{background:var(--accent);box-shadow:0 0 0 3px rgba(255,206,51,.16)}
+  .upstep.done{color:var(--up);border-color:rgba(54,211,153,.55)}
+  .upstep.done:before{background:var(--up)}
   .searchbar{display:flex;gap:10px;margin:4px 0;max-width:560px}
   .searchbar input{flex:1;background:var(--panel2);color:var(--fg);border:1px solid var(--line);
     border-radius:8px;padding:9px 12px;font-size:14px;font-family:inherit}
@@ -246,27 +352,78 @@
   .switch input{width:18px;height:18px;accent-color:var(--accent)}
   .saved{color:var(--up);font-size:13px;margin-left:12px}
   #updMsg{font-size:13px;color:var(--muted);margin-top:10px;white-space:pre-wrap;line-height:1.6}
+  .skeleton{position:relative;overflow:hidden;background:var(--panel2)!important;color:transparent!important}
+  .skeleton:after{content:"";position:absolute;inset:0;transform:translateX(-100%);
+    background:linear-gradient(90deg,transparent,rgba(255,255,255,.10),transparent);
+    animation:shine 1.15s infinite}
+  @keyframes shine{to{background-position:-220% 0;transform:translateX(100%)}}
+  .skel-line{height:12px;border-radius:7px;background:var(--panel2);position:relative;overflow:hidden}
+  .skel-line:after{content:"";position:absolute;inset:0;transform:translateX(-100%);
+    background:linear-gradient(90deg,transparent,rgba(255,255,255,.10),transparent);animation:shine 1.15s infinite}
+  .card.skel{min-height:92px}
+  .chart-skel{height:236px;border-radius:12px;border:1px dashed var(--line);background:var(--panel2);
+    display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:13px;position:relative;overflow:hidden}
+  .chart-skel:after{content:"";position:absolute;inset:0;transform:translateX(-100%);
+    background:linear-gradient(90deg,transparent,rgba(255,255,255,.08),transparent);animation:shine 1.15s infinite}
+  @media (max-width:720px){
+    main{padding:18px 14px}
+    .tb-title small{display:none}
+    .rangebar{padding:10px 14px}
+    .custom,.searchbar,.relrow{width:100%}
+    .searchbar{flex-wrap:wrap}
+    .searchbar input{min-width:0}
+    .form{grid-template-columns:1fr;gap:8px;max-width:none}
+    .form .hint{grid-column:1}
+    .datebox{flex:1;min-width:135px}
+    .reportwrap{gap:16px}
+    .cardprev,.reportside{width:100%}
+    .cardprev img{width:100%;max-width:420px}
+    .panel h2 .ctl{margin-left:0;width:100%;justify-content:flex-start}
+  }
 </style>
 </head>
 <body>
-<header>
-  <h1><img class="logo" src="/favicon.png" alt="DuckType"> DuckType <small>码字鸭 · 输入法汉字统计</small></h1>
-  <div class="spacer"></div>
-  <nav class="tabs" id="tabs">
-    <button data-v="board" class="active">看板</button>
-    <button data-v="report">报告</button>
-    <button data-v="sequence">序列</button>
-    <button data-v="search">搜索</button>
-    <button data-v="fun">趣味</button>
-    <button data-v="settings">设置</button>
-  </nav>
-  <a class="iconbtn ghbtn" href="https://github.com/x1324x5/Duck-Type" target="_blank" rel="noopener"
-     title="前往 GitHub 发布页 · 查看更新与源代码">
-    <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
-    <span>发布页</span>
-  </a>
-  <button class="iconbtn" id="themeBtn" title="切换主题">🌙</button>
-</header>
+<div class="titlebar">
+  <div class="tb-drag pywebview-drag-region">
+    <img class="tb-logo" src="duck.png" alt="">
+    <span class="tb-title">码字鸭 <small>DuckType · 输入法汉字统计</small></span>
+  </div>
+  <div class="tb-actions">
+    <a class="iconbtn ghbtn" href="https://github.com/x1324x5/Duck-Type" target="_blank" rel="noopener"
+       title="前往 GitHub 发布页 · 查看更新与源代码">
+      <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+      <span>发布页</span>
+    </a>
+    <button class="iconbtn" id="themeBtn" title="切换主题" aria-label="切换主题">
+      <svg class="line" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v2"/><path d="M12 19v2"/><path d="M4.22 4.22l1.42 1.42"/><path d="M18.36 18.36l1.42 1.42"/><path d="M3 12h2"/><path d="M19 12h2"/><path d="M4.22 19.78l1.42-1.42"/><path d="M18.36 5.64l1.42-1.42"/><circle cx="12" cy="12" r="4"/></svg>
+    </button>
+    <button class="winbtn" id="winMin" title="最小化">—</button>
+    <button class="winbtn" id="winMax" title="最大化 / 还原">□</button>
+    <button class="winbtn close" id="winClose" title="收起到托盘">✕</button>
+  </div>
+</div>
+
+<div class="app">
+  <aside class="sidebar">
+    <nav class="tabs" id="tabs">
+      <button data-v="board" class="active"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5"/><path d="M4 19h16"/><path d="M8 16v-5"/><path d="M13 16V8"/><path d="M18 16v-3"/></svg></span>看板</button>
+      <button data-v="report"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v5h5"/><path d="M9 13h6"/><path d="M9 17h6"/></svg></span>报告</button>
+      <button data-v="sequence"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></svg></span>序列</button>
+      <button data-v="search"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg></span>搜索</button>
+      <button data-v="fun"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 11h12a4 4 0 0 1 4 4v1a3 3 0 0 1-5.2 2.05L15 16H9l-1.8 2.05A3 3 0 0 1 2 16v-1a4 4 0 0 1 4-4z"/><path d="M8 14h.01"/><path d="M11 14h.01"/><path d="M16 14h.01"/><path d="M18 16h.01"/><path d="M9 11V8"/><path d="M15 11V8"/></svg></span>趣味</button>
+      <button data-v="settings"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.05.05a2 2 0 1 1-2.83 2.83l-.05-.05a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.07A1.7 1.7 0 0 0 8.97 19.4a1.7 1.7 0 0 0-1.88.34l-.05.05a2 2 0 1 1-2.83-2.83l.05-.05A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.07A1.7 1.7 0 0 0 4.6 8.97a1.7 1.7 0 0 0-.34-1.88l-.05-.05a2 2 0 1 1 2.83-2.83l.05.05A1.7 1.7 0 0 0 8.97 4.6 1.7 1.7 0 0 0 10 3.07V3a2 2 0 1 1 4 0v.07a1.7 1.7 0 0 0 1.03 1.53 1.7 1.7 0 0 0 1.88-.34l.05-.05a2 2 0 1 1 2.83 2.83l-.05.05a1.7 1.7 0 0 0-.34 1.88 1.7 1.7 0 0 0 1.56 1.03H21a2 2 0 1 1 0 4h-.07A1.7 1.7 0 0 0 19.4 15z"/></svg></span>设置</button>
+    </nav>
+    <div class="sidebar-foot">
+      <button class="topbtn" id="topBtn" title="返回顶部">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 19V5"/><path d="M5 12l7-7 7 7"/>
+        </svg>
+        <span>返回顶部</span>
+      </button>
+    </div>
+  </aside>
+  <div class="content">
 
 <div class="rangebar" id="rangebar">
   <div class="ranges" id="ranges">
@@ -307,15 +464,17 @@
           <div class="s"><b id="streakBest">0</b><small>历史最长</small></div>
           <div class="s"><b id="gTotal">0</b><small>累计字数</small></div>
           <div class="s"><b id="gUnlocked">0</b><small>已解锁成就</small></div>
-        </div>
-      </div>
+  </div>
+</div>
     </div>
 
     <div class="grid">
       <div class="panel wide">
-        <h2>每日输入字数 <span>daily characters</span>
-          <span class="ctl"><button class="dlbtn" data-dl="dailyChart" data-name="daily" title="保存为图片">⬇</button></span>
+        <h2><span id="dailyPanelTitle">每日输入字数</span> <span id="dailyPanelSub">daily characters</span>
+          <span class="ctl" id="dailyChartTools"><button class="dlbtn" data-dl="dailyChart" data-name="daily" title="保存为图片">⬇</button></span>
         </h2>
+        <div class="todaycloud" id="todayCloud" hidden></div>
+        <div class="clouddetail" id="todayCloudDetail"></div>
         <canvas id="dailyChart"></canvas>
       </div>
       <div class="panel wide">
@@ -467,7 +626,7 @@
         <div class="hint">超过该停顿或切换程序就视为新的一段（影响分词）。</div>
         <label>会话间隔（秒）</label><input type="number" id="c-session_gap_seconds" step="5" min="0">
         <label>仪表盘端口</label><input type="number" id="c-dashboard_port" min="1" max="65535">
-        <div class="hint">修改端口需重启 DuckType 才生效。</div>
+        <div class="hint">仅浏览器预览模式使用；修改后需重启 DuckType 生效。</div>
         <label>不统计的程序<br>（每行一个进程名）</label><textarea id="c-blacklist_apps" placeholder="keepass.exe"></textarea>
       </div>
       <div class="btnrow" style="margin-top:16px">
@@ -482,6 +641,13 @@
         <button class="btn primary" id="updApply" style="display:none">⬇ 立即更新并重启</button>
         <a class="btn" id="updPage" target="_blank" style="display:none">前往发布页</a>
       </div>
+      <div id="updBar" class="progwrap" style="display:none"><div class="progbar"><i id="updProg"></i></div><div class="proglabel" id="updProgLabel"></div></div>
+      <div class="upsteps" id="updSteps" style="display:none">
+        <span class="upstep" data-step="check">检查版本</span>
+        <span class="upstep" data-step="download">下载</span>
+        <span class="upstep" data-step="verify">校验</span>
+        <span class="upstep" data-step="restart">重启替换</span>
+      </div>
       <div id="updMsg"></div>
     </div>
 
@@ -491,10 +657,12 @@
       <div class="form" style="margin-top:12px">
         <label>当前数据库</label><div><code id="dbPathShow">—</code></div>
         <label>更改保存位置</label>
-        <span class="relrow"><input type="text" id="c-data_dir" placeholder="留空 = 默认 %APPDATA%\DuckType">
+        <span class="relrow"><input type="text" id="c-data_dir" placeholder="数据文件夹路径">
+        <button class="btn" id="pickDirBtn">选择文件夹…</button>
         <button class="btn" id="relocBtn">移动并应用</button></span>
       </div>
-      <div class="hint">会把现有数据库整体复制到新目录，<b>需要重启 DuckType 生效</b>（设置/日志仍保留在默认目录）。</div>
+      <div class="hint">会把<b>全部数据</b>（数据库、配置、捕获组件等）移动到新文件夹，<b>需要重启 DuckType 生效</b>。重启后会自动清理旧位置。</div>
+      <div id="relocBar" class="progwrap" style="display:none"><div class="progbar"><i id="relocProg"></i></div><div class="proglabel" id="relocProgLabel"></div></div>
       <div id="relocMsg"></div>
       <div class="btnrow" style="margin-top:10px">
         <span class="custom">删除区间 <input type="date" id="del-start"> 至 <input type="date" id="del-end"></span>
@@ -504,8 +672,16 @@
     </div>
   </section>
 
-  <div class="foot"><img id="footDuck" src="/favicon.png" alt="" onerror="this.onerror=null;this.src='/favicon.png'"> <span>数据保存在本机 %APPDATA%\DuckType · 仅本地访问</span></div>
+  <div class="foot"><img id="footDuck" src="duck.png" alt="" onerror="this.onerror=null;this.src='duck.png'"> <span>数据保存在你选择的本机文件夹 · 仅本地访问</span></div>
 </main>
+  </div><!-- /.content -->
+</div><!-- /.app -->
+<button class="backtop" id="topFloat" title="返回顶部" aria-label="返回顶部">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M12 19V5"/><path d="M5 12l7-7 7 7"/>
+  </svg>
+</button>
 
 <script>
 const DOW = ["周日","周一","周二","周三","周四","周五","周六"];
@@ -527,6 +703,11 @@ function applyChartTheme(){
 // brand palette used by charts (kept consistent across both themes)
 const PALETTE = ["#ffce33","#36d399","#ffb454","#ff6b81","#a78bfa","#22d3ee","#f472b6","#facc15","#4ade80","#94a3b8"];
 function chartColors(n){ return Array.from({length:n}, (_, i)=>PALETTE[i % PALETTE.length]); }
+function themeIcon(mode, effective){
+  if(mode === "system") return '<svg class="line" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>';
+  if(effective === "light") return '<svg class="line" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 3v2"/><path d="M12 19v2"/><path d="M4.22 4.22l1.42 1.42"/><path d="M18.36 18.36l1.42 1.42"/><path d="M3 12h2"/><path d="M19 12h2"/><path d="M4.22 19.78l1.42-1.42"/><path d="M18.36 5.64l1.42-1.42"/></svg>';
+  return '<svg class="line" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A7.5 7.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/></svg>';
+}
 // A doughnut dataset with a clear hover/active treatment: a thin gap between
 // slices (panel-coloured border) that turns into a bright white ring and pops
 // the slice outward when hovered, so the segment under the cursor stands out.
@@ -556,8 +737,7 @@ function setThemeMode(mode, persist){
   themeMode = ["system","light","dark"].includes(mode) ? mode : "system";
   const t = effectiveTheme(themeMode);
   document.documentElement.dataset.theme = t;        // "" (dark) or "light"
-  const icon = themeMode === "system" ? "◐" : (t==="light" ? "☀️" : "🌙");
-  document.getElementById("themeBtn").textContent = icon;
+  document.getElementById("themeBtn").innerHTML = themeIcon(themeMode, t);
   document.getElementById("themeBtn").title =
     themeMode === "system" ? "主题：跟随系统" : (themeMode === "light" ? "主题：亮色" : "主题：暗色");
   if(persist) try{ localStorage.setItem("dt-theme-mode", themeMode); }catch(e){}
@@ -587,27 +767,60 @@ document.getElementById("themeMode").addEventListener("click", e=>{
 });
 async function loadDashboardPrefs(){
   try{
-    const c = await fetch("/api/config").then(r=>r.json());
+    const c = await DT.config_get();
     setThemeMode(c.theme_mode || "system", true);
     tickerRefreshSeconds = Math.max(10, Number(c.ticker_refresh_seconds || 60));
   }catch(e){}
 }
 async function saveDashboardPrefs(body){
-  try{
-    await fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify(body)});
-  }catch(e){}
+  try{ await DT.config_set(body); }catch(e){}
 }
 
-function qs(){
-  let q = "range=" + range;
-  if(range === "custom"){ q += "&start=" + (custom.start||"") + "&end=" + (custom.end||""); }
-  return q;
+// ---- backend bridge -------------------------------------------------
+// In the native window data goes straight to Python via pywebview's js_api
+// (no HTTP, no port). In a dev browser it falls back to the Flask shim.
+function isNative(){ return !!(window.pywebview && window.pywebview.api); }
+function nApi(){ return window.pywebview.api; }
+function _post(b){ return {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b)}; }
+function _j(r){ return r.json(); }
+function rangeParams(extra){
+  const p = Object.assign({}, extra||{});
+  p.range = range;
+  if(range === "custom"){ p.start = custom.start||""; p.end = custom.end||""; }
+  return p;
+}
+function qs(){ return new URLSearchParams(rangeParams()).toString(); }
+async function apiGet(endpoint, params){
+  params = params || {};
+  if(isNative()) return await nApi().get(endpoint, params);
+  const u = new URLSearchParams(params).toString();
+  return await fetch("/api/"+endpoint+(u?("?"+u):"")).then(_j);
 }
 async function getJSON(path){
-  const r = await fetch(path + (path.includes("?")?"&":"?") + qs());
-  return r.json();
+  // Accepts the historical "/api/endpoint?a=b" form and routes it to the bridge.
+  const [ep, query] = path.replace(/^\/api\//,"").split("?");
+  const params = rangeParams(Object.fromEntries(new URLSearchParams(query||"")));
+  return apiGet(ep, params);
 }
+const DT = {
+  config_get: ()=> isNative()? nApi().config_get() : fetch("/api/config").then(_j),
+  config_set: (b)=> isNative()? nApi().config_set(b) : fetch("/api/config",_post(b)).then(_j),
+  status: ()=> isNative()? nApi().status() : fetch("/api/status").then(_j),
+  ticker: ()=> apiGet("ticker", {}),
+  quote_seen: (text)=> isNative()? nApi().quote_seen(text) : fetch("/api/quote_seen",_post({text})).then(_j),
+  update_check: ()=> isNative()? nApi().update_check() : fetch("/api/update/check").then(_j),
+  update_apply: ()=> isNative()? nApi().update_apply() : fetch("/api/update/apply",{method:"POST"}).then(_j),
+  update_progress: ()=> isNative()? nApi().update_progress() : fetch("/api/update/progress").then(_j),
+  data_summary: ()=> isNative()? nApi().data_summary() : fetch("/api/data/summary").then(_j),
+  data_pick_dir: ()=> isNative()? nApi().data_pick_dir() : fetch("/api/data/pick_dir",{method:"POST"}).then(_j),
+  data_relocate: (dir)=> isNative()? nApi().data_relocate(dir) : fetch("/api/data/relocate",_post({dir})).then(_j),
+  data_relocate_progress: ()=> isNative()? nApi().data_relocate_progress() : fetch("/api/data/relocate/progress").then(_j),
+  data_clear: ()=> isNative()? nApi().data_clear() : fetch("/api/data/clear",{method:"POST"}).then(_j),
+  data_delete: (start,end)=> isNative()? nApi().data_delete(start,end) : fetch("/api/data/delete",_post({start,end})).then(_j),
+  card_png: (period)=> isNative()? nApi().card_png(period) : Promise.resolve("/api/card?period="+encodeURIComponent(period)+"&t="+Date.now()),
+  save_card: (period)=> isNative()? nApi().save_card(period) : (window.open("/api/card?period="+encodeURIComponent(period)), Promise.resolve({ok:true})),
+  export_sequence: (fmt)=> isNative()? nApi().export_sequence(fmt, rangeParams()) : (window.open("/api/export/sequence."+fmt+"?"+qs()), Promise.resolve({ok:true})),
+};
 function makeBar(id, labels, data, color){
   if(charts[id]) charts[id].destroy();
   charts[id] = new Chart(document.getElementById(id), {
@@ -637,27 +850,56 @@ function makeRankBar(id, labels, data, color, onPick){
               y:{grid:{display:false},ticks:{autoSkip:false,font:{size:12}}}}}
   });
 }
+let chartResizeTimer = null;
+window.addEventListener("resize", ()=>{
+  clearTimeout(chartResizeTimer);
+  chartResizeTimer = setTimeout(()=>{
+    Object.values(charts).forEach(c=>{ try{ c && c.resize(); }catch(e){} });
+  }, 120);
+});
 function gotoSearch(term){
   document.querySelector('#tabs button[data-v="search"]').click();
   const inp = document.getElementById("searchInput");
   inp.value = term; doSearch();
 }
 function escapeHtml(s){return (s||"").replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));}
+function escapeAttr(s){return escapeHtml(s).replace(/["']/g,c=>({"\"":"&quot;","'":"&#39;"}[c]));}
 
 // ---- info tooltips ----
-function setTip(id, html){ const e=document.getElementById(id); if(e) e.innerHTML = '<div class="tip">'+html+'</div>'; }
-setTip("posInfo", "<b>词性标签</b>由分词器自动判定：<br>n 名词 · v 动词 · a 形容词 · d 副词 · m 数词 · q 量词 · r 代词 · p 介词 · c 连词 · t 时间词 · f 方位词 · i 成语 · nr 人名 · ns 地名 · nt 机构。<br>点击任一词性，可下钻查看该类下二字及以上词语的次数与占比。<br><b>助词「u」的细分</b>：uj=结构助词「的」，ul=「了」，ug=「过」，uv=「地」，uz=「着」。");
-setTip("topicInfo", "从这段时间你打过的字里，自动挑出最有代表性的关键词，字号越大代表越突出。数据太少时可能不准。");
-setTip("reportInfo", "卡片由本机生成，可右键或点按钮保存为 PNG，适合发朋友圈 / X / GitHub README。统计基于上屏汉字（粘贴的大段文本不计入）。");
-setTip("idiomInfo", "成语 = 被判定为成语、或四字且全为汉字的词；与普通长词分开统计。");
-setTip("rareInfo", "这里收集你用过、但平时较少见的汉字——它们不在《现代汉语常用字表》的 3500 个常用字之内。常见的语气词、姓氏、地名和外来字已做豁免，所以列出的多是真正难得一见的字。");
+function setTip(id, html){
+  const e=document.getElementById(id);
+  if(!e) return;
+  const old = e.querySelector(".tip");
+  if(old) old.remove();
+  if(!e.firstChild || e.firstChild.nodeType !== Node.TEXT_NODE) e.prepend(document.createTextNode("i"));
+  else e.firstChild.textContent = "i";
+  e.insertAdjacentHTML("beforeend", '<div class="tip" role="tooltip">'+html+'</div>');
+}
+setTip("posInfo", "<b>词性标签</b>来自本机分词结果：<br>n 名词 · v 动词 · a 形容词 · d 副词 · m 数词 · q 量词 · r 代词 · p 介词 · c 连词 · t 时间词 · f 方位词 · i 成语 · nr 人名 · ns 地名 · nt 机构。<br>点击扇区，可以查看该词性下的高频词。<br><b>助词「u」</b>会继续细分为 uj「的」、ul「了」、ug「过」、uv「地」、uz「着」。");
+setTip("topicInfo", "这里会从当前时间范围内提取更有代表性的关键词。字号越大，说明这个词在这段时间越突出；点击词语可查看相关输入记录。");
+setTip("reportInfo", "报告卡片在本机生成，可保存为 PNG。统计只包含正常上屏的输入内容，大段粘贴会被自动忽略。");
+setTip("idiomInfo", "这里展示被识别为成语的词，以及部分符合成语形态的四字中文词。");
+setTip("rareInfo", "这里展示你输入过但不常见的汉字。常见语气词、姓氏、地名和外来字已经做了过滤。");
 
 // ---- tabs ----
+function scrollToTop(smooth=true){
+  window.scrollTo({top:0, behavior:smooth ? "smooth" : "auto"});
+}
+["topBtn","topFloat"].forEach(id=>{
+  const btn = document.getElementById(id);
+  if(btn) btn.addEventListener("click", ()=>scrollToTop(true));
+});
+window.addEventListener("scroll", ()=>{
+  const btn = document.getElementById("topFloat");
+  if(btn) btn.classList.toggle("show", window.scrollY > 360);
+}, {passive:true});
 document.getElementById("tabs").addEventListener("click", e=>{
-  const v = e.target.dataset.v; if(!v) return;
+  const tab = e.target.closest("button[data-v]");
+  const v = tab && tab.dataset.v; if(!v) return;
   document.querySelectorAll("#tabs button").forEach(b=>b.classList.toggle("active", b.dataset.v===v));
   document.querySelectorAll(".view").forEach(s=>s.classList.toggle("active", s.id==="view-"+v));
   document.getElementById("rangebar").style.display = (v==="settings"||v==="report") ? "none" : "flex";
+  scrollToTop(false);
   if(v==="settings") loadSettings();
   else if(v==="sequence") loadSequence();
   else if(v==="fun") loadFun();
@@ -714,6 +956,22 @@ function renderCards(o, trend){
   document.getElementById("since").textContent =
     o.tracking_since ? ("自 " + o.tracking_since + " 起记录") : "暂无数据";
 }
+let boardLoaded = false;
+function setBoardLoading(show){
+  if(!show) return;
+  document.getElementById("cards").innerHTML = Array.from({length:8}, ()=>
+    '<div class="card skel"><div class="skel-line" style="width:58%;height:24px"></div><div class="skel-line" style="width:42%;margin-top:12px"></div></div>'
+  ).join("");
+  document.getElementById("dailyPanelTitle").textContent = "正在整理看板";
+  document.getElementById("dailyPanelSub").textContent = "loading";
+  document.getElementById("dailyChartTools").style.display = "none";
+  document.getElementById("todayCloud").hidden = false;
+  document.getElementById("todayCloud").innerHTML = '<div class="chart-skel">正在加载统计数据…</div>';
+  document.getElementById("todayCloudDetail").className = "clouddetail";
+  document.getElementById("dailyChart").style.display = "none";
+  document.getElementById("heatmap").innerHTML = '<div class="chart-skel">正在生成热力图…</div>';
+  document.getElementById("topics").innerHTML = '<div class="skel-line" style="width:70%"></div><div class="skel-line" style="width:48%;margin-top:10px"></div>';
+}
 function renderHeat(grid){
   let max = 1; grid.forEach(row => row.forEach(v => { if(v>max) max=v; }));
   const emptyBg = cssVar("--cell-empty");
@@ -738,8 +996,92 @@ function renderTopics(rows){
   const el = document.getElementById("topics");
   if(!rows.length){ el.innerHTML = "<div class='empty'>暂无（数据较少时无法提取关键词）</div>"; return; }
   const max = rows[0].weight || 1;
-  el.innerHTML = rows.map(r => `<span class="t" title="点击查看「${escapeHtml(r.word)}」详情" data-w="${escapeHtml(r.word)}" style="font-size:${(13+16*(r.weight/max)).toFixed(0)}px">${escapeHtml(r.word)}</span>`).join("");
+  el.innerHTML = rows.map((r, i) => `<span class="t" title="点击查看「${escapeAttr(r.word)}」详情" data-w="${escapeAttr(r.word)}" style="font-size:${(13+16*(r.weight/max)).toFixed(0)}px;color:${cloudColor(i)}">${escapeHtml(r.word)}</span>`).join("");
   el.querySelectorAll(".t").forEach(t => t.addEventListener("click", ()=>gotoSearch(t.dataset.w)));
+}
+const CLOUD_COLORS = ["#7561f2","#ef426f","#2f7ff0","#ff7a18","#20b86d","#20aaa0","#e747a2","#5868df"];
+function cloudColor(i){ return CLOUD_COLORS[i % CLOUD_COLORS.length]; }
+function renderTodayCloud(words, topics){
+  const el = document.getElementById("todayCloud");
+  document.getElementById("todayCloudDetail").className = "clouddetail";
+  const source = (words && words.length ? words.map(w=>({word:w.word, count:w.count})) :
+    (topics || []).map(t=>({word:t.word, count:t.weight}))).filter(x=>x.word);
+  if(!source.length){
+    el.innerHTML = "<div class='empty'>今天还没有足够的词语数据。</div>";
+    return;
+  }
+  const rows = source.slice(0, 32);
+  const max = Math.max(...rows.map(x=>Number(x.count)||0), 1);
+  const min = Math.min(...rows.map(x=>Number(x.count)||0), max);
+  const span = Math.max(max - min, 1);
+  el.innerHTML = rows.map((r, i)=>{
+    const n = Number(r.count) || min;
+    const t = (n - min) / span;
+    const size = 16 + Math.round(30 * Math.pow(t, .72));
+    const rotate = [-12, 8, -5, 0, 11, -8, 5][i % 7];
+    const label = escapeHtml(r.word);
+    const attr = escapeAttr(r.word);
+    return `<button class="cloudword" type="button" data-w="${attr}" title="查看「${attr}」相关输入" `+
+      `style="font-size:${size}px;color:${cloudColor(i)};--rot:${rotate}deg">${label}</button>`;
+  }).join("") + "<div class='cloudnote'>点击词语查看相关输入</div>";
+  el.querySelectorAll(".cloudword").forEach(btn => {
+    btn.addEventListener("click", ()=>showCloudDetail(btn.dataset.w, btn));
+  });
+}
+async function showCloudDetail(word, btn){
+  document.querySelectorAll("#todayCloud .cloudword").forEach(b=>b.classList.toggle("active", b===btn));
+  const box = document.getElementById("todayCloudDetail");
+  box.className = "clouddetail show loading";
+  box.innerHTML = "";
+  let r;
+  try{ r = await apiGet("search", {...rangeParams(), q: word}); }
+  catch(e){
+    box.className = "clouddetail show";
+    box.innerHTML = `<div class="empty">暂时无法读取「${escapeHtml(word)}」的详情。</div>`;
+    return;
+  }
+  const fmt = ts => ts ? new Date(ts*1000).toLocaleString() : "—";
+  const examples = (r.examples||[]).slice(0,3).map(e=>
+    `<div class="ex"><div class="meta">${fmt(e.ts)} · ${escapeHtml(e.app||"")}</div>`+
+    renderFullExample(e)+`</div>`).join("");
+  box.className = "clouddetail show";
+  box.innerHTML =
+    `<div class="cd-head"><div><div class="cd-title">「${escapeHtml(word)}」出现 ${r.total||0} 次</div>`+
+    `<div class="cd-meta">首次 ${fmt(r.first_seen)} · 最近 ${fmt(r.last_seen)}</div></div>`+
+    `<div class="cd-actions"><button class="btn" id="cloudSearchBtn">查看完整详情</button></div></div>`+
+    (examples ? `<div class="exs">${examples}</div>` : `<div class="empty">当前范围内还没有可展示的上下文。</div>`);
+  document.getElementById("cloudSearchBtn").addEventListener("click", ()=>gotoSearch(word));
+}
+function renderDailyPanel(b){
+  const isToday = range === "today";
+  const title = document.getElementById("dailyPanelTitle");
+  const sub = document.getElementById("dailyPanelSub");
+  const tools = document.getElementById("dailyChartTools");
+  const cloud = document.getElementById("todayCloud");
+  const canvas = document.getElementById("dailyChart");
+  if(charts.dailyChart){ charts.dailyChart.destroy(); charts.dailyChart = null; }
+  if(isToday){
+    title.textContent = "今日主题云";
+    sub.textContent = "today topics";
+    tools.style.display = "none";
+    canvas.style.display = "none";
+    cloud.hidden = false;
+    renderTodayCloud(b.top_words, b.topics);
+    return;
+  }
+  title.textContent = "每日输入字数";
+  sub.textContent = "daily characters";
+  tools.style.display = "flex";
+  cloud.hidden = true;
+  document.getElementById("todayCloudDetail").className = "clouddetail";
+  canvas.style.display = "block";
+  charts.dailyChart = new Chart(canvas, {
+    type:"line",
+    data:{labels:b.daily.map(d=>d.date),
+      datasets:[{data:b.daily.map(d=>d.count),borderColor:"#ffce33",
+        backgroundColor:"rgba(255,206,51,.15)",fill:true,tension:.3,pointRadius:2}]},
+    options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true}}}
+  });
 }
 function renderGamify(g){
   document.getElementById("goalRing").style.setProperty("--p", (g.goal_pct*100).toFixed(0));
@@ -750,10 +1092,15 @@ function renderGamify(g){
   document.getElementById("gUnlocked").textContent = g.unlocked + " / " + g.achievements.length;
   document.getElementById("badges").innerHTML = g.achievements.map(a=>`
     <div class="badge ${a.unlocked?"on":""}">
-      <div class="n">${a.unlocked?"🏅":"🔒"} ${escapeHtml(a.name)}</div>
+      <div class="n"><span class="badgeico">${badgeIcon(a.unlocked)}</span>${escapeHtml(a.name)}</div>
       <div class="dsc">${escapeHtml(a.desc)}</div>
       <div class="bar"><i style="width:${(a.progress*100).toFixed(0)}%"></i></div>
     </div>`).join("");
+}
+function badgeIcon(unlocked){
+  return unlocked
+    ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 21l4-2 4 2v-7"/><circle cx="12" cy="8" r="5"/><path d="M9.5 8l1.7 1.7 3.3-3.4"/></svg>'
+    : '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>';
 }
 let charN = 25, wordN = 25;
 function renderChars(chars){ makeRankBar("charChart", chars.map(c=>c.ch), chars.map(c=>c.count), "#ffce33", gotoSearch); }
@@ -835,31 +1182,26 @@ document.getElementById("posWordN").addEventListener("input", e=>{
 })();
 
 async function refreshBoard(){
-  const [o, trend, daily, chars, words, pos, apps, heat, topics, g] = await Promise.all([
-    getJSON("/api/overview"), getJSON("/api/trend"), getJSON("/api/daily"),
-    getJSON("/api/top_chars?n="+charN), getJSON("/api/top_words?n="+wordN), getJSON("/api/pos"),
-    getJSON("/api/apps?n=12"), getJSON("/api/heatmap"), getJSON("/api/topics?n=30"),
-    getJSON("/api/gamify"),
-  ]);
-  renderCards(o, trend);
-  renderGamify(g);
-  if(charts.dailyChart) charts.dailyChart.destroy();
-  charts.dailyChart = new Chart(document.getElementById("dailyChart"), {
-    type:"line",
-    data:{labels:daily.map(d=>d.date),
-      datasets:[{data:daily.map(d=>d.count),borderColor:"#ffce33",
-        backgroundColor:"rgba(255,206,51,.15)",fill:true,tension:.3,pointRadius:2}]},
-    options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true}}}
-  });
-  renderChars(chars);
-  renderWords(words);
-  loadHourly();
-  makeRankBar("appChart", apps.map(a=>a.app), apps.map(a=>a.count), "#ffb454", openAppDetail);
-  if(appCurrent) openAppDetail(appCurrent);
-  if(posCurrent) loadPosWords(pos.find(p=>p.pos===posCurrent.pos) || posCurrent);
-  else renderPosOverview(pos);
-  renderHeat(heat.grid);
-  renderTopics(topics);
+  if(!boardLoaded) setBoardLoading(true);
+  document.getElementById("refreshBtn").disabled = true;
+  try{
+    const b = await apiGet("board", {...rangeParams(), charN, wordN});
+    renderCards(b.overview, b.trend);
+    renderGamify(b.gamify);
+    renderDailyPanel(b);
+    renderChars(b.top_chars);
+    renderWords(b.top_words);
+    loadHourly();
+    makeRankBar("appChart", b.apps.map(a=>a.app), b.apps.map(a=>a.count), "#ffb454", openAppDetail);
+    if(appCurrent) openAppDetail(appCurrent);
+    if(posCurrent) loadPosWords(b.pos.find(p=>p.pos===posCurrent.pos) || posCurrent);
+    else renderPosOverview(b.pos);
+    renderHeat(b.heatmap.grid);
+    renderTopics(b.topics);
+    boardLoaded = true;
+  } finally {
+    document.getElementById("refreshBtn").disabled = false;
+  }
 }
 
 // ---- per-app drill-down: click an app to see its words + characters ----
@@ -891,8 +1233,8 @@ function fmtHourTick(ts, multiday){
   return multiday ? `${d.getMonth()+1}/${d.getDate()} ${hh}` : `${hh}:00`;
 }
 async function loadHourly(){
-  const q = hourSel==="today" ? "range=today" : "hours="+hourSel;
-  let res; try{ res = await fetch("/api/timeseries?bucket=hour&"+q).then(r=>r.json()); }
+  const params = hourSel==="today" ? {bucket:"hour", range:"today"} : {bucket:"hour", hours:hourSel};
+  let res; try{ res = await apiGet("timeseries", params); }
   catch(e){ return; }
   const pts = res.points || [];
   const span = pts.length ? (pts[pts.length-1].ts - pts[0].ts) : 0;
@@ -961,10 +1303,11 @@ document.getElementById("periodBtns").addEventListener("click", e=>{
   loadReport(curPeriod);
 });
 async function loadReport(period){
-  const t = Date.now();
-  document.getElementById("cardImg").src = "/api/card?period=" + period + "&t=" + t;
-  document.getElementById("cardDl").href = "/api/card?period=" + period;
-  const r = await fetch("/api/report?period=" + period).then(r=>r.json());
+  DT.card_png(period).then(src=>{ document.getElementById("cardImg").src = src; });
+  const cardDl = document.getElementById("cardDl");
+  cardDl.removeAttribute("href");
+  cardDl.onclick = (e)=>{ e.preventDefault(); DT.save_card(period); };
+  const r = await apiGet("report", {period});
   const rows = [];
   rows.push(["这一时段", r.label]);
   rows.push(["上屏汉字", r.chars.toLocaleString() + " 字"]);
@@ -991,7 +1334,9 @@ async function loadSequence(){
     return `<div class="run"><div class="meta"><span>${t}</span><span>${escapeHtml(r.app||"")}</span></div><div class="text">${escapeHtml(r.text)}</div></div>`;
   }).join("");
   ["txt","csv","json"].forEach(f=>{
-    document.getElementById("exp-"+f).href = "/api/export/sequence."+f+"?"+qs();
+    const a = document.getElementById("exp-"+f);
+    a.removeAttribute("href");
+    a.onclick = (e)=>{ e.preventDefault(); DT.export_sequence(f); };
   });
 }
 
@@ -1021,19 +1366,18 @@ const DUCKS = ["01_idle","02_smile","03_wave","04_walk","05_run_fixed","06_jump"
   "12_listen_music","13_dance","14_celebrate","15_read_book_slim","16_coding_laptop_slim",
   "17_hold_heart","18_mailbox","19_wear_hat","20_hat_slip","21_drink_mug",
   "22_eat_cookie_slim","23_peek","24_rest_belly","25_sleep"];
-function duckURL(name){ return "/duck-assets/duck_positioned_assets_v2/svg/" + name + ".svg"; }
+function duckURL(name){ return "ducks/" + name + ".svg"; }
 function randomDuck(pool){ const a = pool || DUCKS; return duckURL(a[Math.floor(Math.random()*a.length)]); }
 function isBlankQuote(msg){ return !(msg||"").replace(/[​\s]+/g,"").length; }
 // Tell the backend a curated quote/phrase was shown (powers quote achievements).
 // Data facts (server-generated, dynamic) are not in tickerPhrases, so they don't count.
 function reportQuoteSeen(msg){
   if(!tickerPhrases.has(msg)) return;
-  try{ fetch("/api/quote_seen",{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({text:msg})}); }catch(e){}
+  try{ DT.quote_seen(msg); }catch(e){}
 }
 async function loadTicker(){
   try{
-    const t = await fetch("/api/ticker").then(r=>r.json());
+    const t = await DT.ticker();
     tickerPhrases = new Set(t.phrases||[]);
     tickerPool = shuffle([...(t.facts||[]), ...(t.phrases||[])].filter(Boolean));
     tickerIdx = 0; tickerAt = Date.now(); tickerReported = -1;
@@ -1046,7 +1390,7 @@ function renderTicker(){
   const msg = tickerPool[tickerIdx % tickerPool.length];
   const blank = isBlankQuote(msg);   // the hidden "留白" easter-egg line
   const duck = blank ? duckURL("25_sleep") : randomDuck();
-  el.innerHTML = `<img src="${duck}" alt="" onerror="this.onerror=null;this.src='/favicon.png'">`+
+  el.innerHTML = `<img src="${duck}" alt="" onerror="this.onerror=null;this.src='duck.png'">`+
     `<div class="bn-text">${blank ? "" : escapeHtml(msg)}</div>`+
     `<button class="bn-refresh" id="bnRefresh" title="换一句">`+
     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"`+
@@ -1077,14 +1421,14 @@ function startTicker(){
 }
 document.addEventListener("click", e=>{ if(e.target.closest("#bnRefresh")) nextTicker(true); });
 async function checkHealth(){
-  let s; try { s = await fetch("/api/status").then(r=>r.json()); } catch(e){ return; }
+  let s; try { s = await DT.status(); } catch(e){ return; }
   const el = document.getElementById("banner");
   if(s.db_recreated){
     clearInterval(factTimer);
     el.className = "banner warn show";
-    el.innerHTML = "⚠️ <b>检测到数据库文件丢失</b>，已自动新建一个空白数据库。"+
-      "若你移动或删除过 <code>%APPDATA%\\DuckType\\ducktype.db</code>，之前的统计数据可能已无法找回。"+
-      "重启码字鸭后此提示会消失。";
+    el.innerHTML = "<b>检测到数据库文件丢失</b>，DuckType 已自动创建新的空白数据库。"+
+      "如果你近期移动或删除过数据文件，旧统计可能无法恢复。"+
+      "重新启动 DuckType 后，此提示会自动消失。";
     return;
   }
   if(s.paused || !s.hook_dll_found || !s.hook_installed ||
@@ -1093,16 +1437,16 @@ async function checkHealth(){
   }
   if(s.paused){
     el.className = "banner warn show";
-    el.innerHTML = "⏸️ <b>统计已暂停</b>。到「设置」取消暂停，或右键托盘小鸭恢复。";
+    el.innerHTML = "<b>统计已暂停</b>。你可以到「设置」取消暂停，也可以通过托盘菜单恢复统计。";
   } else if(!s.hook_dll_found){
     el.className = "banner warn show";
-    el.innerHTML = "⚠️ <b>没找到钩子 DLL</b>，无法记录上屏汉字。请使用 release 版 <code>DuckType.exe</code>，或先运行 <code>native\\build_dll.bat</code>。";
+    el.innerHTML = "<b>缺少输入捕获组件</b>，暂时无法记录上屏汉字。请使用发布版 <code>DuckType.exe</code>，或在源码环境先运行 <code>native\\build_dll.bat</code>。";
   } else if(!s.hook_installed){
     el.className = "banner warn show";
-    el.innerHTML = "⚠️ <b>钩子安装失败</b>。多半是 64/32 位不一致或被安全软件拦截，详见日志 <code>%APPDATA%\\DuckType\\ducktype.log</code>。";
+    el.innerHTML = "<b>输入捕获组件未能启动</b>。常见原因是安全软件拦截，或目标程序与 DuckType 位数不一致。详情可查看 DuckType 日志。";
   } else if((s.chars_captured||0) === 0 && (s.code_units||0) === 0){
     el.className = "banner warn show";
-    el.innerHTML = "🔎 <b>钩子已装，但还没收到任何字符</b>。按 <b>Win+R</b> 打几个字测试；若仍为 0，多半被安全软件拦截或目标是 32 位程序。";
+    el.innerHTML = "<b>输入捕获组件已启动，但还没有收到字符</b>。可以先在记事本里输入几个字测试；如果仍然没有记录，通常是被安全软件拦截或目标程序不兼容。";
   } else {
     // Healthy: show the ticker. Refresh the pool when stale (~3 min) or on first
     // run; otherwise just keep the existing rotation going / resume from a warning.
@@ -1116,7 +1460,7 @@ async function checkHealth(){
 const CFG_BOOL = ["paused","exclude_password_fields","autostart","open_dashboard_on_start"];
 const CFG_NUM = ["daily_goal","retention_days","run_gap_seconds","session_gap_seconds","dashboard_port","ticker_refresh_seconds"];
 async function loadSettings(){
-  const c = await fetch("/api/config").then(r=>r.json());
+  const c = await DT.config_get();
   CFG_BOOL.forEach(k=>document.getElementById("c-"+k).checked = !!c[k]);
   CFG_NUM.forEach(k=>document.getElementById("c-"+k).value = c[k]);
   setThemeMode(c.theme_mode || "system", true);
@@ -1125,25 +1469,37 @@ async function loadSettings(){
   loadDataSummary();
 }
 async function loadDataSummary(){
-  const s = await fetch("/api/data/summary").then(r=>r.json());
+  const s = await DT.data_summary();
   const fmt = ts => ts ? new Date(ts*1000).toLocaleDateString() : "—";
   document.getElementById("dataSummary").textContent =
     `已记录 ${s.char_rows} 个汉字、${s.key_rows} 次按键，时间跨度 ${fmt(s.first_ts)} ~ ${fmt(s.last_ts)}。`;
-  const isDefault = !s.data_dir;
-  document.getElementById("dbPathShow").textContent = s.db_path + (isDefault ? "（默认）" : "");
+  document.getElementById("dbPathShow").textContent = s.db_path + (s.is_default ? "（默认位置）" : "");
   const di = document.getElementById("c-data_dir");
-  if(document.activeElement !== di) di.value = s.data_dir || "";
+  if(document.activeElement !== di && !di.value) di.value = s.data_dir || "";
 }
+function fmtMB(b){ return (Number(b||0)/1048576).toFixed(1)+" MB"; }
+document.getElementById("pickDirBtn").addEventListener("click", async ()=>{
+  let r; try{ r = await DT.data_pick_dir(); }catch(e){ return; }
+  if(r && r.dir) document.getElementById("c-data_dir").value = r.dir;
+});
 document.getElementById("relocBtn").addEventListener("click", async ()=>{
   const dir = document.getElementById("c-data_dir").value.trim();
   const msg = document.getElementById("relocMsg");
-  const label = dir || "默认目录（%APPDATA%\\DuckType）";
-  if(!confirm(`将把数据库复制到：\n${label}\n\n复制后需重启 DuckType 生效。继续？`)) return;
-  msg.textContent = "正在移动数据…";
-  let r; try{ r = await fetch("/api/data/relocate",{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({dir})}).then(x=>x.json()); }catch(e){ r={ok:false,error:"请求失败"}; }
-  if(r.ok){ msg.innerHTML = `✓ 数据已复制到 <code>${escapeHtml(r.db_path)}</code>。请<b>退出并重新启动 DuckType</b> 以使用新位置。`; loadDataSummary(); }
-  else { msg.textContent = "移动失败：" + (r.error || "未知错误"); }
+  if(!dir){ msg.textContent = "请先选择目标文件夹。"; return; }
+  if(!confirm(`将把全部数据移动到：\n${dir}\n\n移动后需重启 DuckType 生效。继续？`)) return;
+  const bar = document.getElementById("relocBar"), prog = document.getElementById("relocProg"), lbl = document.getElementById("relocProgLabel");
+  msg.textContent = ""; bar.style.display = "block"; prog.style.width = "0%"; lbl.textContent = "准备中…";
+  let r; try{ r = await DT.data_relocate(dir); }catch(e){ r={ok:false,error:"请求失败"}; }
+  if(!r.ok && !r.started){ bar.style.display="none"; msg.textContent = "移动失败：" + (r.error || "未知错误"); return; }
+  const poll = setInterval(async ()=>{
+    let p; try{ p = await DT.data_relocate_progress(); }catch(e){ return; }
+    const pct = p.total ? Math.min(100, Math.round(p.done*100/p.total)) : (p.phase==="done"?100:0);
+    prog.style.width = pct + "%";
+    lbl.textContent = `${pct}%　${fmtMB(p.done)} / ${fmtMB(p.total)}`;
+    if(p.phase==="done"){ clearInterval(poll); prog.style.width="100%";
+      msg.innerHTML = `✓ 全部数据已移动到 <code>${escapeHtml(r.db_path||dir)}</code>。请<b>退出并重新启动 DuckType</b> 以使用新位置（重启后会自动清理旧位置）。`; loadDataSummary(); }
+    else if(p.phase==="error"){ clearInterval(poll); bar.style.display="none"; msg.textContent = "移动失败：" + (p.error||"未知错误"); }
+  }, 400);
 });
 
 // ---- search ----
@@ -1204,63 +1560,139 @@ document.getElementById("cfgSave").addEventListener("click", async ()=>{
   CFG_NUM.forEach(k=>body[k]=Number(document.getElementById("c-"+k).value));
   body.theme_mode = themeMode;
   body.blacklist_apps = document.getElementById("c-blacklist_apps").value.split("\n").map(s=>s.trim()).filter(Boolean);
-  const res = await fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}).then(r=>r.json());
+  const res = await DT.config_set(body);
   tickerRefreshSeconds = Math.max(10, Number(body.ticker_refresh_seconds || 60));
   resetTickerTimer();
   const saved = document.getElementById("cfgSaved");
-  saved.textContent = res.restart_required ? "已保存（端口改动需重启）✓" : "已保存 ✓";
+  saved.textContent = res.restart_required ? "已保存（部分改动需重启）✓" : "已保存 ✓";
   saved.style.display = "inline"; setTimeout(()=>saved.style.display="none", 3000);
 });
 document.getElementById("clearAll").addEventListener("click", async ()=>{
   if(!confirm("确定清空全部已记录数据？此操作不可恢复。")) return;
-  const r = await fetch("/api/data/clear",{method:"POST"}).then(r=>r.json());
+  const r = await DT.data_clear();
   alert(`已删除 ${r.deleted} 个汉字。`); loadDataSummary();
 });
 document.getElementById("delRange").addEventListener("click", async ()=>{
   const s = document.getElementById("del-start").value, e = document.getElementById("del-end").value;
   if(!s && !e){ alert("请选择起止日期。"); return; }
   if(!confirm(`确定删除 ${s||"最早"} 至 ${e||"最新"} 的数据？`)) return;
-  const r = await fetch("/api/data/delete",{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({start:s,end:e})}).then(r=>r.json());
+  const r = await DT.data_delete(s, e);
   alert(`已删除 ${r.deleted} 个汉字。`); loadDataSummary();
 });
 
 // ---- updates ----
+function setUpdateSteps(active, done){
+  const wrap = document.getElementById("updSteps");
+  wrap.style.display = "flex";
+  const order = ["check","download","verify","restart"];
+  const doneSet = new Set(done || []);
+  wrap.querySelectorAll(".upstep").forEach(s=>{
+    const key = s.dataset.step;
+    s.classList.toggle("done", doneSet.has(key));
+    s.classList.toggle("on", key === active);
+  });
+}
+function resetUpdateUi(){
+  document.getElementById("updBar").style.display = "none";
+  document.getElementById("updProg").style.width = "0%";
+  document.getElementById("updProgLabel").textContent = "";
+  document.getElementById("updSteps").style.display = "none";
+  document.getElementById("updApply").disabled = false;
+}
 document.getElementById("updCheck").addEventListener("click", async ()=>{
   const msg = document.getElementById("updMsg");
-  msg.textContent = "正在检查…";
-  let r; try{ r = await fetch("/api/update/check").then(x=>x.json()); }catch(e){ msg.textContent="检查失败：网络不可用。"; return; }
+  resetUpdateUi();
+  setUpdateSteps("check", []);
+  msg.textContent = "正在连接发布页，检查是否有新版本…";
+  let r; try{ r = await DT.update_check(); }catch(e){ msg.textContent="检查失败：网络不可用。"; return; }
   const applyBtn = document.getElementById("updApply"), pageBtn = document.getElementById("updPage");
   applyBtn.style.display = "none"; pageBtn.style.display = "none";
-  if(!r.ok){ msg.textContent = "当前版本 v"+r.current+"。检查失败：" + (r.error||"") + "\n可手动到发布页查看。"; pageBtn.href=r.releases_url; pageBtn.style.display="inline-block"; return; }
+  if(!r.ok){
+    setUpdateSteps(null, []);
+    msg.textContent = "当前版本 v"+r.current+"。检查失败：" + (r.error||"") + "\n你仍然可以打开发布页手动查看。";
+    pageBtn.href=r.releases_url; pageBtn.style.display="inline-block"; return;
+  }
   if(r.has_update){
-    msg.textContent = `发现新版本 v${r.latest}（当前 v${r.current}）。\n更新说明：\n${(r.notes||"").slice(0,500)}`;
+    setUpdateSteps(null, ["check"]);
+    msg.textContent = `发现新版本 v${r.latest}（当前 v${r.current}）。\n\n更新说明：\n${(r.notes||"").slice(0,500) || "发布页暂未提供更新说明。"}`;
     pageBtn.href = r.html_url; pageBtn.style.display = "inline-block";
     if(r.frozen) applyBtn.style.display = "inline-block";
   } else {
+    setUpdateSteps(null, ["check"]);
     msg.textContent = `已是最新版本 v${r.current}。`;
   }
 });
 document.getElementById("updApply").addEventListener("click", async ()=>{
-  if(!confirm("将下载新版本并重启 DuckType，确定？")) return;
+  if(!confirm("将下载新版本，下载完成后 DuckType 会自动重启完成更新。确定？")) return;
   const msg = document.getElementById("updMsg");
-  msg.textContent = "正在下载并准备更新，DuckType 即将自动重启…";
-  let r; try{ r = await fetch("/api/update/apply",{method:"POST"}).then(x=>x.json()); }catch(e){ r={ok:false,error:"网络中断"}; }
-  if(r.ok && r.pending){
-    const mb = r.size ? (r.size/1048576).toFixed(1)+" MB" : "";
-    msg.innerHTML = `✓ 新版本已下载${mb?("（"+mb+"）"):""}：<br><code>${escapeHtml(r.path||"")}</code><br>`+
-      `退出时将自动替换 <code>${escapeHtml(r.target||"")}</code> 并重新启动。<br>`+
-      `DuckType 即将退出更新，几秒后托盘里会重新出现小鸭子 🦆（若没出现，可手动双击上面的程序）。`;
+  const bar = document.getElementById("updBar"), prog = document.getElementById("updProg"), lbl = document.getElementById("updProgLabel");
+  document.getElementById("updApply").disabled = true;
+  setUpdateSteps("download", ["check"]);
+  msg.textContent = "下载完成后会先校验文件，再退出当前程序并替换为新版本。";
+  bar.style.display = "block"; prog.style.width = "0%"; lbl.textContent = "准备下载…";
+  let r; try{ r = await DT.update_apply(); }catch(e){ r={ok:false,error:"网络中断"}; }
+  if(!r.ok && !r.started){
+    bar.style.display="none"; document.getElementById("updApply").disabled=false;
+    setUpdateSteps(null, ["check"]);
+    msg.textContent = "更新失败：" + (r.error||"未知错误");
+    return;
   }
-  else { msg.textContent = "更新失败：" + (r.error||"未知错误"); }
+  const poll = setInterval(async ()=>{
+    let p; try{ p = await DT.update_progress(); }catch(e){ return; }
+    if(p.phase==="downloading"||p.phase==="verifying"){
+      const pct = p.total ? Math.min(100, Math.round(p.downloaded*100/p.total)) : 0;
+      setUpdateSteps(p.phase==="verifying" ? "verify" : "download",
+        p.phase==="verifying" ? ["check","download"] : ["check"]);
+      prog.style.width = (p.total?pct:30) + "%";
+      lbl.textContent = p.phase==="verifying" ? "正在校验下载文件…" :
+        (p.total ? `下载中 ${pct}%　${fmtMB(p.downloaded)} / ${fmtMB(p.total)}` : `下载中 ${fmtMB(p.downloaded)}…`);
+    } else if(p.phase==="staged"){
+      clearInterval(poll); prog.style.width="100%"; lbl.textContent="下载完成，正在准备重启";
+      setUpdateSteps("restart", ["check","download","verify"]);
+      let left = 2;
+      msg.innerHTML = `✓ 新版本已下载并校验完成。DuckType 会在 <b>${left}</b> 秒后退出，随后自动替换并重新启动。<br>`+
+        `托盘图标重新出现后，即表示更新完成（程序名仍是 <code>DuckType.exe</code>）。`;
+      const countdown = setInterval(()=>{
+        left -= 1;
+        if(left <= 0){ clearInterval(countdown); return; }
+        msg.innerHTML = `✓ 新版本已下载并校验完成。DuckType 会在 <b>${left}</b> 秒后退出，随后自动替换并重新启动。<br>`+
+          `托盘图标重新出现后，即表示更新完成（程序名仍是 <code>DuckType.exe</code>）。`;
+      }, 1000);
+    } else if(p.phase==="error"){
+      clearInterval(poll); bar.style.display="none"; document.getElementById("updApply").disabled=false;
+      setUpdateSteps(null, ["check"]);
+      msg.textContent = "更新失败：" + (p.error||"未知错误");
+    }
+  }, 500);
 });
 
+// ---- window controls (frameless titlebar) ----
+function wireWindowButtons(){
+  const min = document.getElementById("winMin"), max = document.getElementById("winMax"),
+        close = document.getElementById("winClose");
+  if(!isNative()){
+    [min,max,close].forEach(b=>{ if(b) b.style.display = "none"; });
+    return;
+  }
+  [min,max,close].forEach(b=>{ if(b) b.style.display = ""; });
+  min.onclick = ()=> nApi().window_minimize();
+  max.onclick = async ()=>{
+    const r = await nApi().window_toggle_maximize();
+    max.textContent = r && r.maximized ? "❐" : "□";
+  };
+  close.onclick = ()=> nApi().window_hide();   // hide to tray; capture keeps running
+  document.querySelector(".tb-drag").ondblclick = ()=> max.click();
+}
+// pywebview injects the bridge slightly after load; wire when it's ready.
+if(isNative()) wireWindowButtons();
+else window.addEventListener("pywebviewready", wireWindowButtons);
+setTimeout(wireWindowButtons, 1200);   // belt-and-suspenders for the browser case
+
 // ---- boot ----
-try{ const fd=document.getElementById("footDuck"); fd.onerror=()=>{fd.onerror=null;fd.src="/favicon.png";}; fd.src=randomDuck(); }catch(e){}
+try{ const fd=document.getElementById("footDuck"); fd.onerror=()=>{fd.onerror=null;fd.src="duck.png";}; fd.src=randomDuck(); }catch(e){}
 loadDashboardPrefs().then(()=>resetTickerTimer());
 refreshBoard();
 checkHealth();
-loadReport(curPeriod);
 setInterval(()=>{ if(document.querySelector("#tabs button.active").dataset.v==="board") refreshBoard(); }, 30000);
 setInterval(checkHealth, 20000);
 </script>

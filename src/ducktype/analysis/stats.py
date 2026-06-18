@@ -1174,15 +1174,15 @@ def ticker(db, run_gap: float, session_gap: float, daily_goal: int) -> Dict:
         today, goal = g["today_chars"], g["daily_goal"]
         if today > 0:
             facts.append(
-                f"今天已码 {today:,} 字，达成今日目标，鸭嘎！🎉" if today >= goal
-                else f"今天已码 {today:,} 字，距今日目标还差 {goal - today:,} 字，冲鸭！")
+                f"今天已输入 {today:,} 字，已经达成今日目标。" if today >= goal
+                else f"今天已输入 {today:,} 字，距离今日目标还差 {goal - today:,} 字。")
         if g["streak_current"] > 0:
             facts.append(f"已连续码字 {g['streak_current']} 天，最长纪录 {g['streak_best']} 天。")
         if g["total_chars"] > 0:
             facts.append(f"到目前为止，你一共码了 {g['total_chars']:,} 个汉字。")
         nxt = next((a for a in g["achievements"] if not a["unlocked"]), None)
         if nxt:
-            facts.append(f"再加把劲，就能解锁成就「{nxt['name']}」：{nxt['desc']}。")
+            facts.append(f"继续积累，就能解锁成就「{nxt['name']}」：{nxt['desc']}。")
         since, until, _ps, _pe, _lbl = period_bounds("today")
         ph, _cnt = _peak_hour(db, since, until)
         if ph is not None:
