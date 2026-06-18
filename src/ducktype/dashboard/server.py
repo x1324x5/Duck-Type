@@ -53,6 +53,15 @@ def create_app(db, config, status_fn=None, on_quit=None) -> Flask:
     def api_update_progress():
         return jsonify(api.update_progress())
 
+    # ---- on-demand full report -----------------------------------------
+    @app.route("/api/report/generate", methods=["POST"])
+    def api_report_generate():
+        return jsonify(api.report_generate(request.get_json(force=True, silent=True) or {}))
+
+    @app.route("/api/report/progress")
+    def api_report_progress():
+        return jsonify(api.report_progress())
+
     # ---- config ---------------------------------------------------------
     @app.route("/api/config", methods=["GET"])
     def api_config_get():

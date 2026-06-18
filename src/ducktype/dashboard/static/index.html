@@ -272,6 +272,37 @@
   .badge .dsc{color:var(--muted);font-size:11px;margin:4px 0 8px}
   .badge .bar{height:5px;border-radius:3px;background:var(--track);overflow:hidden}
   .badge .bar i{display:block;height:100%;background:var(--accent)}
+  .badge .when{color:var(--muted);font-size:10.5px;margin-top:7px;display:flex;align-items:center;gap:5px}
+  .badge .when svg{width:11px;height:11px;stroke:currentColor;fill:none;stroke-width:2;
+    stroke-linecap:round;stroke-linejoin:round;opacity:.8}
+  /* achievements: sections + paging */
+  .achSection{margin-top:6px}
+  .achHead{display:flex;align-items:baseline;gap:10px;margin:18px 0 10px}
+  .achHead:first-child{margin-top:4px}
+  .achHead h3{font-size:15px;margin:0}
+  .achHead .cnt{color:var(--muted);font-size:12px}
+  .achCats{display:flex;gap:6px;flex-wrap:wrap;margin-left:auto}
+  .achCat{font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:999px;
+    padding:2px 9px;cursor:pointer;background:var(--panel2)}
+  .achCat.active{color:var(--ink);background:var(--accent);border-color:var(--accent)}
+  .pager{display:flex;align-items:center;gap:10px;justify-content:center;margin-top:14px}
+  .pager .pinfo{color:var(--muted);font-size:12px;min-width:64px;text-align:center}
+  /* toast */
+  #toastHost{position:fixed;right:18px;bottom:18px;z-index:9999;display:flex;
+    flex-direction:column;gap:10px;align-items:flex-end;pointer-events:none}
+  .toast{pointer-events:auto;background:var(--panel);border:1px solid var(--accent);
+    border-radius:14px;padding:13px 14px;min-width:248px;max-width:320px;
+    box-shadow:0 12px 34px rgba(0,0,0,.32);display:flex;gap:11px;align-items:flex-start;
+    transform:translateY(14px) scale(.97);opacity:0;transition:transform .28s,opacity .28s}
+  .toast.show{transform:none;opacity:1}
+  .toast img{width:40px;height:40px;flex:0 0 40px}
+  .toast .tbody{flex:1;min-width:0}
+  .toast .ttag{color:var(--accent);font-size:11px;font-weight:600;letter-spacing:.04em}
+  .toast .tname{font-weight:700;font-size:15px;margin:1px 0}
+  .toast .tdsc{color:var(--muted);font-size:12px}
+  .toast .tclose{pointer-events:auto;background:none;border:none;color:var(--muted);
+    cursor:pointer;font-size:17px;line-height:1;padding:2px 4px;border-radius:6px}
+  .toast .tclose:hover{color:var(--fg)}
   /* lists */
   .chips{display:flex;flex-wrap:wrap;gap:8px}
   .chip{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:5px 10px;font-size:13px}
@@ -302,6 +333,21 @@
   .reportside{flex:1;min-width:240px}
   .rrow{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--line);font-size:14px}
   .rrow span{color:var(--muted)} .rrow b{font-weight:600}
+  .narrative{font-size:16.5px;line-height:1.8;background:var(--panel2);border:1px solid var(--line);
+    border-left:4px solid var(--accent);border-radius:12px;padding:16px 18px;margin:4px 0 18px}
+  .narrative.skel{color:transparent;background-image:none}
+  /* rich report sections */
+  .repGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;margin-top:6px}
+  .repGroup{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:14px}
+  .repGroup h4{margin:0 0 4px;font-size:14px;display:flex;align-items:center;gap:7px}
+  .repGroup h4 .tag{font-size:11px;color:var(--ink);background:var(--accent);border-radius:6px;padding:1px 7px}
+  .repGroup .gh{color:var(--muted);font-size:11.5px;margin-bottom:10px}
+  .repStats{display:flex;gap:22px;flex-wrap:wrap;margin:4px 0 14px}
+  .repStats .s b{font-size:22px;display:block} .repStats .s small{color:var(--muted);font-size:12px}
+  .nw{display:inline-flex;align-items:center;background:var(--panel);border:1px solid var(--line);
+    border-radius:999px;padding:3px 11px;font-size:13px;margin:0 6px 6px 0}
+  .nw b{color:var(--accent);margin-left:6px;font-size:11px}
+  .nw.fresh{border-color:var(--accent)}
   /* settings form */
   .form{display:grid;grid-template-columns:220px 1fr;gap:14px 18px;align-items:center;max-width:720px}
   .form label{color:var(--muted);font-size:13px}
@@ -549,13 +595,16 @@
   <!-- ======================= REPORT ======================= -->
   <section class="view" id="view-report">
     <div class="panel">
-      <h2>报告卡片 <span>shareable cards</span><i class="info" id="reportInfo">i</i></h2>
+      <h2>报告 <span>your typing report</span><i class="info" id="reportInfo">i</i></h2>
       <div class="btnrow" id="periodBtns">
         <button class="btn active" data-p="today">今日小结</button>
         <button class="btn" data-p="week">本周周报</button>
         <button class="btn" data-p="month">本月月报</button>
         <button class="btn" data-p="year">年度报告</button>
+        <span class="custom">自定义 <input type="date" id="rep-start"> 至 <input type="date" id="rep-end">
+        <button class="btn" id="rep-apply">查看</button></span>
       </div>
+      <div class="narrative" id="reportNarrative"></div>
       <div class="reportwrap">
         <div class="cardprev">
           <img id="cardImg" alt="report card">
@@ -563,6 +612,16 @@
         </div>
         <div class="reportside" id="reportRows"></div>
       </div>
+    </div>
+
+    <div class="panel">
+      <h2>完整报告 <span>word-level deep dive</span></h2>
+      <div class="hint" id="repGenHint">点击下方按钮，深入分析这段时间的新词、回归词、高频双字 / 三字词、长词榜、词性与主题。首次分析可能需要几秒。</div>
+      <div class="btnrow" style="margin-top:12px">
+        <button class="btn primary" id="genReportBtn">⚙ 生成完整报告</button>
+      </div>
+      <div id="repProgWrap" class="progwrap" style="display:none"><div class="progbar"><i id="repProg"></i></div><div class="proglabel" id="repProgLabel"></div></div>
+      <div id="repRich"></div>
     </div>
   </section>
 
@@ -582,8 +641,9 @@
   <!-- ======================= FUN ======================= -->
   <section class="view" id="view-fun">
     <div class="panel">
-      <h2>成就 <span>achievements</span></h2>
-      <div class="badges" id="badges"></div>
+      <h2>成就 <span>achievements</span> <span class="saved" id="gUnlockedTop" style="display:none"></span></h2>
+      <div class="achCats" id="achCats" style="margin:2px 0 4px"></div>
+      <div id="achievements"></div>
     </div>
     <div class="grid">
       <div class="panel"><h2>成语 <span>idioms</span><i class="info" id="idiomInfo">i</i></h2><div class="chips" id="idioms"></div></div>
@@ -686,6 +746,7 @@
     <path d="M12 19V5"/><path d="M5 12l7-7 7 7"/>
   </svg>
 </button>
+<div id="toastHost" aria-live="polite"></div>
 
 <script>
 const DOW = ["周日","周一","周二","周三","周四","周五","周六"];
@@ -835,6 +896,8 @@ const DT = {
   card_png: (period)=> isNative()? nApi().card_png(period) : Promise.resolve("/api/card?period="+encodeURIComponent(period)+"&t="+Date.now()),
   save_card: (period)=> isNative()? nApi().save_card(period) : (window.open("/api/card?period="+encodeURIComponent(period)), Promise.resolve({ok:true})),
   export_sequence: (fmt)=> isNative()? nApi().export_sequence(fmt, rangeParams()) : (window.open("/api/export/sequence."+fmt+"?"+qs()), Promise.resolve({ok:true})),
+  report_generate: (p)=> isNative()? nApi().report_generate(p) : fetch("/api/report/generate",_post(p)).then(_j),
+  report_progress: ()=> isNative()? nApi().report_progress() : fetch("/api/report/progress").then(_j),
 };
 function makeBar(id, labels, data, color){
   if(charts[id]) charts[id].destroy();
@@ -919,7 +982,7 @@ document.getElementById("tabs").addEventListener("click", e=>{
   if(v==="settings") loadSettings();
   else if(v==="sequence") loadSequence();
   else if(v==="fun") loadFun();
-  else if(v==="report") loadReport(curPeriod);
+  else if(v==="report") loadReportCurrent();
   else if(v==="search") document.getElementById("searchInput").focus();
 });
 
@@ -943,7 +1006,7 @@ function refreshActive(){
   if(v==="board") refreshBoard();
   else if(v==="sequence") loadSequence();
   else if(v==="fun") loadFun();
-  else if(v==="report") loadReport(curPeriod);
+  else if(v==="report") loadReportCurrent();
   else if(v==="search"){ if(document.getElementById("searchInput").value.trim()) doSearch(); }
 }
 
@@ -1179,24 +1242,118 @@ function renderDailyPanel(b){
     options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true}}}
   });
 }
+let gamifyReqSeq = 0;
+async function loadGamify(){
+  const seq = ++gamifyReqSeq;
+  try{
+    const g = await apiGet("gamify", {});
+    if(seq !== gamifyReqSeq) return;
+    renderGamify(g);
+  }catch(e){}
+}
+const ACH_PAGE = 8;
+let achFilter = "all", achPage = {locked:0, unlocked:0};
 function renderGamify(g){
+  window.__gamify = g;
   document.getElementById("goalRing").style.setProperty("--p", (g.goal_pct*100).toFixed(0));
   document.getElementById("goalPct").textContent = (g.goal_pct*100).toFixed(0) + "%";
   document.getElementById("streakCur").textContent = g.streak_current;
   document.getElementById("streakBest").textContent = g.streak_best;
-  document.getElementById("gTotal").textContent = g.total_chars;
+  document.getElementById("gTotal").textContent = (g.total_chars||0).toLocaleString();
   document.getElementById("gUnlocked").textContent = g.unlocked + " / " + g.achievements.length;
-  document.getElementById("badges").innerHTML = g.achievements.map(a=>`
-    <div class="badge ${a.unlocked?"on":""}">
-      <div class="n"><span class="badgeico">${badgeIcon(a.unlocked)}</span>${escapeHtml(a.name)}</div>
-      <div class="dsc">${escapeHtml(a.desc)}</div>
-      <div class="bar"><i style="width:${(a.progress*100).toFixed(0)}%"></i></div>
-    </div>`).join("");
+  const top = document.getElementById("gUnlockedTop");
+  if(top){ top.style.display = ""; top.textContent = "已解锁 " + g.unlocked + " / " + g.achievements.length; }
+  maybeToast(g.achievements);
+  renderAchievements(g.achievements);
+}
+function achDate(ts){
+  if(!ts) return "";
+  const d = new Date(ts*1000);
+  const p = n=>String(n).padStart(2,"0");
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
 }
 function badgeIcon(unlocked){
   return unlocked
     ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 21l4-2 4 2v-7"/><circle cx="12" cy="8" r="5"/><path d="M9.5 8l1.7 1.7 3.3-3.4"/></svg>'
     : '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>';
+}
+function badgeHTML(a){
+  const when = a.unlocked
+    ? `<div class="when"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>${a.unlocked_at?achDate(a.unlocked_at):"已解锁"}</div>`
+    : `<div class="bar"><i style="width:${(a.progress*100).toFixed(0)}%"></i></div>`;
+  return `<div class="badge ${a.unlocked?"on":""}">
+      <div class="n"><span class="badgeico">${badgeIcon(a.unlocked)}</span>${escapeHtml(a.name)}</div>
+      <div class="dsc">${escapeHtml(a.desc)}</div>
+      ${when}
+    </div>`;
+}
+function renderAchievements(all){
+  // category filter chips
+  const cats = ["all", ...Array.from(new Set(all.map(a=>a.category||"其他")))];
+  document.getElementById("achCats").innerHTML = cats.map(c=>
+    `<span class="achCat ${c===achFilter?"active":""}" data-cat="${escapeAttr(c)}">${c==="all"?"全部":escapeHtml(c)}</span>`).join("");
+  const list = achFilter==="all" ? all : all.filter(a=>(a.category||"其他")===achFilter);
+  const unlocked = list.filter(a=>a.unlocked).sort((x,y)=>(y.unlocked_at||0)-(x.unlocked_at||0));
+  const locked = list.filter(a=>!a.unlocked).sort((x,y)=>y.progress-x.progress);
+  document.getElementById("achievements").innerHTML =
+    sectionHTML("已解锁", "unlocked", unlocked) + sectionHTML("未解锁", "locked", locked);
+}
+function sectionHTML(title, key, items){
+  if(!items.length) return "";
+  const pages = Math.max(1, Math.ceil(items.length/ACH_PAGE));
+  if(achPage[key] >= pages) achPage[key] = pages-1;
+  const pg = achPage[key];
+  const slice = items.slice(pg*ACH_PAGE, pg*ACH_PAGE+ACH_PAGE);
+  const pager = pages>1 ? `<div class="pager">
+      <button class="btn" data-ach-pg="${key}" data-dir="-1" ${pg<=0?"disabled":""}>← 上一页</button>
+      <span class="pinfo">${pg+1} / ${pages}</span>
+      <button class="btn" data-ach-pg="${key}" data-dir="1" ${pg>=pages-1?"disabled":""}>下一页 →</button>
+    </div>` : "";
+  return `<div class="achSection">
+      <div class="achHead"><h3>${title}</h3><span class="cnt">${items.length} 个</span></div>
+      <div class="badges">${slice.map(badgeHTML).join("")}</div>
+      ${pager}
+    </div>`;
+}
+// category + paging interactions (delegated)
+document.getElementById("achCats").addEventListener("click", e=>{
+  const c = e.target.closest(".achCat"); if(!c) return;
+  achFilter = c.dataset.cat; achPage = {locked:0, unlocked:0};
+  if(window.__gamify) renderAchievements(window.__gamify.achievements);
+});
+document.getElementById("achievements").addEventListener("click", e=>{
+  const b = e.target.closest("[data-ach-pg]"); if(!b) return;
+  const key = b.dataset.achPg;
+  achPage[key] = (achPage[key]||0) + (+b.dataset.dir);
+  if(window.__gamify) renderAchievements(window.__gamify.achievements);
+});
+// ---- achievement toast (bottom-right) ----
+function maybeToast(achievements){
+  let known = null;
+  try{ known = JSON.parse(localStorage.getItem("dt-ach-known")||"null"); }catch(e){}
+  const nowUnlocked = achievements.filter(a=>a.unlocked).map(a=>a.id);
+  if(Array.isArray(known)){
+    const set = new Set(known);
+    achievements.filter(a=>a.unlocked && !set.has(a.id))
+      .forEach(a=>showToast(a));
+  }
+  try{ localStorage.setItem("dt-ach-known", JSON.stringify(nowUnlocked)); }catch(e){}
+}
+function showToast(a){
+  const host = document.getElementById("toastHost");
+  const el = document.createElement("div");
+  el.className = "toast";
+  el.innerHTML = `<img src="${randomDuck()}" alt="" onerror="this.onerror=null;this.src='duck.png'">
+    <div class="tbody"><div class="ttag">🎉 成就达成</div>
+      <div class="tname">${escapeHtml(a.name)}</div>
+      <div class="tdsc">${escapeHtml(a.desc)}</div></div>
+    <button class="tclose" title="关闭" aria-label="关闭">×</button>`;
+  host.appendChild(el);
+  requestAnimationFrame(()=>el.classList.add("show"));
+  let timer = setTimeout(close, 8000);
+  function close(){ clearTimeout(timer); el.classList.remove("show");
+    setTimeout(()=>el.remove(), 300); }
+  el.querySelector(".tclose").addEventListener("click", close);
 }
 let charN = 25, wordN = 25;
 function renderChars(chars){ makeRankBar("charChart", chars.map(c=>c.ch), chars.map(c=>c.count), "#ffce33", gotoSearch); }
@@ -1287,7 +1444,7 @@ async function refreshBoard(){
     const b = await apiGet("board_fast", params);
     if(seq !== boardReqSeq) return;
     renderCards(b.overview, b.trend);
-    renderGamify(b.gamify);
+    loadGamify();   // range-independent; fetched off the hot path so switching scales stays snappy
     if(range !== "today") renderDailyPanel(b);
     else setBoardHeavyLoading();
     renderChars(b.top_chars);
@@ -1406,57 +1563,149 @@ document.addEventListener("click", e=>{
 
 // ---- report ----
 let curPeriod = "today";
+let repParams = {period:"today"};   // {period} or {period:"custom", start, end}
 let reportReqSeq = 0;
+function loadReportCurrent(){ loadReport(repParams); }
 document.getElementById("periodBtns").addEventListener("click", e=>{
   if(!e.target.dataset.p) return;
   curPeriod = e.target.dataset.p;
+  repParams = {period: curPeriod};
   document.querySelectorAll("#periodBtns button").forEach(b=>b.classList.toggle("active", b===e.target));
-  loadReport(curPeriod);
+  loadReport(repParams);
 });
-function renderReportRows(r, loadingHeavy=false){
+document.getElementById("rep-apply").addEventListener("click", ()=>{
+  const s = document.getElementById("rep-start").value, en = document.getElementById("rep-end").value;
+  if(!s && !en) return;
+  curPeriod = "custom";
+  repParams = {period:"custom", start:s, end:en};
+  document.querySelectorAll("#periodBtns button").forEach(b=>b.classList.remove("active"));
+  loadReport(repParams);
+});
+function renderReportRows(r){
   const rows = [];
   rows.push(["这一时段", r.label]);
   rows.push(["上屏汉字", r.chars.toLocaleString() + " 字"]);
+  if(r.distinct_chars) rows.push(["不同汉字", r.distinct_chars.toLocaleString() + " 个"]);
   if(r.delta_pct!==null && r.delta_pct!==undefined) rows.push(["较上一周期", (r.delta_pct>=0?"+":"")+r.delta_pct+"%"]);
-  if(r.peak_hour!==null && r.peak_hour!==undefined) rows.push(["高峰时段", String(r.peak_hour).padStart(2,"0")+":00"]);
-  if(r.fav_word) rows.push(["最常用词", r.fav_word]);
+  if(r.active_days) rows.push(["活跃天数", r.active_days + " 天"]);
+  if(r.peak_window) rows.push(["高产时段", r.peak_window[2] + " " + String(r.peak_window[0]).padStart(2,"0")+":00–"+String(r.peak_window[1]).padStart(2,"0")+":00"]);
+  else if(r.peak_hour!==null && r.peak_hour!==undefined) rows.push(["高峰时段", String(r.peak_hour).padStart(2,"0")+":00"]);
   if(r.fav_char) rows.push(["最爱的字", r.fav_char]);
   if(r.top_app) rows.push(["主力应用", r.top_app + " · " + r.top_app_share + "%"]);
-  if(r.best_day) rows.push(["最高产日", r.best_day + "（" + r.best_day_count + " 字）"]);
+  if(r.best_day) rows.push(["最高产日", r.best_day + (r.best_day_weekday?("（"+r.best_day_weekday+"，"):"（") + r.best_day_count + " 字）"]);
   if(r.longest_session_min) rows.push(["最长连续输入", r.longest_session_min + " 分钟"]);
   if(r.streak_best) rows.push(["最长连续天数", r.streak_best + " 天"]);
-  if(r.keywords && r.keywords.length) rows.push(["关键词", r.keywords.slice(0,6).join(" · ")]);
-  const body = rows.map(
+  document.getElementById("reportRows").innerHTML = rows.map(
     ([k,v])=>`<div class="rrow"><span>${k}</span><b>${escapeHtml(String(v))}</b></div>`).join("");
-  document.getElementById("reportRows").innerHTML = body +
-    (loadingHeavy ? '<div class="rrow"><span>词语 / 关键词</span><b><span class="skel-line" style="display:inline-block;width:120px"></span></b></div>' : "");
 }
-async function loadReport(period){
+async function loadReport(params){
   const seq = ++reportReqSeq;
+  const period = params.period;
+  const isCustom = period === "custom";
+  // reset the on-demand full-report section whenever the range changes
+  resetRichReport();
+  document.getElementById("reportNarrative").className = "narrative skel";
+  document.getElementById("reportNarrative").textContent = "正在生成小结…";
   document.getElementById("reportRows").innerHTML =
     '<div class="skel-line" style="width:76%;height:18px"></div><div class="skel-line" style="width:62%;height:18px;margin-top:16px"></div><div class="skel-line" style="width:70%;height:18px;margin-top:16px"></div>';
-  document.getElementById("cardImg").style.opacity = ".45";
-  const cardDl = document.getElementById("cardDl");
-  cardDl.removeAttribute("href");
-  cardDl.onclick = (e)=>{ e.preventDefault(); DT.save_card(period); };
-  const fast = await apiGet("report_fast", {period});
+  // PNG card only supports the named calendar periods.
+  const cardWrap = document.querySelector("#view-report .cardprev");
+  if(isCustom){ cardWrap.style.display = "none"; }
+  else {
+    cardWrap.style.display = "";
+    document.getElementById("cardImg").style.opacity = ".45";
+    const cardDl = document.getElementById("cardDl");
+    cardDl.removeAttribute("href");
+    cardDl.onclick = (e)=>{ e.preventDefault(); DT.save_card(period); };
+  }
+  let fast;
+  try{ fast = await apiGet("report_fast", params); }
+  catch(e){ if(seq===reportReqSeq){ document.getElementById("reportNarrative").className="narrative"; document.getElementById("reportNarrative").textContent="读取失败，请重试。"; } return; }
   if(seq !== reportReqSeq) return;
-  renderReportRows(fast, true);
-  apiGet("report_heavy", {period}).then(h=>{
-    if(seq !== reportReqSeq) return;
-    renderReportRows({...fast, ...h}, false);
-  }).catch(e=>{
-    if(seq !== reportReqSeq) return;
-    renderReportRows(fast, false);
-  });
-  DT.card_png(period).then(src=>{
-    if(seq !== reportReqSeq) return;
-    document.getElementById("cardImg").src = src;
-    document.getElementById("cardImg").style.opacity = "1";
-  }).catch(e=>{
-    if(seq !== reportReqSeq) return;
-    document.getElementById("cardImg").style.opacity = "1";
-  });
+  window.__reportFast = fast;
+  document.getElementById("reportNarrative").className = "narrative";
+  document.getElementById("reportNarrative").textContent = fast.narrative || "";
+  renderReportRows(fast);
+  if(!isCustom){
+    DT.card_png(period).then(src=>{
+      if(seq !== reportReqSeq) return;
+      document.getElementById("cardImg").src = src;
+      document.getElementById("cardImg").style.opacity = "1";
+    }).catch(e=>{ if(seq===reportReqSeq) document.getElementById("cardImg").style.opacity = "1"; });
+  }
+}
+
+// ---- on-demand full (word-level) report ----
+let repGenSeq = 0;
+function resetRichReport(){
+  repGenSeq++;
+  document.getElementById("repProgWrap").style.display = "none";
+  document.getElementById("repRich").innerHTML = "";
+  const btn = document.getElementById("genReportBtn");
+  btn.disabled = false; btn.textContent = "⚙ 生成完整报告";
+  document.getElementById("repGenHint").style.display = "";
+}
+document.getElementById("genReportBtn").addEventListener("click", async ()=>{
+  const seq = ++repGenSeq;
+  const btn = document.getElementById("genReportBtn");
+  btn.disabled = true; btn.textContent = "正在生成…";
+  document.getElementById("repGenHint").style.display = "none";
+  const wrap = document.getElementById("repProgWrap"), bar = document.getElementById("repProg"),
+        lbl = document.getElementById("repProgLabel");
+  wrap.style.display = "block"; bar.style.width = "5%"; lbl.textContent = "开始生成…";
+  try{ await DT.report_generate(repParams); }
+  catch(e){ lbl.textContent = "启动失败：" + (e&&e.message||e); btn.disabled=false; btn.textContent="⚙ 重试"; return; }
+  const poll = setInterval(async ()=>{
+    if(seq !== repGenSeq){ clearInterval(poll); return; }
+    let p; try{ p = await DT.report_progress(); }catch(e){ return; }
+    bar.style.width = (p.pct||0) + "%";
+    lbl.textContent = (p.label||"") + (p.pct?("　"+p.pct+"%"):"");
+    if(p.phase === "done"){
+      clearInterval(poll);
+      wrap.style.display = "none";
+      renderRichReport(p.result);
+      btn.disabled = false; btn.textContent = "↻ 重新生成";
+    } else if(p.phase === "error"){
+      clearInterval(poll);
+      lbl.textContent = "生成失败：" + (p.error||"未知错误");
+      btn.disabled = false; btn.textContent = "⚙ 重试";
+    }
+  }, 400);
+});
+function chipsRow(items, fresh){
+  if(!items || !items.length) return '<div class="empty" style="padding:8px 0">暂无</div>';
+  return items.map(x=>`<span class="nw ${fresh?"fresh":""}">${escapeHtml(x.word)}<b>${x.count}</b></span>`).join("");
+}
+function repGroup(title, tag, hint, body){
+  return `<div class="repGroup"><h4>${escapeHtml(title)}${tag?`<span class="tag">${escapeHtml(tag)}</span>`:""}</h4>
+    ${hint?`<div class="gh">${escapeHtml(hint)}</div>`:""}${body}</div>`;
+}
+function renderRichReport(r){
+  const fast = window.__reportFast || {};
+  const kw = (r.keywords||[]).slice(0,14);
+  const maxW = kw.reduce((m,k)=>Math.max(m,k.weight||0), 0) || 1;
+  const cloud = kw.length ? kw.map(k=>{
+    const sz = (13 + (k.weight/maxW)*15).toFixed(0);
+    return `<span class="t" style="font-size:${sz}px;cursor:pointer" data-w="${escapeAttr(k.word)}">${escapeHtml(k.word)}</span>`;
+  }).join(" ") : '<div class="empty" style="padding:8px 0">暂无</div>';
+  const posBody = (r.pos||[]).length
+    ? (r.pos.slice(0,8).map(p=>`<div class="rrow"><span>${escapeHtml(p.label)}</span><b>${p.count}</b></div>`).join(""))
+    : '<div class="empty" style="padding:8px 0">暂无</div>';
+  const stats = `<div class="repStats">
+      <div class="s"><b>${(fast.distinct_chars||0).toLocaleString()}</b><small>不同汉字</small></div>
+      <div class="s"><b>${(r.distinct_words||0).toLocaleString()}</b><small>不同词语</small></div>
+      <div class="s"><b>${(r.new_words||[]).length}</b><small>本期新词</small></div>
+    </div>`;
+  document.getElementById("repRich").innerHTML = stats + `<div class="repGrid">
+    ${repGroup("新出现的词","NEW","这段时间第一次被你打出来的词", chipsRow(r.new_words, true))}
+    ${repGroup("回归词","RETURN","以前用过、最近沉寂、这段时间又出现", chipsRow(r.returning_words, false))}
+    ${repGroup("高频双字词","2字","", chipsRow(r.bigrams, false))}
+    ${repGroup("高频三字词","3字","", chipsRow(r.trigrams, false))}
+    ${repGroup("长词榜","4字+","四字及以上的长词", chipsRow(r.long_words, false))}
+    ${repGroup("词性分布","POS","", posBody)}
+    ${repGroup("主题关键词","TF-IDF","越大越能代表这段时间的主题", '<div class="cloud">'+cloud+'</div>')}
+  </div>`;
+  document.querySelectorAll("#repRich .t").forEach(t=>t.addEventListener("click", ()=>gotoSearch(t.dataset.w)));
 }
 
 // ---- sequence ----
@@ -1825,9 +2074,30 @@ setTimeout(wireWindowButtons, 1200);   // belt-and-suspenders for the browser ca
 
 // ---- boot ----
 try{ const fd=document.getElementById("footDuck"); fd.onerror=()=>{fd.onerror=null;fd.src="duck.png";}; fd.src=randomDuck(); }catch(e){}
-loadDashboardPrefs().then(()=>resetTickerTimer());
-refreshBoard();
-checkHealth();
+// In the native window pywebview injects `window.pywebview.api` slightly *after*
+// the page loads. If we fetched right away, isNative() would be false and the
+// calls would fall back to HTTP (which the native build doesn't serve) -> a blank
+// dashboard until the user clicks 刷新. So when running under pywebview we wait
+// for the bridge before the first load. A dev browser (no window.pywebview) runs
+// immediately.
+let __booted = false;
+function firstLoad(){
+  if(__booted) return;
+  __booted = true;
+  loadDashboardPrefs().then(()=>resetTickerTimer());
+  refreshBoard();
+  checkHealth();
+}
+function bootWhenReady(){
+  if(isNative() || !window.pywebview){ firstLoad(); return; }
+  // native but bridge not injected yet: wait for the ready event, with a poll fallback.
+  window.addEventListener("pywebviewready", firstLoad, {once:true});
+  let tries = 0;
+  const t = setInterval(()=>{
+    if(isNative() || tries++ > 60){ clearInterval(t); firstLoad(); }
+  }, 100);
+}
+bootWhenReady();
 setInterval(()=>{ if(document.querySelector("#tabs button.active").dataset.v==="board") refreshBoard(); }, 30000);
 setInterval(checkHealth, 20000);
 </script>

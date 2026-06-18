@@ -68,6 +68,33 @@ CREATE TABLE IF NOT EXISTS pos_freq (
     count INTEGER NOT NULL DEFAULT 0
 );
 
+-- Per-day word/POS rollups: materialized incrementally alongside word_freq so
+-- time-bounded board panels can aggregate by SQL instead of running live jieba
+-- on every range switch (jieba holds the GIL and stalls the UI). See
+-- analysis.segment.build_words.
+CREATE TABLE IF NOT EXISTS word_freq_daily (
+    day   TEXT NOT NULL,
+    word  TEXT NOT NULL,
+    pos   TEXT,
+    count INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (day, word)
+);
+CREATE INDEX IF NOT EXISTS idx_wfd_day ON word_freq_daily(day);
+CREATE INDEX IF NOT EXISTS idx_wfd_word ON word_freq_daily(word);
+
+CREATE TABLE IF NOT EXISTS pos_freq_daily (
+    day   TEXT NOT NULL,
+    pos   TEXT NOT NULL,
+    count INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (day, pos)
+);
+CREATE INDEX IF NOT EXISTS idx_pfd_day ON pos_freq_daily(day);
+
+CREATE TABLE IF NOT EXISTS achievements (
+    id          TEXT PRIMARY KEY,
+    unlocked_ts REAL
+);
+
 CREATE TABLE IF NOT EXISTS meta (
     key   TEXT PRIMARY KEY,
     value TEXT
@@ -289,6 +316,27 @@ class Database:
         finally:
             con.close()
 
+    # ---- achievements (unlock timestamps) -------------------------------
+    def record_achievements(self, ids) -> dict:
+        """Stamp first-unlock time for any newly-unlocked achievement ids and
+        return the full {id: unlocked_ts} map. Idempotent: an id already on
+        record keeps its original timestamp."""
+        now = time.time()
+        con = self.connect()
+        try:
+            if ids:
+                con.executemany(
+                    "INSERT OR IGNORE INTO achievements(id, unlocked_ts) VALUES (?, ?)",
+                    [(str(i), now) for i in ids],
+                )
+                con.commit()
+            rows = con.execute("SELECT id, unlocked_ts FROM achievements").fetchall()
+        except sqlite3.OperationalError:
+            return {}
+        finally:
+            con.close()
+        return {r[0]: r[1] for r in rows}
+
     # ---- data management -------------------------------------------------
     def _reset_materialization(self, con: sqlite3.Connection) -> None:
         """Word/POS frequency tables are cumulative caches built from the event
@@ -296,6 +344,8 @@ class Database:
         rewind the incremental cursor; they rebuild lazily on next read."""
         con.execute("DELETE FROM word_freq")
         con.execute("DELETE FROM pos_freq")
+        con.execute("DELETE FROM word_freq_daily")
+        con.execute("DELETE FROM pos_freq_daily")
         con.execute(
             "INSERT INTO meta(key, value) VALUES ('word_cursor','0') "
             "ON CONFLICT(key) DO UPDATE SET value='0'"

@@ -17,9 +17,14 @@ def test_board_bundles_all_sections(db, insert_chars, now):
                       for i, ch in enumerate("今天天气很好我们去看电影吧")])
     api = _api(db)
     board = api.get("board", {"range": "all", "charN": 5, "wordN": 5})
+    # gamify is range-independent and fetched on its own endpoint now (kept off
+    # the board hot path so switching scales stays snappy), so it is no longer
+    # bundled here.
     for key in ("overview", "trend", "daily", "top_chars", "top_words",
-                "pos", "apps", "heatmap", "topics", "gamify"):
+                "pos", "apps", "heatmap", "topics"):
         assert key in board, f"board missing {key}"
+    assert "gamify" not in board
+    assert "achievements" in api.get("gamify", {})
     assert board["overview"]["total_chars"] >= 1
     assert isinstance(board["top_chars"], list)
 
@@ -29,7 +34,8 @@ def test_board_fast_and_heavy_split_sections(db, insert_chars, now):
     api = _api(db)
     fast = api.get("board_fast", {"range": "all", "charN": 5, "wordN": 5})
     heavy = api.get("board_heavy", {"range": "all", "charN": 5, "wordN": 5})
-    assert {"overview", "trend", "daily", "top_chars", "apps", "heatmap", "gamify"} <= set(fast)
+    assert {"overview", "trend", "daily", "top_chars", "apps", "heatmap"} <= set(fast)
+    assert "gamify" not in fast  # gamify moved to its own range-independent endpoint
     assert "top_words" not in fast and "topics" not in fast and "pos" not in fast
     assert {"top_words", "topics", "pos"} <= set(heavy)
 

@@ -516,6 +516,117 @@ def topics(db, since: Optional[float], topk: int = 25,
         return segment.topics(db, since, topk, until)
 
 
+# ---- rollup-backed ranged word/POS stats (no live jieba) ------------------
+# The board's word panels read these instead of running jieba on every range
+# switch. They aggregate the per-day rollups materialized by segment.build_words,
+# snapping the window to whole local days (which matches the daily bar chart).
+def _day_bounds(since: Optional[float], until: Optional[float]):
+    """Return inclusive ('YYYY-MM-DD', 'YYYY-MM-DD') day keys covering
+    [since, until), or (None, None) for an unbounded window."""
+    if since is None and until is None:
+        return None, None
+    start = (datetime.fromtimestamp(since).strftime("%Y-%m-%d")
+             if since is not None else "0000-01-01")
+    if until is not None:
+        end = datetime.fromtimestamp(until - 1).strftime("%Y-%m-%d")
+    else:
+        end = datetime.now().strftime("%Y-%m-%d")
+    return start, end
+
+
+def _tail_word_pos(db, run_gap: float):
+    """Segment the still-open trailing run(s) -- the rows after build_words'
+    materialization cursor -- live, grouped by local day. This keeps the daily
+    panels up to the second even when the day is one uninterrupted session (the
+    rollup only holds *closed* runs). The tail is bounded by run_gap so it is
+    small and cheap to segment."""
+    cursor = int(db.get_meta("word_cursor", "0") or "0")
+    con = db.connect()
+    try:
+        rows = con.execute(
+            "SELECT ts, ch, app FROM char_events WHERE id>? ORDER BY id", (cursor,)
+        ).fetchall()
+    finally:
+        con.close()
+    day_wc: Dict[str, Dict[str, int]] = {}
+    day_pc: Dict[str, Dict[str, int]] = {}
+    for first_ts, run in segment._runs_with_ts_from_rows(rows, run_gap):
+        a, _b, c = segment._segment_text(run)
+        day = datetime.fromtimestamp(first_ts).strftime("%Y-%m-%d")
+        dwc = day_wc.setdefault(day, {})
+        dpc = day_pc.setdefault(day, {})
+        for k, v in a.items():
+            dwc[k] = dwc.get(k, 0) + v
+        for k, v in c.items():
+            dpc[k] = dpc.get(k, 0) + v
+    return day_wc, day_pc
+
+
+def top_words_daily(db, since: Optional[float], until: Optional[float],
+                    n: int, run_gap: float) -> List[Tuple[str, int]]:
+    """Top multi-char words over a day-aligned window, from word_freq_daily
+    plus the live (un-materialized) trailing run."""
+    segment.build_words(db, run_gap)
+    d0, d1 = _day_bounds(since, until)
+    if d0 is None:
+        return top_words(db, None, n, run_gap, None)
+    con = db.connect()
+    try:
+        rows = con.execute(
+            "SELECT word, SUM(count) c FROM word_freq_daily "
+            "WHERE day>=? AND day<=? AND length(word)>=2 GROUP BY word", (d0, d1)
+        ).fetchall()
+    finally:
+        con.close()
+    agg: Dict[str, int] = {w: int(c) for w, c in rows}
+    tail_wc, _tail_pc = _tail_word_pos(db, run_gap)
+    for day, dwc in tail_wc.items():
+        if d0 <= day <= d1:
+            for w, v in dwc.items():
+                if len(w) >= 2:
+                    agg[w] = agg.get(w, 0) + v
+    return sorted(agg.items(), key=lambda kv: kv[1], reverse=True)[:n]
+
+
+def pos_distribution_daily(db, since: Optional[float], until: Optional[float],
+                           run_gap: float) -> List[Tuple[str, str, int]]:
+    """Coarse POS distribution over a day-aligned window, from pos_freq_daily
+    plus the live (un-materialized) trailing run."""
+    segment.build_words(db, run_gap)
+    d0, d1 = _day_bounds(since, until)
+    if d0 is None:
+        return pos_distribution(db, None, run_gap, None)
+    con = db.connect()
+    try:
+        rows = con.execute(
+            "SELECT pos, SUM(count) c FROM pos_freq_daily "
+            "WHERE day>=? AND day<=? GROUP BY pos", (d0, d1)
+        ).fetchall()
+    finally:
+        con.close()
+    coarse: Dict[str, int] = {}
+    for pos, cnt in rows:
+        cid = coarse_pos(pos)
+        coarse[cid] = coarse.get(cid, 0) + int(cnt)
+    _tail_wc, tail_pc = _tail_word_pos(db, run_gap)
+    for day, dpc in tail_pc.items():
+        if d0 <= day <= d1:
+            for pos, cnt in dpc.items():
+                cid = coarse_pos(pos)
+                coarse[cid] = coarse.get(cid, 0) + cnt
+    out = [(cid, COARSE_LABELS.get(cid, cid), cnt) for cid, cnt in coarse.items()]
+    out.sort(key=lambda x: x[2], reverse=True)
+    return out
+
+
+def topics_daily(db, since: Optional[float], until: Optional[float],
+                 topk: int, run_gap: float) -> List[Tuple[str, float]]:
+    """Lightweight topic words for the board: the most frequent multi-char words
+    in the window (no TF-IDF), with counts as weights. Avoids live jieba."""
+    rows = top_words_daily(db, since, until, max(topk, 30), run_gap)
+    return [(w, float(c)) for w, c in rows[:topk]]
+
+
 # ---- committed-character sequence ----------------------------------------
 def sequence_runs(db, since: Optional[float], run_gap: float,
                   until: Optional[float] = None) -> List[str]:
@@ -765,44 +876,44 @@ def _streak(daymap: Dict[str, int]) -> Tuple[int, int]:
     return current, best
 
 
-# (id, 名称, 描述, 指标键, 阈值)
+# (id, 名称, 描述, 指标键, 阈值, 分类)
 _ACHIEVEMENTS = [
     # 累计字数 total
-    ("first_word", "破壳而出", "记录下第一个字", "total", 1),
-    ("k1", "牛刀小试", "累计 1,000 字", "total", 1_000),
-    ("k5", "初露锋芒", "累计 5,000 字", "total", 5_000),
-    ("k10", "出口成章", "累计 10,000 字", "total", 10_000),
-    ("k50", "笔耕不辍", "累计 50,000 字", "total", 50_000),
-    ("k100", "著作等身", "累计 100,000 字", "total", 100_000),
-    ("k300", "学富五车", "累计 300,000 字", "total", 300_000),
-    ("k1m", "百万雄师", "累计 1,000,000 字", "total", 1_000_000),
+    ("first_word", "破壳而出", "记录下第一个字", "total", 1, "字数"),
+    ("k1", "牛刀小试", "累计 1,000 字", "total", 1_000, "字数"),
+    ("k5", "初露锋芒", "累计 5,000 字", "total", 5_000, "字数"),
+    ("k10", "出口成章", "累计 10,000 字", "total", 10_000, "字数"),
+    ("k50", "笔耕不辍", "累计 50,000 字", "total", 50_000, "字数"),
+    ("k100", "著作等身", "累计 100,000 字", "total", 100_000, "字数"),
+    ("k300", "学富五车", "累计 300,000 字", "total", 300_000, "字数"),
+    ("k1m", "百万雄师", "累计 1,000,000 字", "total", 1_000_000, "字数"),
     # 不同汉字 distinct
-    ("distinct100", "初识百字", "用过 100 个不同的字", "distinct", 100),
-    ("distinct500", "博览群字", "用过 500 个不同的字", "distinct", 500),
-    ("distinct1500", "胸有千壑", "用过 1,500 个不同的字", "distinct", 1_500),
-    ("distinct3000", "万象包罗", "用过 3,000 个不同的字", "distinct", 3_000),
+    ("distinct100", "初识百字", "用过 100 个不同的字", "distinct", 100, "汉字"),
+    ("distinct500", "博览群字", "用过 500 个不同的字", "distinct", 500, "汉字"),
+    ("distinct1500", "胸有千壑", "用过 1,500 个不同的字", "distinct", 1_500, "汉字"),
+    ("distinct3000", "万象包罗", "用过 3,000 个不同的字", "distinct", 3_000, "汉字"),
     # 连续天数 streak
-    ("streak3", "小有恒心", "连续 3 天码字", "streak", 3),
-    ("streak7", "持之以恒", "连续 7 天码字", "streak", 7),
-    ("streak14", "习惯成形", "连续 14 天码字", "streak", 14),
-    ("streak30", "铁杵成针", "连续 30 天码字", "streak", 30),
-    ("streak100", "百日筑基", "连续 100 天码字", "streak", 100),
+    ("streak3", "小有恒心", "连续 3 天码字", "streak", 3, "连续"),
+    ("streak7", "持之以恒", "连续 7 天码字", "streak", 7, "连续"),
+    ("streak14", "习惯成形", "连续 14 天码字", "streak", 14, "连续"),
+    ("streak30", "铁杵成针", "连续 30 天码字", "streak", 30, "连续"),
+    ("streak100", "百日筑基", "连续 100 天码字", "streak", 100, "连续"),
     # 累计活跃天数 active_days
-    ("days7", "崭露头角", "累计 7 天有记录", "active_days", 7),
-    ("days30", "月度常客", "累计 30 天有记录", "active_days", 30),
-    ("days100", "百炼成钢", "累计 100 天有记录", "active_days", 100),
-    ("days365", "周年陪伴", "累计 365 天有记录", "active_days", 365),
+    ("days7", "崭露头角", "累计 7 天有记录", "active_days", 7, "活跃"),
+    ("days30", "月度常客", "累计 30 天有记录", "active_days", 30, "活跃"),
+    ("days100", "百炼成钢", "累计 100 天有记录", "active_days", 100, "活跃"),
+    ("days365", "周年陪伴", "累计 365 天有记录", "active_days", 365, "活跃"),
     # 单日字数 day_max
-    ("day1k", "文思泉涌", "单日码字过千", "day_max", 1_000),
-    ("day5k", "倚马可待", "单日码字过五千", "day_max", 5_000),
-    ("day10k", "日破万言", "单日码字过万", "day_max", 10_000),
+    ("day1k", "文思泉涌", "单日码字过千", "day_max", 1_000, "单日"),
+    ("day5k", "倚马可待", "单日码字过五千", "day_max", 5_000, "单日"),
+    ("day10k", "日破万言", "单日码字过万", "day_max", 10_000, "单日"),
     # 看板语录 quote views (distinct / total / egg)
-    ("quote_d50", "初拾珠玑", "读过 50 条不同的语录", "quotes_distinct", 50),
-    ("quote_d200", "渐入佳境", "读过 200 条不同的语录", "quotes_distinct", 200),
-    ("quote_d500", "博览群句", "读过 500 条不同的语录", "quotes_distinct", 500),
-    ("quote_v200", "日积月累", "累计看过 200 次语录", "quotes_total", 200),
-    ("quote_v1000", "手不释卷", "累计看过 1,000 次语录", "quotes_total", 1_000),
-    ("quote_egg", "一片留白", "在滚动语录里遇见一片空白", "quotes_egg", 1),
+    ("quote_d50", "初拾珠玑", "读过 50 条不同的语录", "quotes_distinct", 50, "语录"),
+    ("quote_d200", "渐入佳境", "读过 200 条不同的语录", "quotes_distinct", 200, "语录"),
+    ("quote_d500", "博览群句", "读过 500 条不同的语录", "quotes_distinct", 500, "语录"),
+    ("quote_v200", "日积月累", "累计看过 200 次语录", "quotes_total", 200, "语录"),
+    ("quote_v1000", "手不释卷", "累计看过 1,000 次语录", "quotes_total", 1_000, "语录"),
+    ("quote_egg", "一片留白", "在滚动语录里遇见一片空白", "quotes_egg", 1, "语录"),
 ]
 
 
@@ -829,13 +940,25 @@ def gamify(db, daily_goal: int) -> Dict:
                "quotes_distinct": q_distinct, "quotes_total": q_total,
                "quotes_egg": 1 if q_egg else 0}
     achievements = []
-    for aid, name, desc, key, threshold in _ACHIEVEMENTS:
+    unlocked_ids = []
+    for aid, name, desc, key, threshold, category in _ACHIEVEMENTS:
         value = metrics.get(key, 0)
+        is_unlocked = value >= threshold
+        if is_unlocked:
+            unlocked_ids.append(aid)
         achievements.append({
-            "id": aid, "name": name, "desc": desc,
-            "unlocked": value >= threshold,
+            "id": aid, "name": name, "desc": desc, "category": category,
+            "unlocked": is_unlocked,
             "progress": min(1.0, round(value / threshold, 4)) if threshold else 1.0,
         })
+    # Stamp (and persist) first-unlock times so the page can show them and the
+    # frontend can detect freshly-earned achievements for the toast.
+    try:
+        stamps = db.record_achievements(unlocked_ids)
+    except Exception:
+        stamps = {}
+    for a in achievements:
+        a["unlocked_at"] = stamps.get(a["id"])
 
     goal = max(1, int(daily_goal or 1))
     return {
@@ -955,14 +1078,127 @@ def _top_multichar_word(db, since, until, run_gap):
     return None
 
 
-def report_fast(db, period: str, run_gap: float, session_gap: float) -> Dict:
+def pretty_app(name: Optional[str]) -> Optional[str]:
+    """Display name for an app/process: drop a trailing ``.exe`` (case-insensitive)
+    so reports read '主要输入场景是 Obsidian' rather than 'Obsidian.exe'. The raw
+    name is kept in the DB / drill-down lookups; this is display-only."""
+    if not name:
+        return name
+    return name[:-4] if name.lower().endswith(".exe") else name
+
+
+_WEEKDAYS = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+_PERIOD_WORD = {"today": "今天", "week": "本周", "month": "本月",
+                "year": "今年", "custom": "这段时间"}
+_PREV_WORD = {"today": "昨天", "week": "上周", "month": "上月",
+              "year": "去年", "custom": "上一周期"}
+
+
+def _weekday_cn(date_str: Optional[str]) -> Optional[str]:
+    if not date_str:
+        return None
+    try:
+        return _WEEKDAYS[datetime.strptime(date_str, "%Y-%m-%d").weekday()]
+    except Exception:
+        return None
+
+
+def _hour_window_label(start_h: int) -> str:
+    if start_h < 5:
+        return "凌晨"
+    if start_h < 8:
+        return "清晨"
+    if start_h < 11:
+        return "上午"
+    if start_h < 13:
+        return "中午"
+    if start_h < 17:
+        return "下午"
+    if start_h < 19:
+        return "傍晚"
+    if start_h < 23:
+        return "晚上"
+    return "深夜"
+
+
+def _peak_window(db, since, until, span: int = 3):
+    """Busiest contiguous ``span``-hour block. Returns
+    (start_h, end_h, count, label) or None."""
+    w, p = _where(since, until)
+    con = db.connect()
+    try:
+        rows = con.execute(
+            f"SELECT CAST(strftime('%H', ts,'unixepoch','localtime') AS INT) h, "
+            f"COUNT(*) c FROM char_events{w} GROUP BY h", p
+        ).fetchall()
+    finally:
+        con.close()
+    if not rows:
+        return None
+    hist = [0] * 24
+    for h, c in rows:
+        hist[int(h)] = c
+    best_sum, best_start = -1, 0
+    for s in range(24):
+        block = sum(hist[s:min(24, s + span)])
+        if block > best_sum:
+            best_sum, best_start = block, s
+    end = min(24, best_start + span)
+    return best_start, end, best_sum, _hour_window_label(best_start)
+
+
+def report_bounds(period: str, start: Optional[str] = None,
+                  end: Optional[str] = None):
+    """(since, until, prev_since, prev_until, label) for a named period or, when
+    period == 'custom', for the given YYYY-MM-DD range (prev = preceding window
+    of equal length)."""
+    if period == "custom":
+        since, until = resolve_range("custom", start, end)
+        import time as _time
+        hi = until if until is not None else _time.time()
+        lo = since if since is not None else hi
+        length = max(hi - lo, 0)
+        return since, until, (lo - length if since is not None else None), since, "自定义区间"
+    return period_bounds(period)
+
+
+def _build_narrative(period, label, chars, delta, best_day, best_day_count,
+                     top_app, peak_window, active_days) -> str:
+    pw = _PERIOD_WORD.get(period, "这段时间")
+    parts = [f"{pw}你输入了 {chars:,} 个汉字"]
+    if delta is not None and delta != 0:
+        prev = _PREV_WORD.get(period, "上一周期")
+        parts[0] += f"，比{prev}{'多' if delta > 0 else '少'} {abs(delta)}%"
+    elif delta == 0:
+        prev = _PREV_WORD.get(period, "上一周期")
+        parts[0] += f"，与{prev}基本持平"
+    sent = "。".join([parts[0]]) + "。"
+    extra = []
+    if best_day and best_day_count and period != "today":
+        wd = _weekday_cn(best_day)
+        extra.append(f"最高产的一天是{wd or best_day}（{best_day_count:,} 字）")
+    if top_app:
+        extra.append(f"主要输入场景是 {pretty_app(top_app)}")
+    if peak_window:
+        s, e, _c, lab = peak_window
+        extra.append(f"{lab} {s:02d}:00–{e:02d}:00 是你的高产时段")
+    if extra:
+        sent += "，".join(extra) + "。"
+    if chars == 0:
+        return f"{pw}还没有记录到输入，先去敲几个字吧。"
+    return sent
+
+
+def report_fast(db, period: str, run_gap: float, session_gap: float,
+                start: Optional[str] = None, end: Optional[str] = None) -> Dict:
     """Fast report fields that avoid word segmentation/topic extraction."""
-    since, until, ps, pe, label = period_bounds(period)
+    since, until, ps, pe, label = report_bounds(period, start, end)
     chars = total_chars(db, since, until)
     prev_chars = total_chars(db, ps, pe)
     delta = None if not prev_chars else round((chars - prev_chars) / prev_chars * 100, 1)
 
     peak_hr, peak_cnt = _peak_hour(db, since, until)
+    peak_window = _peak_window(db, since, until)
     day_rows = daily(db, since, until)
     best_day = max(day_rows, key=lambda r: r[1]) if day_rows else (None, 0)
     apps = per_app(db, since, 50, until)
@@ -973,6 +1209,16 @@ def report_fast(db, period: str, run_gap: float, session_gap: float) -> Dict:
     fav_char = top_chars_list[0][0] if top_chars_list else None
     longest_min, _start = _longest_session(db, since, until, session_gap)
     _cur, streak_best = _streak(_daily_map(db))
+    con = db.connect()
+    try:
+        w, pr = _where(since, until)
+        distinct_chars = con.execute(
+            f"SELECT COUNT(DISTINCT ch) FROM char_events{w}", pr).fetchone()[0]
+    finally:
+        con.close()
+
+    narrative = _build_narrative(period, label, chars, delta, best_day[0],
+                                 best_day[1], top_app, peak_window, len(day_rows))
 
     return {
         "period": period,
@@ -980,16 +1226,21 @@ def report_fast(db, period: str, run_gap: float, session_gap: float) -> Dict:
         "chars": chars,
         "delta_pct": delta,
         "active_days": len(day_rows),
+        "distinct_chars": distinct_chars,
         "peak_hour": peak_hr,
         "peak_hour_count": peak_cnt,
+        "peak_window": ([peak_window[0], peak_window[1], peak_window[3]]
+                        if peak_window else None),
         "best_day": best_day[0],
         "best_day_count": best_day[1],
-        "top_app": top_app,
+        "best_day_weekday": _weekday_cn(best_day[0]),
+        "top_app": pretty_app(top_app),
         "top_app_share": top_app_share,
         "fav_char": fav_char,
         "fav_word": None,
         "longest_session_min": longest_min,
         "streak_best": streak_best,
+        "narrative": narrative,
         "keywords": [],
         "heavy_ready": False,
     }
@@ -997,16 +1248,38 @@ def report_fast(db, period: str, run_gap: float, session_gap: float) -> Dict:
 
 def report_heavy(db, period: str, run_gap: float) -> Dict:
     """Deferred report fields backed by segmentation and TF-IDF."""
-    since, until, _ps, _pe, _label = period_bounds(period)
+    since, until, ps, pe, _label = period_bounds(period)
     with timed(f"stats.report_heavy.{period}"):
         fav_word = _top_multichar_word(db, since, until, run_gap)
         kw = topics(db, since, 8, until)
+        new_word_count, top_bigram = _card_word_extras(db, since, until, ps, pe, run_gap)
     return {
         "period": period,
         "fav_word": fav_word,
         "keywords": [w for w, _wt in kw],
+        "new_word_count": new_word_count,
+        "top_bigram": top_bigram,
         "heavy_ready": True,
     }
+
+
+def _card_word_extras(db, since, until, ps, pe, run_gap):
+    """Two punchy, share-worthy numbers for the PNG card: how many words appeared
+    for the first time this period, and the period's top 双字词. Rollup-backed."""
+    segment.build_words(db, run_gap)
+    d0, d1 = _day_bounds(since, until)
+    if d0 is None:
+        return 0, None
+    con = db.connect()
+    try:
+        rows = _range_word_rows(con, d0, d1)
+        earliest = {w: dd for w, dd in con.execute(
+            "SELECT word, MIN(day) FROM word_freq_daily GROUP BY word").fetchall()}
+    finally:
+        con.close()
+    new_count = sum(1 for w, _c in rows if earliest.get(w, "9999") >= d0)
+    top_bigram = next((w for w, _c in rows if len(w) == 2), None)
+    return new_count, top_bigram
 
 
 def report(db, period: str, run_gap: float, session_gap: float) -> Dict:
@@ -1014,6 +1287,106 @@ def report(db, period: str, run_gap: float, session_gap: float) -> Dict:
     data = report_fast(db, period, run_gap, session_gap)
     data.update(report_heavy(db, period, run_gap))
     return data
+
+
+def _range_word_rows(con, d0, d1):
+    """[(word, count)] for multi-char words in a day-aligned window."""
+    return con.execute(
+        "SELECT word, SUM(count) c FROM word_freq_daily "
+        "WHERE day>=? AND day<=? AND length(word)>=2 GROUP BY word ORDER BY c DESC",
+        (d0, d1),
+    ).fetchall()
+
+
+def report_words(db, period: str, run_gap: float,
+                 start: Optional[str] = None, end: Optional[str] = None,
+                 progress=None) -> Dict:
+    """Heavy, word-level report analytics. Backed by the per-day rollups
+    (fast) for word frequency / new / returning words, plus one live TF-IDF
+    pass for topic keywords. ``progress(pct, phase)`` is an optional callback."""
+    def _p(pct, phase):
+        if progress:
+            try:
+                progress(pct, phase)
+            except Exception:
+                pass
+
+    since, until, ps, pe, label = report_bounds(period, start, end)
+    _p(8, "准备数据")
+    segment.build_words(db, run_gap)          # ensure rollups are materialized
+    _p(35, "汇总词频")
+
+    d0, d1 = _day_bounds(since, until)
+    pd0, pd1 = _day_bounds(ps, pe)
+    con = db.connect()
+    try:
+        if d0 is None:                         # whole history
+            rows = con.execute(
+                "SELECT word, SUM(count) c FROM word_freq_daily "
+                "WHERE length(word)>=2 GROUP BY word ORDER BY c DESC").fetchall()
+        else:
+            rows = _range_word_rows(con, d0, d1)
+        earliest = {w: dd for w, dd in con.execute(
+            "SELECT word, MIN(day) FROM word_freq_daily GROUP BY word").fetchall()}
+        prev_words = set()
+        if pd0 is not None:
+            prev_words = {w for (w,) in con.execute(
+                "SELECT DISTINCT word FROM word_freq_daily WHERE day>=? AND day<=?",
+                (pd0, pd1)).fetchall()}
+    finally:
+        con.close()
+    _p(55, "对比历史")
+
+    # Fold in the still-open trailing run so the freshest words count too.
+    cnt_map: Dict[str, int] = {w: int(c) for w, c in rows}
+    tail_wc, _tail_pc = _tail_word_pos(db, run_gap)
+    lo = d0 if d0 is not None else "0000-01-01"
+    hi = d1 if d1 is not None else "9999-12-31"
+    for day, dwc in tail_wc.items():
+        if lo <= day <= hi:
+            for w, v in dwc.items():
+                if len(w) >= 2:
+                    cnt_map[w] = cnt_map.get(w, 0) + v
+                    earliest[w] = min(earliest.get(w, day), day)
+    counts = sorted(cnt_map.items(), key=lambda kv: kv[1], reverse=True)
+    distinct_words = len(counts)
+    bigrams = [{"word": w, "count": c} for w, c in counts if len(w) == 2][:20]
+    trigrams = [{"word": w, "count": c} for w, c in counts if len(w) == 3][:20]
+    longwords = [{"word": w, "count": c} for w, c in counts if len(w) >= 4][:20]
+
+    lo_day = d0 if d0 is not None else "0000-01-01"
+    new_words, returning_words = [], []
+    for w, c in counts:
+        first = earliest.get(w)
+        if first is None:
+            continue
+        if first >= lo_day:                    # first ever seen inside the window
+            new_words.append({"word": w, "count": c})
+        elif pd0 is not None and first < pd0 and w not in prev_words:
+            returning_words.append({"word": w, "count": c})
+    new_words = new_words[:24]
+    returning_words = returning_words[:24]
+    _p(72, "提取主题")
+
+    with timed(f"stats.report_words.topics.{period}"):
+        kw = topics(db, since, 14, until)
+    keywords = [{"word": w, "weight": round(float(wt), 4)} for w, wt in kw]
+    pos_rows = pos_distribution_daily(db, since, until, run_gap)
+    pos = [{"pos": ps2, "label": lbl, "count": c} for ps2, lbl, c in pos_rows]
+    _p(100, "完成")
+
+    return {
+        "period": period,
+        "label": label,
+        "distinct_words": distinct_words,
+        "new_words": new_words,
+        "returning_words": returning_words,
+        "bigrams": bigrams,
+        "trigrams": trigrams,
+        "long_words": longwords,
+        "pos": pos,
+        "keywords": keywords,
+    }
 
 
 # ---- board ticker (rotating facts + user phrases) -------------------------

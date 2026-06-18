@@ -48,10 +48,13 @@ def _rows_for(rep: dict) -> List[Tuple[str, str]]:
     """Pick the most interesting lines for each period."""
     period = rep.get("period")
     rows: List[Tuple[str, str]] = []
+    # Lead with the most share-worthy word stats (computed in report_heavy).
+    if rep.get("new_word_count"):
+        rows.append(("本期新词", f"{rep['new_word_count']} 个"))
     if rep.get("peak_hour") is not None:
         rows.append(("高峰时段", f"{rep['peak_hour']:02d}:00 时段"))
-    if rep.get("fav_word"):
-        rows.append(("最常用词", rep["fav_word"]))
+    if rep.get("fav_word") or rep.get("top_bigram"):
+        rows.append(("最常用词", rep.get("fav_word") or rep["top_bigram"]))
     if rep.get("fav_char"):
         rows.append(("最爱的字", rep["fav_char"]))
     if period in ("week", "month", "year") and rep.get("top_app"):
@@ -62,7 +65,7 @@ def _rows_for(rep: dict) -> List[Tuple[str, str]]:
         rows.append(("最长连续输入", f"{rep['longest_session_min']:.0f} 分钟"))
     if period == "year" and rep.get("streak_best"):
         rows.append(("最长连续天数", f"{rep['streak_best']} 天"))
-    return rows[:4]
+    return rows[:5]
 
 
 def _fit_text(d: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont,

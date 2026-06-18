@@ -22,7 +22,8 @@ from datetime import datetime
 from typing import Optional
 
 from .. import autostart, updater
-from ..analysis import segment, stats
+from ..analysis import stats
+from ..analysis.report_jobs import ReportJob
 from ..perf import timed
 from .relocate import Relocator
 
@@ -60,7 +61,9 @@ READ_ENDPOINTS = (
 )
 _READ_ENDPOINTS = frozenset(READ_ENDPOINTS)
 _STALE_CACHE_TTL = {
+    "board_fast": 6.0,
     "board_heavy": 15.0,
+    "gamify": 10.0,
     "report": 30.0,
     "report_fast": 10.0,
     "report_heavy": 60.0,
@@ -79,6 +82,7 @@ class Api:
         self._status_fn = status_fn
         self._on_quit = on_quit
         self._relocator = Relocator(db)
+        self._report_job = ReportJob(db, config)
         # Keep the native Window private. pywebview exposes public attributes
         # on js_api; exposing Window makes it recursively inspect WebView2/WinForms
         # objects and can freeze the app during startup.
@@ -237,7 +241,8 @@ class Api:
     def _r_report_fast(self, p):
         return stats.report_fast(self._db, p.get("period", "today"),
                                  self._config.run_gap_seconds,
-                                 self._config.session_gap_seconds)
+                                 self._config.session_gap_seconds,
+                                 p.get("start"), p.get("end"))
 
     def _r_report_heavy(self, p):
         return stats.report_heavy(self._db, p.get("period", "today"),
@@ -266,34 +271,18 @@ class Api:
             "top_chars": [{"ch": c, "count": k} for c, k in stats.top_chars(self._db, since, char_n, until)],
             "apps": [{"app": a, "count": c} for a, c in stats.per_app(self._db, since, 12, until)],
             "heatmap": {"grid": stats.heatmap(self._db, since, until)},
-            "gamify": stats.gamify(self._db, self._config.daily_goal),
         }
 
     def _r_board_heavy(self, p):
-        """Deferred board analytics: segmentation, POS and topic extraction."""
+        """Deferred board analytics. Reads the per-day word/POS rollups
+        (materialized incrementally by segment.build_words) instead of running
+        live jieba, so switching the range is pure SQL and never stalls the UI."""
         since, until = self._bounds(p)
         rg = self._config.run_gap_seconds
         word_n = int(p.get("wordN", 30))
-        if since is not None or until is not None:
-            with timed("api.board_heavy.segment_range"):
-                wc, _wp, pc = segment.segment_range(self._db, since, rg, until)
-            all_word_rows = sorted(
-                ((w, c) for w, c in wc.items() if len(w) >= 2),
-                key=lambda kv: kv[1], reverse=True
-            )
-            word_rows = all_word_rows[:word_n]
-            topic_rows = all_word_rows[:30]
-            coarse = {}
-            for pos, cnt in pc.items():
-                cid = stats.coarse_pos(pos)
-                coarse[cid] = coarse.get(cid, 0) + cnt
-            pos_rows = [(cid, stats.COARSE_LABELS.get(cid, cid), cnt)
-                        for cid, cnt in coarse.items()]
-            pos_rows.sort(key=lambda x: x[2], reverse=True)
-        else:
-            word_rows = stats.top_words(self._db, since, word_n, rg, until)
-            pos_rows = stats.pos_distribution(self._db, since, rg, until)
-            topic_rows = stats.topics(self._db, since, 30, until)
+        word_rows = stats.top_words_daily(self._db, since, until, word_n, rg)
+        pos_rows = stats.pos_distribution_daily(self._db, since, until, rg)
+        topic_rows = stats.topics_daily(self._db, since, until, 30, rg)
         return {
             "top_words": [{"word": w, "count": c} for w, c in word_rows],
             "pos": [{"pos": ps, "label": lbl, "count": c}
@@ -322,6 +311,13 @@ class Api:
 
     def update_progress(self):
         return updater.progress()
+
+    # ---- on-demand full report (background word analytics) --------------
+    def report_generate(self, params: Optional[dict] = None):
+        return self._report_job.start(params or {})
+
+    def report_progress(self):
+        return self._report_job.progress()
 
     # ---- config ----------------------------------------------------------
     def config_get(self):

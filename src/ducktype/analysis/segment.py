@@ -8,6 +8,7 @@ live range segmenter (``segment_range``) used for time-bounded views.
 """
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
 try:
@@ -52,6 +53,26 @@ def _runs_from_rows(rows: List[Tuple[float, str, Optional[str]]], run_gap: float
         last_ts, last_app = ts, app
     if cur:
         yield "".join(cur)
+
+
+def _runs_with_ts_from_rows(rows, run_gap: float):
+    """Like ``_runs_from_rows`` but yields ``(first_ts, run_string)`` so callers
+    can attribute a run to a day. ``rows`` are (ts, ch, app) ordered by time."""
+    cur = []
+    first_ts = None
+    last_ts = None
+    last_app = None
+    for ts, ch, app in rows:
+        if cur and (last_ts is not None and (ts - last_ts > run_gap or app != last_app)):
+            yield first_ts, "".join(cur)
+            cur = []
+            first_ts = None
+        if not cur:
+            first_ts = ts
+        cur.append(ch)
+        last_ts, last_app = ts, app
+    if cur:
+        yield first_ts, "".join(cur)
 
 
 def _segment_text(text: str):
@@ -106,6 +127,8 @@ def build_words(db, run_gap: float = 3.0) -> None:
         try:
             con.execute("DELETE FROM word_freq")
             con.execute("DELETE FROM pos_freq")
+            con.execute("DELETE FROM word_freq_daily")
+            con.execute("DELETE FROM pos_freq_daily")
             con.commit()
         finally:
             con.close()
@@ -137,13 +160,22 @@ def build_words(db, run_gap: float = 3.0) -> None:
         total_wc: Dict[str, int] = {}
         total_wp: Dict[str, str] = {}
         total_pc: Dict[str, int] = {}
-        for run in _runs_from_rows([(r[1], r[2], r[3]) for r in closed], run_gap):
+        # Per-day rollups, attributing each run to the local day of its first char.
+        day_wc: Dict[str, Dict[str, int]] = {}
+        day_pc: Dict[str, Dict[str, int]] = {}
+        for first_ts, run in _runs_with_ts_from_rows(
+                [(r[1], r[2], r[3]) for r in closed], run_gap):
             a, b, c = _segment_text(run)
+            day = datetime.fromtimestamp(first_ts).strftime("%Y-%m-%d")
+            dwc = day_wc.setdefault(day, {})
+            dpc = day_pc.setdefault(day, {})
             for k, v in a.items():
                 total_wc[k] = total_wc.get(k, 0) + v
+                dwc[k] = dwc.get(k, 0) + v
             total_wp.update(b)
             for k, v in c.items():
                 total_pc[k] = total_pc.get(k, 0) + v
+                dpc[k] = dpc.get(k, 0) + v
 
         for word, cnt in total_wc.items():
             con.execute(
@@ -157,6 +189,21 @@ def build_words(db, run_gap: float = 3.0) -> None:
                 "ON CONFLICT(pos) DO UPDATE SET count=count+excluded.count",
                 (pos, cnt),
             )
+        for day, dwc in day_wc.items():
+            for word, cnt in dwc.items():
+                con.execute(
+                    "INSERT INTO word_freq_daily(day, word, pos, count) VALUES (?,?,?,?) "
+                    "ON CONFLICT(day, word) DO UPDATE SET "
+                    "count=count+excluded.count, pos=excluded.pos",
+                    (day, word, total_wp.get(word), cnt),
+                )
+        for day, dpc in day_pc.items():
+            for pos, cnt in dpc.items():
+                con.execute(
+                    "INSERT INTO pos_freq_daily(day, pos, count) VALUES (?,?,?) "
+                    "ON CONFLICT(day, pos) DO UPDATE SET count=count+excluded.count",
+                    (day, pos, cnt),
+                )
         con.commit()
         db.set_meta("word_cursor", str(new_cursor))
     finally:
