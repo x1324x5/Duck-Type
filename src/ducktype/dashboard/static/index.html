@@ -187,12 +187,16 @@
   .topics .t{color:var(--accent);background:var(--panel2);padding:4px 10px;border-radius:20px;
     cursor:pointer;border:1px solid transparent;transition:border-color .15s,transform .15s,background .15s}
   .topics .t:hover{border-color:var(--accent);transform:translateY(-1px)}
-  .todaycloud{min-height:284px;padding:12px 6px 4px;display:flex;align-items:center;
-    justify-content:center;align-content:center;flex-wrap:wrap;gap:8px 14px}
+  .todaycloud{min-height:366px;padding:8px 0 0;display:block}
+  .todaycloud .cloudstage{position:relative;height:340px;min-height:280px;overflow:hidden;
+    border-radius:10px}
   .todaycloud .cloudword{appearance:none;background:transparent;border:0;border-radius:8px;
-    padding:2px 4px;line-height:.95;font-weight:800;cursor:pointer;text-align:center;
-    transform:rotate(var(--rot, 0deg));transition:transform .15s,filter .15s,background .15s}
-  .todaycloud .cloudword:hover{transform:rotate(var(--rot, 0deg)) translateY(-2px) scale(1.04);
+    padding:2px 5px;line-height:.92;font-weight:850;cursor:pointer;text-align:center;
+    white-space:nowrap;position:absolute;left:50%;top:50%;opacity:0;
+    transform:translate(-50%,-50%) rotate(var(--rot, 0deg));
+    transition:transform .15s,filter .15s,background .15s,opacity .18s}
+  .todaycloud .cloudword.placed{opacity:1}
+  .todaycloud .cloudword:hover{transform:translate(-50%,-50%) rotate(var(--rot, 0deg)) translateY(-2px) scale(1.045);
     filter:saturate(1.18);background:var(--panel2)}
   .todaycloud .cloudword.active{background:var(--panel2);box-shadow:0 0 0 1px currentColor}
   .todaycloud .cloudword:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
@@ -855,6 +859,7 @@ window.addEventListener("resize", ()=>{
   clearTimeout(chartResizeTimer);
   chartResizeTimer = setTimeout(()=>{
     Object.values(charts).forEach(c=>{ try{ c && c.resize(); }catch(e){} });
+    if(range === "today") layoutTodayCloud();
   }, 120);
 });
 function gotoSearch(term){
@@ -1001,6 +1006,7 @@ function renderTopics(rows){
 }
 const CLOUD_COLORS = ["#7561f2","#ef426f","#2f7ff0","#ff7a18","#20b86d","#20aaa0","#e747a2","#5868df"];
 function cloudColor(i){ return CLOUD_COLORS[i % CLOUD_COLORS.length]; }
+let todayCloudLayoutTimer = null;
 function renderTodayCloud(words, topics){
   const el = document.getElementById("todayCloud");
   document.getElementById("todayCloudDetail").className = "clouddetail";
@@ -1010,22 +1016,86 @@ function renderTodayCloud(words, topics){
     el.innerHTML = "<div class='empty'>今天还没有足够的词语数据。</div>";
     return;
   }
-  const rows = source.slice(0, 32);
+  const rows = source.slice(0, 42);
   const max = Math.max(...rows.map(x=>Number(x.count)||0), 1);
   const min = Math.min(...rows.map(x=>Number(x.count)||0), max);
   const span = Math.max(max - min, 1);
-  el.innerHTML = rows.map((r, i)=>{
+  const wordsHtml = rows.map((r, i)=>{
     const n = Number(r.count) || min;
     const t = (n - min) / span;
-    const size = 16 + Math.round(30 * Math.pow(t, .72));
-    const rotate = [-12, 8, -5, 0, 11, -8, 5][i % 7];
+    const size = 15 + Math.round(30 * Math.pow(t, .68));
+    const rotate = [-36, -18, 0, 18, 36, 0, -12, 12][i % 8];
     const label = escapeHtml(r.word);
     const attr = escapeAttr(r.word);
     return `<button class="cloudword" type="button" data-w="${attr}" title="查看「${attr}」相关输入" `+
-      `style="font-size:${size}px;color:${cloudColor(i)};--rot:${rotate}deg">${label}</button>`;
-  }).join("") + "<div class='cloudnote'>点击词语查看相关输入</div>";
+      `data-base-size="${size}" data-rank="${i}" style="font-size:${size}px;color:${cloudColor(i)};--rot:${rotate}deg">${label}</button>`;
+  }).join("");
+  el.innerHTML = `<div class="cloudstage">${wordsHtml}</div><div class='cloudnote'>点击词语查看相关输入</div>`;
   el.querySelectorAll(".cloudword").forEach(btn => {
     btn.addEventListener("click", ()=>showCloudDetail(btn.dataset.w, btn));
+  });
+  scheduleTodayCloudLayout();
+}
+function scheduleTodayCloudLayout(){
+  clearTimeout(todayCloudLayoutTimer);
+  todayCloudLayoutTimer = setTimeout(()=>{
+    layoutTodayCloud();
+    if(document.fonts && document.fonts.ready) document.fonts.ready.then(layoutTodayCloud);
+  }, 0);
+}
+function cloudBoxesOverlap(a, b){
+  return !(a.r < b.l || a.l > b.r || a.b < b.t || a.t > b.b);
+}
+function measureCloudBox(stageRect, btn, x, y, pad){
+  btn.style.left = x.toFixed(1) + "px";
+  btn.style.top = y.toFixed(1) + "px";
+  const r = btn.getBoundingClientRect();
+  return {
+    l:r.left - stageRect.left - pad, r:r.right - stageRect.left + pad,
+    t:r.top - stageRect.top - pad, b:r.bottom - stageRect.top + pad
+  };
+}
+function layoutTodayCloud(){
+  const stage = document.querySelector("#todayCloud .cloudstage");
+  if(!stage || stage.offsetParent === null) return;
+  const buttons = [...stage.querySelectorAll(".cloudword")];
+  const sw = stage.clientWidth, sh = stage.clientHeight;
+  if(!sw || !sh || !buttons.length) return;
+  const stageRect = stage.getBoundingClientRect();
+  const scale = Math.max(.78, Math.min(1.12, sw / 760));
+  const placed = [];
+  const centerX = sw / 2, centerY = sh / 2;
+  buttons.forEach((btn, i)=>{
+    btn.classList.remove("placed");
+    btn.style.left = centerX + "px";
+    btn.style.top = centerY + "px";
+    btn.style.fontSize = Math.max(13, Math.round(Number(btn.dataset.baseSize || 16) * scale)) + "px";
+    const rawW = Math.max(18, btn.offsetWidth);
+    const rawH = Math.max(14, btn.offsetHeight);
+    const pad = i < 10 ? 7 : 4;
+    let best = null;
+    for(let step=0; step<1800; step++){
+      const r = 3.8 * Math.sqrt(step);
+      const angle = step * 0.56 + i * 1.17;
+      const x = centerX + Math.cos(angle) * r * (sw / sh);
+      const y = centerY + Math.sin(angle) * r;
+      const box = measureCloudBox(stageRect, btn, x, y, pad);
+      if(box.l < 2 || box.r > sw-2 || box.t < 2 || box.b > sh-2) continue;
+      if(!placed.some(p=>cloudBoxesOverlap(box, p))){ best = {x, y, box}; break; }
+    }
+    if(!best){
+      const cols = Math.max(3, Math.floor(sw / Math.max(rawW + 12, 82)));
+      const cellW = sw / cols;
+      const cellH = Math.max(34, rawH + 12);
+      const row = Math.floor(i / cols), col = i % cols;
+      const x = Math.min(sw - rawW/2 - 2, Math.max(rawW/2 + 2, cellW*(col+.5)));
+      const y = Math.min(sh - rawH/2 - 2, Math.max(rawH/2 + 2, 18 + row*cellH));
+      best = {x, y, box:measureCloudBox(stageRect, btn, x, y, 1)};
+    }
+    placed.push(best.box);
+    btn.style.left = best.x.toFixed(1) + "px";
+    btn.style.top = best.y.toFixed(1) + "px";
+    btn.classList.add("placed");
   });
 }
 async function showCloudDetail(word, btn){
