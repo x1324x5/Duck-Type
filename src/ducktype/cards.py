@@ -53,6 +53,12 @@ def _rows_for(rep: dict) -> List[Tuple[str, str]]:
         rows.append(("本期新词", f"{rep['new_word_count']} 个"))
     if rep.get("peak_hour") is not None:
         rows.append(("高峰时段", f"{rep['peak_hour']:02d}:00 时段"))
+    if period == "year" and rep.get("busiest_week"):
+        rows.append(("年度高峰周", f"{rep['busiest_week']} · {rep['busiest_week_count']} 字"))
+    if period in ("month", "year") and rep.get("busiest_weekday"):
+        rows.append(("最忙星期", f"{rep['busiest_weekday']} · {rep['busiest_weekday_count']} 字"))
+    if period in ("month", "year") and rep.get("quietest_weekday"):
+        rows.append(("最闲星期", f"{rep['quietest_weekday']} · {rep['quietest_weekday_count']} 字"))
     if rep.get("fav_word") or rep.get("top_bigram"):
         rows.append(("最常用词", rep.get("fav_word") or rep["top_bigram"]))
     if rep.get("fav_char"):

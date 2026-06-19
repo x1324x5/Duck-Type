@@ -24,6 +24,10 @@ src/ducktype/assets/*.ico
 
 # Local data / editor
 *.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
 *.log
 .vscode/
 .idea/
@@ -53,3 +57,5 @@ LOCAL_DEV.md
 _preview_server.py
 _postest.py
 _scratch*.py
+playwright-report/
+test-results/

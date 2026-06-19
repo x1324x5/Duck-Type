@@ -476,15 +476,40 @@ def pos_word_distribution(db, pos: str, since: Optional[float], run_gap: float,
     if not cid:
         return empty
 
-    with timed("stats.pos_word_distribution.segment_pos_words_range"):
-        by_pos = segment.segment_pos_words_range(db, since, run_gap, until)
     agg: Dict[str, int] = {}
-    for fine, words in by_pos.items():
-        if coarse_pos(fine) != cid:
-            continue
-        for w, c in words.items():
-            if len(w) >= min_len:
-                agg[w] = agg.get(w, 0) + c
+    d0, d1 = _day_bounds(since, until)
+    if d0 is not None:
+        segment.build_words(db, run_gap)
+        con = db.connect()
+        try:
+            rows = con.execute(
+                "SELECT pos, word, SUM(count) c FROM pos_word_freq_daily "
+                "WHERE day>=? AND day<=? GROUP BY pos, word",
+                (d0, d1),
+            ).fetchall()
+        finally:
+            con.close()
+        for fine, w, c in rows:
+            if coarse_pos(fine) == cid and len(w) >= min_len:
+                agg[w] = agg.get(w, 0) + int(c)
+        _tail_wc, _tail_pc, tail_pw = _tail_word_pos(db, run_gap)
+        for day, by_fine in tail_pw.items():
+            if d0 <= day <= d1:
+                for fine, words in by_fine.items():
+                    if coarse_pos(fine) != cid:
+                        continue
+                    for w, c in words.items():
+                        if len(w) >= min_len:
+                            agg[w] = agg.get(w, 0) + c
+    else:
+        with timed("stats.pos_word_distribution.segment_pos_words_range"):
+            by_pos = segment.segment_pos_words_range(db, since, run_gap, until)
+        for fine, words in by_pos.items():
+            if coarse_pos(fine) != cid:
+                continue
+            for w, c in words.items():
+                if len(w) >= min_len:
+                    agg[w] = agg.get(w, 0) + c
     rows = list(agg.items())
     rows.sort(key=lambda kv: kv[1], reverse=True)
     total = sum(c for _w, c in rows)
@@ -550,16 +575,21 @@ def _tail_word_pos(db, run_gap: float):
         con.close()
     day_wc: Dict[str, Dict[str, int]] = {}
     day_pc: Dict[str, Dict[str, int]] = {}
+    day_pw: Dict[str, Dict[str, Dict[str, int]]] = {}
     for first_ts, run in segment._runs_with_ts_from_rows(rows, run_gap):
-        a, _b, c = segment._segment_text(run)
+        a, b, c = segment._segment_text(run)
         day = datetime.fromtimestamp(first_ts).strftime("%Y-%m-%d")
         dwc = day_wc.setdefault(day, {})
         dpc = day_pc.setdefault(day, {})
+        dpw = day_pw.setdefault(day, {})
         for k, v in a.items():
             dwc[k] = dwc.get(k, 0) + v
+            fine = b.get(k) or "x"
+            bucket = dpw.setdefault(fine, {})
+            bucket[k] = bucket.get(k, 0) + v
         for k, v in c.items():
             dpc[k] = dpc.get(k, 0) + v
-    return day_wc, day_pc
+    return day_wc, day_pc, day_pw
 
 
 def top_words_daily(db, since: Optional[float], until: Optional[float],
@@ -579,7 +609,7 @@ def top_words_daily(db, since: Optional[float], until: Optional[float],
     finally:
         con.close()
     agg: Dict[str, int] = {w: int(c) for w, c in rows}
-    tail_wc, _tail_pc = _tail_word_pos(db, run_gap)
+    tail_wc, _tail_pc, _tail_pw = _tail_word_pos(db, run_gap)
     for day, dwc in tail_wc.items():
         if d0 <= day <= d1:
             for w, v in dwc.items():
@@ -608,7 +638,7 @@ def pos_distribution_daily(db, since: Optional[float], until: Optional[float],
     for pos, cnt in rows:
         cid = coarse_pos(pos)
         coarse[cid] = coarse.get(cid, 0) + int(cnt)
-    _tail_wc, tail_pc = _tail_word_pos(db, run_gap)
+    _tail_wc, tail_pc, _tail_pw = _tail_word_pos(db, run_gap)
     for day, dpc in tail_pc.items():
         if d0 <= day <= d1:
             for pos, cnt in dpc.items():
@@ -640,11 +670,22 @@ def sequence_runs(db, since: Optional[float], run_gap: float,
 
 
 def sequence_recent(db, since: Optional[float], run_gap: float, limit: int = 200,
-                    until: Optional[float] = None) -> List[Dict]:
+                    until: Optional[float] = None,
+                    app_filter: Optional[str] = None) -> List[Dict]:
     """Most recent runs (for the timeline view), each with its start time + app."""
+    app_filter = (app_filter or "").strip()
+    clauses, params = [], []
+    if since is not None:
+        clauses.append("ts>=?"); params.append(since)
+    if until is not None:
+        clauses.append("ts<?"); params.append(until)
+    where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
     con = db.connect()
     try:
-        rows = segment._bounded_rows(con, "ts, ch, app", since, until)
+        rows = con.execute(
+            f"SELECT ts, ch, app FROM char_events{where} ORDER BY ts",
+            tuple(params),
+        ).fetchall()
     finally:
         con.close()
     runs: List[Dict] = []
@@ -654,7 +695,8 @@ def sequence_recent(db, since: Optional[float], run_gap: float, limit: int = 200
     last_app = None
     for ts, ch, app in rows:
         if cur and (last_ts is not None and (ts - last_ts > run_gap or app != last_app)):
-            runs.append({"ts": start_ts, "app": last_app, "text": "".join(cur)})
+            if not app_filter or last_app == app_filter:
+                runs.append({"ts": start_ts, "app": last_app, "text": "".join(cur)})
             cur = []
             start_ts = None
         if not cur:
@@ -662,9 +704,25 @@ def sequence_recent(db, since: Optional[float], run_gap: float, limit: int = 200
         cur.append(ch)
         last_ts, last_app = ts, app
     if cur:
-        runs.append({"ts": start_ts, "app": last_app, "text": "".join(cur)})
+        if not app_filter or last_app == app_filter:
+            runs.append({"ts": start_ts, "app": last_app, "text": "".join(cur)})
     runs.reverse()
     return runs[:limit]
+
+
+def sequence_apps(db, since: Optional[float], until: Optional[float] = None) -> List[Dict]:
+    """Applications present in the sequence window, for the timeline filter."""
+    w, p = _where(since, until)
+    con = db.connect()
+    try:
+        rows = con.execute(
+            f"SELECT COALESCE(app, ''), COUNT(*) c FROM char_events{w} "
+            "GROUP BY app ORDER BY c DESC",
+            p,
+        ).fetchall()
+    finally:
+        con.close()
+    return [{"app": app, "count": count} for app, count in rows]
 
 
 # ---- keyword / character lookup ------------------------------------------
@@ -892,6 +950,22 @@ _ACHIEVEMENTS = [
     ("distinct500", "博览群字", "用过 500 个不同的字", "distinct", 500, "汉字"),
     ("distinct1500", "胸有千壑", "用过 1,500 个不同的字", "distinct", 1_500, "汉字"),
     ("distinct3000", "万象包罗", "用过 3,000 个不同的字", "distinct", 3_000, "汉字"),
+    ("hapax100", "偶遇百字", "有 100 个字只出现过一次", "hapax_count", 100, "汉字"),
+    ("hapax500", "字海拾贝", "有 500 个字只出现过一次", "hapax_count", 500, "汉字"),
+    # 生僻字 rare chars
+    ("rare10", "识字冷门派", "用过 10 个生僻字", "rare_distinct", 10, "生僻"),
+    ("rare30", "冷字收藏家", "用过 30 个生僻字", "rare_distinct", 30, "生僻"),
+    ("rare100", "异体寻踪", "用过 100 个生僻字", "rare_distinct", 100, "生僻"),
+    ("rare_total100", "冷门常客", "累计输入生僻字 100 次", "rare_total", 100, "生僻"),
+    ("rare_total500", "字库探险", "累计输入生僻字 500 次", "rare_total", 500, "生僻"),
+    # 单字重复 single character
+    ("char100", "一字百遍", "同一个字累计输入 100 次", "char_max", 100, "单字"),
+    ("char500", "念念不忘", "同一个字累计输入 500 次", "char_max", 500, "单字"),
+    ("char1000", "千锤百炼", "同一个字累计输入 1,000 次", "char_max", 1_000, "单字"),
+    # 趣味彩蛋
+    ("duck10", "鸭鸭报到", "「鸭」字累计出现 10 次", "duck_count", 10, "趣味"),
+    ("duck100", "鸭力全开", "「鸭」字累计出现 100 次", "duck_count", 100, "趣味"),
+    ("duck500", "鸭王之王", "「鸭」字累计出现 500 次", "duck_count", 500, "趣味"),
     # 连续天数 streak
     ("streak3", "小有恒心", "连续 3 天码字", "streak", 3, "连续"),
     ("streak7", "持之以恒", "连续 7 天码字", "streak", 7, "连续"),
@@ -929,14 +1003,27 @@ def gamify(db, daily_goal: int) -> Dict:
     con = db.connect()
     try:
         distinct = con.execute("SELECT COUNT(DISTINCT ch) FROM char_events").fetchone()[0]
+        char_counts = dict(
+            con.execute(
+                "SELECT ch, COUNT(*) c FROM char_events GROUP BY ch"
+            ).fetchall()
+        )
     finally:
         con.close()
 
     from ..storage.db import quote_hash
     q_distinct, q_total, q_egg = db.quote_stats(quote_hash(EASTER_EGG_QUOTE))
 
+    rare_total = sum(n for ch, n in char_counts.items() if _is_uncommon(ch))
+    rare_distinct = sum(1 for ch in char_counts if _is_uncommon(ch))
+    char_max = max(char_counts.values()) if char_counts else 0
+    hapax_count = sum(1 for n in char_counts.values() if n == 1)
+
     metrics = {"total": total, "distinct": distinct, "streak": best,
                "day_max": day_max, "active_days": len(daymap),
+               "rare_total": rare_total, "rare_distinct": rare_distinct,
+               "char_max": char_max, "duck_count": char_counts.get("鸭", 0),
+               "hapax_count": hapax_count,
                "quotes_distinct": q_distinct, "quotes_total": q_total,
                "quotes_egg": 1 if q_egg else 0}
     achievements = []
@@ -1103,6 +1190,42 @@ def _weekday_cn(date_str: Optional[str]) -> Optional[str]:
         return None
 
 
+def _activity_rhythm(day_rows: List[Tuple[str, int]]) -> Dict[str, Optional[object]]:
+    """Small calendar rhythm summary for report rows/cards.
+
+    "Quietest" intentionally ignores completely empty weekdays/weeks, otherwise
+    a partial month would always claim a future weekday was the quietest.
+    """
+    weekdays = [0] * 7
+    weeks: Dict[str, int] = {}
+    for d, count in day_rows:
+        try:
+            dt = datetime.strptime(d, "%Y-%m-%d")
+        except Exception:
+            continue
+        count = int(count or 0)
+        weekdays[dt.weekday()] += count
+        iso_year, iso_week, _iso_day = dt.isocalendar()
+        weeks[f"{iso_year}-W{iso_week:02d}"] = weeks.get(f"{iso_year}-W{iso_week:02d}", 0) + count
+
+    active_weekdays = [(i, c) for i, c in enumerate(weekdays) if c > 0]
+    active_weeks = [(w, c) for w, c in weeks.items() if c > 0]
+    busy_wd = max(active_weekdays, key=lambda x: x[1]) if active_weekdays else None
+    quiet_wd = min(active_weekdays, key=lambda x: x[1]) if active_weekdays else None
+    busy_week = max(active_weeks, key=lambda x: x[1]) if active_weeks else None
+    quiet_week = min(active_weeks, key=lambda x: x[1]) if active_weeks else None
+    return {
+        "busiest_weekday": _WEEKDAYS[busy_wd[0]] if busy_wd else None,
+        "busiest_weekday_count": busy_wd[1] if busy_wd else 0,
+        "quietest_weekday": _WEEKDAYS[quiet_wd[0]] if quiet_wd else None,
+        "quietest_weekday_count": quiet_wd[1] if quiet_wd else 0,
+        "busiest_week": busy_week[0] if busy_week else None,
+        "busiest_week_count": busy_week[1] if busy_week else 0,
+        "quietest_week": quiet_week[0] if quiet_week else None,
+        "quietest_week_count": quiet_week[1] if quiet_week else 0,
+    }
+
+
 def _hour_window_label(start_h: int) -> str:
     if start_h < 5:
         return "凌晨"
@@ -1200,6 +1323,7 @@ def report_fast(db, period: str, run_gap: float, session_gap: float,
     peak_hr, peak_cnt = _peak_hour(db, since, until)
     peak_window = _peak_window(db, since, until)
     day_rows = daily(db, since, until)
+    rhythm = _activity_rhythm(day_rows)
     best_day = max(day_rows, key=lambda r: r[1]) if day_rows else (None, 0)
     apps = per_app(db, since, 50, until)
     app_total = sum(c for _a, c in apps) or 1
@@ -1208,6 +1332,7 @@ def report_fast(db, period: str, run_gap: float, session_gap: float,
     top_chars_list = top_chars(db, since, 1, until)
     fav_char = top_chars_list[0][0] if top_chars_list else None
     longest_min, _start = _longest_session(db, since, until, session_gap)
+    edit_ratio = edits(db, since, until, session_gap).get("edit_ratio", 0.0)
     _cur, streak_best = _streak(_daily_map(db))
     con = db.connect()
     try:
@@ -1234,6 +1359,7 @@ def report_fast(db, period: str, run_gap: float, session_gap: float,
         "best_day": best_day[0],
         "best_day_count": best_day[1],
         "best_day_weekday": _weekday_cn(best_day[0]),
+        **rhythm,
         "top_app": pretty_app(top_app),
         "top_app_share": top_app_share,
         "fav_char": fav_char,
@@ -1241,6 +1367,10 @@ def report_fast(db, period: str, run_gap: float, session_gap: float,
         "longest_session_min": longest_min,
         "streak_best": streak_best,
         "narrative": narrative,
+        "insights": _behavior_insights(
+            label, chars, delta, top_app, top_app_share, peak_window,
+            longest_min, len(day_rows), distinct_chars, edit_ratio,
+        ),
         "keywords": [],
         "heavy_ready": False,
     }
@@ -1280,6 +1410,90 @@ def _card_word_extras(db, since, until, ps, pe, run_gap):
     new_count = sum(1 for w, _c in rows if earliest.get(w, "9999") >= d0)
     top_bigram = next((w for w, _c in rows if len(w) == 2), None)
     return new_count, top_bigram
+
+
+def _behavior_insights(label: str, chars: int, delta, top_app: Optional[str],
+                       top_app_share: float, peak_window, longest_min: int,
+                       active_days: int, distinct_chars: int,
+                       edit_ratio: float) -> List[Dict]:
+    if chars <= 0:
+        return [{
+            "title": "还没有形成节奏",
+            "body": f"{label}暂时没有输入记录。等有几段真实输入后，这里会总结你的时间、场景和修改习惯。",
+            "tone": "neutral",
+        }]
+    out: List[Dict] = []
+    if peak_window:
+        s, e, _count, bucket = peak_window
+        out.append({
+            "title": f"{bucket}是你的高产窗口",
+            "metric": f"{s:02d}:00–{e:02d}:00",
+            "body": f"{s:02d}:00–{e:02d}:00 这一段最集中。以后想复现状态，可以把重要写作任务放到这个时段附近。",
+            "tone": "focus",
+        })
+    if top_app and top_app_share >= 55:
+        out.append({
+            "title": "输入场景很集中",
+            "metric": pretty_app(top_app),
+            "body": f"{pretty_app(top_app)} 占了这段时间 {top_app_share:.1f}% 的输入量，说明这份报告主要反映那个应用里的工作流。",
+            "tone": "app",
+        })
+    elif top_app:
+        out.append({
+            "title": "输入分布比较分散",
+            "metric": f"{top_app_share:.1f}%",
+            "body": f"主力应用是 {pretty_app(top_app)}，但占比只有 {top_app_share:.1f}%，这段时间更像是在多个场景之间切换。",
+            "tone": "app",
+        })
+    if delta is not None:
+        if delta >= 25:
+            body = f"比上一周期多 {abs(delta):.1f}%，产出有明显抬升。可以顺手看一下高频词，判断增长来自哪类内容。"
+            tone = "up"
+        elif delta <= -25:
+            body = f"比上一周期少 {abs(delta):.1f}%。如果这是主动休息，就不用焦虑；如果不是，可以检查高产时段是否被打断。"
+            tone = "down"
+        else:
+            body = f"和上一周期差异不大（{delta:+.1f}%），节奏相对稳定。"
+            tone = "steady"
+        out.append({"title": "产出节奏", "body": body, "tone": tone})
+        out[-1]["metric"] = f"{delta:+.1f}%"
+    if edit_ratio >= 25:
+        out.append({
+            "title": "修改动作偏多",
+            "metric": f"{edit_ratio:.1f}%",
+            "body": f"修改率约 {edit_ratio:.1f}%。这通常意味着你在边想边改，适合把草稿和整理拆成两个阶段。",
+            "tone": "edit",
+        })
+    elif chars >= 200 and edit_ratio <= 8:
+        out.append({
+            "title": "输入很顺",
+            "metric": f"{edit_ratio:.1f}%",
+            "body": f"修改率只有 {edit_ratio:.1f}%，这段时间的内容大概率比较连贯。",
+            "tone": "edit",
+        })
+    if longest_min >= 20:
+        out.append({
+            "title": "有一段沉浸输入",
+            "metric": f"{longest_min} 分钟",
+            "body": f"最长连续输入约 {longest_min} 分钟。这个长度已经接近一次完整专注块。",
+            "tone": "focus",
+        })
+    if active_days >= 3:
+        out.append({
+            "title": "持续性不错",
+            "metric": f"{active_days} 天",
+            "body": f"这段时间有 {active_days} 天留下输入记录，比单日爆发更能说明习惯在稳定发生。",
+            "tone": "streak",
+        })
+    if distinct_chars and chars >= 100:
+        ratio = distinct_chars / max(chars, 1) * 100
+        out.append({
+            "title": "表达覆盖面",
+            "metric": f"{ratio:.1f}%",
+            "body": f"不同汉字占比约 {ratio:.1f}%。这个值越高，通常说明内容主题更分散或表达变化更多。",
+            "tone": "language",
+        })
+    return out[:5]
 
 
 def report(db, period: str, run_gap: float, session_gap: float) -> Dict:
@@ -1339,7 +1553,7 @@ def report_words(db, period: str, run_gap: float,
 
     # Fold in the still-open trailing run so the freshest words count too.
     cnt_map: Dict[str, int] = {w: int(c) for w, c in rows}
-    tail_wc, _tail_pc = _tail_word_pos(db, run_gap)
+    tail_wc, _tail_pc, _tail_pw = _tail_word_pos(db, run_gap)
     lo = d0 if d0 is not None else "0000-01-01"
     hi = d1 if d1 is not None else "9999-12-31"
     for day, dwc in tail_wc.items():

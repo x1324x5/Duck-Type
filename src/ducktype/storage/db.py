@@ -90,6 +90,16 @@ CREATE TABLE IF NOT EXISTS pos_freq_daily (
 );
 CREATE INDEX IF NOT EXISTS idx_pfd_day ON pos_freq_daily(day);
 
+CREATE TABLE IF NOT EXISTS pos_word_freq_daily (
+    day   TEXT NOT NULL,
+    pos   TEXT NOT NULL,
+    word  TEXT NOT NULL,
+    count INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (day, pos, word)
+);
+CREATE INDEX IF NOT EXISTS idx_pwfd_day_pos ON pos_word_freq_daily(day, pos);
+CREATE INDEX IF NOT EXISTS idx_pwfd_word ON pos_word_freq_daily(word);
+
 CREATE TABLE IF NOT EXISTS achievements (
     id          TEXT PRIMARY KEY,
     unlocked_ts REAL
@@ -346,6 +356,7 @@ class Database:
         con.execute("DELETE FROM pos_freq")
         con.execute("DELETE FROM word_freq_daily")
         con.execute("DELETE FROM pos_freq_daily")
+        con.execute("DELETE FROM pos_word_freq_daily")
         con.execute(
             "INSERT INTO meta(key, value) VALUES ('word_cursor','0') "
             "ON CONFLICT(key) DO UPDATE SET value='0'"

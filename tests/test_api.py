@@ -89,8 +89,35 @@ def test_report_fast_defers_word_analytics(db, insert_chars, now):
     heavy = api.get("report_heavy", {"period": "today"})
     assert fast["heavy_ready"] is False
     assert fast["keywords"] == []
+    assert fast["insights"] and {"title", "body", "tone"} <= set(fast["insights"][0])
     assert heavy["heavy_ready"] is True
     assert "fav_word" in heavy and "keywords" in heavy
+
+
+def test_sequence_filters_by_app_and_lists_apps(db, insert_chars, now):
+    insert_chars(db, [
+        (now - 4, "甲", "Code.exe"),
+        (now - 3, "乙", "Code.exe"),
+        (now - 2, "丙", "Word.exe"),
+        (now - 1, "丁", "Word.exe"),
+    ])
+    api = _api(db)
+    seq = api.get("sequence", {"range": "all", "app": "Word.exe"})
+    assert len(seq) == 1
+    assert seq[0]["text"] == "丙丁"
+    apps = api.get("sequence_apps", {"range": "all"})
+    assert {"app": "Code.exe", "count": 2} in apps
+    assert {"app": "Word.exe", "count": 2} in apps
+
+
+def test_sequence_app_filter_keeps_app_boundaries(db, insert_chars, now):
+    insert_chars(db, [
+        (now - 4, "甲", "Code.exe"),
+        (now - 3, "乙", "Word.exe"),
+        (now - 2, "丙", "Code.exe"),
+    ])
+    seq = _api(db).get("sequence", {"range": "all", "app": "Code.exe"})
+    assert [r["text"] for r in seq] == ["丙", "甲"]
 
 
 def test_data_summary_reports_root(db, insert_chars, now):

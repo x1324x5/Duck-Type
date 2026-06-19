@@ -53,10 +53,15 @@ def test_schema_has_dashboard_query_indexes(db):
             row[1]
             for row in con.execute("PRAGMA index_list('key_events')").fetchall()
         }
+        pos_word_names = {
+            row[1]
+            for row in con.execute("PRAGMA index_list('pos_word_freq_daily')").fetchall()
+        }
     finally:
         con.close()
     assert {"idx_char_ts_ch", "idx_char_ts_app", "idx_char_app_ts"} <= names
     assert "idx_key_ts_kind" in key_names
+    assert {"idx_pwfd_day_pos", "idx_pwfd_word"} <= pos_word_names
 
 
 def test_writer_thread_roundtrip(tmp_path):

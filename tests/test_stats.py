@@ -209,6 +209,38 @@ def test_pos_word_distribution_groups_tail_and_filters_single_chars(db, monkeypa
     assert all(len(x["word"]) >= 2 for x in r["least"])
 
 
+def test_pos_word_distribution_uses_daily_rollup(db, monkeypatch):
+    day = datetime.now().date()
+    since = datetime.combine(day, datetime.min.time()).timestamp()
+    until = since + 86400
+    db.set_meta("seg_version", "3")
+    db.set_meta("word_cursor", "0")
+    con = db.connect()
+    try:
+        con.executemany(
+            "INSERT INTO pos_word_freq_daily(day, pos, word, count) VALUES (?,?,?,?)",
+            [
+                (day.isoformat(), "n", "老师", 4),
+                (day.isoformat(), "nr", "南京", 2),
+                (day.isoformat(), "v", "喜欢", 9),
+                (day.isoformat(), "n", "我", 20),
+            ],
+        )
+        con.commit()
+    finally:
+        con.close()
+    monkeypatch.setattr(
+        stats.segment, "segment_pos_words_range",
+        lambda *_args, **_kw: (_ for _ in ()).throw(AssertionError("live path used")),
+    )
+    r = stats.pos_word_distribution(db, "n", since, run_gap=3.0, until=until, n=5)
+    assert r["total"] == 6
+    assert r["items"] == [
+        {"word": "老师", "count": 4, "pct": 66.67},
+        {"word": "南京", "count": 2, "pct": 33.33},
+    ]
+
+
 def test_gamify_streak_and_goal(db, insert_chars):
     today = datetime.now().date()
     rows = []
@@ -221,6 +253,35 @@ def test_gamify_streak_and_goal(db, insert_chars):
     assert g["today_chars"] == 5
     assert g["goal_pct"] == 1.0  # 5/4 capped at 1.0
     assert any(a["id"] == "streak3" and a["unlocked"] for a in g["achievements"])
+
+
+def test_gamify_extra_character_achievements(db, insert_chars, now):
+    rare = "龘靐齉麤爨饕餮魑魅魍魉"
+    rows = [(now + i * 0.01, "鸭", None) for i in range(100)]
+    rows += [(now + 10 + i, ch, None) for i, ch in enumerate(rare[:10])]
+    insert_chars(db, rows)
+    g = stats.gamify(db, daily_goal=1)
+    by_id = {a["id"]: a for a in g["achievements"]}
+    assert by_id["char100"]["unlocked"]
+    assert by_id["duck100"]["unlocked"]
+    assert by_id["rare10"]["unlocked"]
+
+
+def test_report_fast_includes_calendar_rhythm(db, insert_chars):
+    monday = datetime(2026, 1, 5, 9, 0)
+    tuesday = datetime(2026, 1, 6, 9, 0)
+    rows = [(monday.timestamp() + i, "字", None) for i in range(10)]
+    rows += [(tuesday.timestamp() + i, "字", None) for i in range(2)]
+    insert_chars(db, rows)
+    r = stats.report_fast(
+        db, "custom", run_gap=3.0, session_gap=60.0,
+        start="2026-01-05", end="2026-01-06",
+    )
+    assert r["busiest_weekday"] == "周一"
+    assert r["busiest_weekday_count"] == 10
+    assert r["quietest_weekday"] == "周二"
+    assert r["quietest_weekday_count"] == 2
+    assert r["busiest_week"] == "2026-W02"
 
 
 def test_trend_compares_previous_window(db, insert_chars, now):

@@ -113,13 +113,27 @@
     transform:translateY(-1px)}
   .ranges button.active{background:var(--accent);color:var(--ink);border-color:var(--accent);font-weight:600}
   .custom{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);flex-wrap:wrap}
-  .datebox{display:inline-flex;align-items:center;gap:7px;background:var(--panel2);
-    border:1px solid var(--line);border-radius:8px;padding:4px 8px}
-  .datebox span{font-size:11px;color:var(--muted)}
-  .datebox input,.custom input{background:transparent;color:var(--fg);border:0;
-    padding:2px 0;font-size:13px;font-family:inherit;color-scheme:inherit}
-  .datebox input:focus,.custom input:focus{outline:0}
-  .date-sep{color:var(--muted);font-size:12px}
+  .date-range{display:inline-flex;align-items:stretch;gap:0;border:1px solid var(--line);
+    border-radius:10px;background:var(--panel2);overflow:hidden;min-height:38px}
+  .datefield{display:inline-grid;grid-template-columns:auto minmax(118px,1fr);align-items:center;
+    gap:8px;padding:6px 10px;background:transparent;color:var(--muted);min-width:180px;position:relative}
+  .datefield + .datefield{border-left:1px solid var(--line)}
+  .datefield.single{border:1px solid var(--line);border-radius:10px;background:var(--panel2);
+    min-height:38px;min-width:170px}
+  .datefield .date-label{font-size:11px;color:var(--muted);white-space:nowrap}
+  .datefield input{background:transparent;color:var(--fg);border:0;padding:0;font-size:13px;
+    font-family:inherit;color-scheme:inherit;min-width:0}
+  .datefield.empty input::-webkit-datetime-edit{color:transparent}
+  .datefield.empty:after{content:"选择日期";position:absolute;left:72px;right:30px;top:50%;
+    transform:translateY(-50%);color:var(--muted);font-size:13px;pointer-events:none;white-space:nowrap}
+  .datefield input:focus{outline:0}
+  .datefield:focus-within,.date-range:focus-within{border-color:var(--accent);
+    box-shadow:0 0 0 3px rgba(255,206,51,.12)}
+  .date-range:focus-within .datefield:focus-within{box-shadow:none}
+  .date-arrow{display:inline-flex;align-items:center;justify-content:center;width:34px;
+    color:var(--muted);border-left:1px solid var(--line);border-right:1px solid var(--line);
+    background:color-mix(in srgb,var(--panel2),var(--panel) 40%);font-size:13px}
+  .custom-title{font-weight:600;color:var(--fg);white-space:nowrap}
   .iconbtn{background:var(--panel2);color:var(--fg);border:1px solid var(--line);
     border-radius:8px;width:34px;height:32px;cursor:pointer;font-size:15px;line-height:1;
     display:inline-flex;align-items:center;justify-content:center;text-decoration:none;
@@ -310,8 +324,18 @@
   /* sequence */
   .seq{display:flex;flex-direction:column;gap:8px;max-height:600px;overflow:auto}
   .run{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
-  .run .meta{color:var(--muted);font-size:11px;margin-bottom:4px;display:flex;gap:10px;flex-wrap:wrap}
+  .run .meta{color:var(--muted);font-size:11px;margin-bottom:4px;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
   .run .text{font-size:15px;line-height:1.5;word-break:break-all}
+  .run .copyrun{margin-left:auto;border:1px solid var(--line);background:transparent;color:var(--muted);
+    border-radius:7px;width:28px;height:26px;padding:0;cursor:pointer;display:inline-flex;
+    align-items:center;justify-content:center;flex:0 0 auto}
+  .run .copyrun svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;
+    stroke-linecap:round;stroke-linejoin:round}
+  .run .copyrun:hover{border-color:var(--accent);color:var(--accent)}
+  .seqctl{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0 12px}
+  .seqctl select{background:var(--panel2);color:var(--fg);border:1px solid var(--line);
+    border-radius:8px;padding:7px 10px;font-size:13px;font-family:inherit;min-height:34px}
+  .seqctl .seqstat{color:var(--muted);font-size:12px;margin-left:auto}
   .btnrow{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center}
   .btn{background:var(--panel2);color:var(--fg);border:1px solid var(--line);
     padding:7px 14px;border-radius:8px;cursor:pointer;font-size:13px;text-decoration:none;display:inline-block;
@@ -336,6 +360,16 @@
   .narrative{font-size:16.5px;line-height:1.8;background:var(--panel2);border:1px solid var(--line);
     border-left:4px solid var(--accent);border-radius:12px;padding:16px 18px;margin:4px 0 18px}
   .narrative.skel{color:transparent;background-image:none}
+  .insights{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin:-4px 0 20px}
+  .insight{background:linear-gradient(180deg,var(--panel2),rgba(255,255,255,.03));
+    border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:12px;
+    padding:14px 15px;min-width:0;overflow:hidden}
+  .insight .metric{display:inline-flex;align-items:center;max-width:100%;margin-bottom:8px;
+    color:var(--ink);background:var(--accent);border-radius:999px;padding:2px 9px;
+    font-size:11px;font-weight:750;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .insight b{display:block;font-size:14.5px;margin-bottom:7px}
+  .insight p{margin:0;color:var(--muted);font-size:13px;line-height:1.72;word-break:normal;overflow-wrap:anywhere}
+  .insight mark{background:rgba(255,206,51,.22);color:var(--fg);border-radius:4px;padding:0 3px}
   /* rich report sections */
   .repGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;margin-top:6px}
   .repGroup{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:14px}
@@ -363,6 +397,24 @@
   .seg button.active{background:var(--accent);color:var(--ink);font-weight:600}
   .form textarea{min-height:90px;resize:vertical}
   .form .hint{font-size:11px;color:var(--muted);grid-column:2}
+  .settings-layout{display:grid;gap:18px;max-width:920px}
+  .setting-section{border-top:1px solid var(--line);padding-top:16px}
+  .setting-section:first-child{border-top:0;padding-top:0}
+  .setting-section h3{margin:0 0 10px;font-size:13px;font-weight:700;color:var(--fg);
+    letter-spacing:.02em}
+  .setting-list{display:grid;gap:0;border:1px solid var(--line);border-radius:12px;overflow:hidden;
+    background:rgba(255,255,255,.02)}
+  .setting-item{display:grid;grid-template-columns:minmax(0,1fr) minmax(160px,280px);
+    gap:18px;align-items:center;padding:13px 14px;border-top:1px solid var(--line)}
+  .setting-item:first-child{border-top:0}
+  .setting-title{font-size:13.5px;font-weight:650;color:var(--fg);margin-bottom:2px}
+  .setting-desc{font-size:11.5px;color:var(--muted);line-height:1.6}
+  .setting-control{display:flex;justify-content:flex-end;align-items:center;min-width:0}
+  .setting-control input[type=number],.setting-control textarea{
+    background:var(--panel2);color:var(--fg);border:1px solid var(--line);border-radius:8px;
+    padding:8px 10px;font-size:13px;width:100%;font-family:inherit}
+  .setting-control textarea{min-height:92px;resize:vertical}
+  .setting-control .seg{width:max-content;max-width:100%;flex-wrap:wrap}
   .switch{display:inline-flex;align-items:center;gap:8px;cursor:pointer}
   .relrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   .relrow input{flex:1;min-width:220px}
@@ -415,6 +467,9 @@
     display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:13px;position:relative;overflow:hidden}
   .chart-skel:after{content:"";position:absolute;inset:0;transform:translateX(-100%);
     background:linear-gradient(90deg,transparent,rgba(255,255,255,.08),transparent);animation:shine 1.15s infinite}
+  .capture-test{display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:10px;align-items:start}
+  .capture-test textarea{min-height:52px;resize:vertical;background:var(--panel2);color:var(--fg);
+    border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-family:inherit;font-size:13px}
   @media (max-width:720px){
     main{padding:18px 14px}
     .tb-title small{display:none}
@@ -424,7 +479,10 @@
     .searchbar input{min-width:0}
     .form{grid-template-columns:1fr;gap:8px;max-width:none}
     .form .hint{grid-column:1}
-    .datebox{flex:1;min-width:135px}
+    .date-range,.datefield.single{width:100%}
+    .datefield{min-width:0;flex:1}
+    .setting-item{grid-template-columns:1fr;gap:10px}
+    .setting-control{justify-content:flex-start}
     .reportwrap{gap:16px}
     .cardprev,.reportside{width:100%}
     .cardprev img{width:100%;max-width:420px}
@@ -483,10 +541,12 @@
     <button data-r="all">全部</button>
   </div>
   <div class="custom">
-    <label class="datebox"><span>开始</span><input type="date" id="d-start"></label>
-    <span class="date-sep">至</span>
-    <label class="datebox"><span>结束</span><input type="date" id="d-end"></label>
-    <button class="btn" id="d-apply">自定义</button>
+    <div class="date-range" aria-label="自定义日期范围">
+      <label class="datefield"><span class="date-label">开始日期</span><input type="date" id="d-start"></label>
+      <span class="date-arrow">至</span>
+      <label class="datefield"><span class="date-label">结束日期</span><input type="date" id="d-end"></label>
+    </div>
+    <button class="btn" id="d-apply">应用日期</button>
   </div>
   <button class="iconbtn" id="refreshBtn" title="刷新">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -601,10 +661,16 @@
         <button class="btn" data-p="week">本周周报</button>
         <button class="btn" data-p="month">本月月报</button>
         <button class="btn" data-p="year">年度报告</button>
-        <span class="custom">自定义 <input type="date" id="rep-start"> 至 <input type="date" id="rep-end">
-        <button class="btn" id="rep-apply">查看</button></span>
+        <span class="custom"><span class="custom-title">自定义</span>
+          <span class="date-range" aria-label="报告日期范围">
+            <label class="datefield"><span class="date-label">开始日期</span><input type="date" id="rep-start"></label>
+            <span class="date-arrow">至</span>
+            <label class="datefield"><span class="date-label">结束日期</span><input type="date" id="rep-end"></label>
+          </span>
+          <button class="btn" id="rep-apply">查看</button></span>
       </div>
       <div class="narrative" id="reportNarrative"></div>
+      <div class="insights" id="reportInsights"></div>
       <div class="reportwrap">
         <div class="cardprev">
           <img id="cardImg" alt="report card">
@@ -633,6 +699,13 @@
         <a class="btn primary" id="exp-txt">导出 TXT</a>
         <a class="btn" id="exp-csv">导出 CSV</a>
         <a class="btn" id="exp-json">导出 JSON</a>
+      </div>
+      <div class="seqctl">
+        <select id="seqApp"><option value="">全部应用</option></select>
+        <label class="datefield single"><span class="date-label">跳转日期</span><input type="date" id="seqDay"></label>
+        <button class="btn" id="seqJump">跳到日期</button>
+        <button class="btn" id="seqReset">重置</button>
+        <span class="seqstat" id="seqStat"></span>
       </div>
       <div class="seq" id="seq"></div>
     </div>
@@ -671,27 +744,76 @@
   <section class="view" id="view-settings">
     <div class="panel">
       <h2>设置 <span>settings</span> <span class="saved" id="cfgSaved" style="display:none">已保存 ✓</span></h2>
-      <div class="form" id="cfgForm">
-        <label>每日目标（字）</label><input type="number" id="c-daily_goal" min="1">
-        <label>暂停统计</label><span class="switch"><input type="checkbox" id="c-paused"></span>
-        <label>跳过密码输入框</label><span class="switch"><input type="checkbox" id="c-exclude_password_fields"></span>
-        <label>开机自启</label><span class="switch"><input type="checkbox" id="c-autostart"></span>
-        <label>启动即打开仪表盘</label><span class="switch"><input type="checkbox" id="c-open_dashboard_on_start"></span>
-        <label>界面主题</label>
-        <div class="seg" id="themeMode">
-          <button type="button" data-theme-mode="system">跟随系统</button>
-          <button type="button" data-theme-mode="light">亮色</button>
-          <button type="button" data-theme-mode="dark">暗色</button>
-        </div>
-        <label>语录刷新间隔（秒）</label><input type="number" id="c-ticker_refresh_seconds" min="10" max="3600" step="5">
-        <label>数据保留天数</label><input type="number" id="c-retention_days" min="0">
-        <div class="hint">0 = 永久保留；大于 0 时会自动删除更早的数据。</div>
-        <label>分段间隔（秒）</label><input type="number" id="c-run_gap_seconds" step="0.5" min="0">
-        <div class="hint">超过该停顿或切换程序就视为新的一段（影响分词）。</div>
-        <label>会话间隔（秒）</label><input type="number" id="c-session_gap_seconds" step="5" min="0">
-        <label>仪表盘端口</label><input type="number" id="c-dashboard_port" min="1" max="65535">
-        <div class="hint">仅浏览器预览模式使用；修改后需重启 DuckType 生效。</div>
-        <label>不统计的程序<br>（每行一个进程名）</label><textarea id="c-blacklist_apps" placeholder="keepass.exe"></textarea>
+      <div class="settings-layout" id="cfgForm">
+        <section class="setting-section">
+          <h3>记录</h3>
+          <div class="setting-list">
+            <div class="setting-item">
+              <div><div class="setting-title">每日目标</div><div class="setting-desc">用于看板圆环和每日达成进度。</div></div>
+              <div class="setting-control"><input type="number" id="c-daily_goal" min="1"></div>
+            </div>
+            <div class="setting-item">
+              <div><div class="setting-title">暂停统计</div><div class="setting-desc">临时停止记录新的上屏汉字。</div></div>
+              <div class="setting-control"><span class="switch"><input type="checkbox" id="c-paused"></span></div>
+            </div>
+            <div class="setting-item">
+              <div><div class="setting-title">跳过密码输入框</div><div class="setting-desc">在密码场景中自动避开捕获。</div></div>
+              <div class="setting-control"><span class="switch"><input type="checkbox" id="c-exclude_password_fields"></span></div>
+            </div>
+          </div>
+        </section>
+        <section class="setting-section">
+          <h3>启动与外观</h3>
+          <div class="setting-list">
+            <div class="setting-item">
+              <div><div class="setting-title">开机自启</div><div class="setting-desc">登录 Windows 后自动启动 DuckType。</div></div>
+              <div class="setting-control"><span class="switch"><input type="checkbox" id="c-autostart"></span></div>
+            </div>
+            <div class="setting-item">
+              <div><div class="setting-title">启动即打开仪表盘</div><div class="setting-desc">启动后直接显示这个统计窗口。</div></div>
+              <div class="setting-control"><span class="switch"><input type="checkbox" id="c-open_dashboard_on_start"></span></div>
+            </div>
+            <div class="setting-item">
+              <div><div class="setting-title">界面主题</div><div class="setting-desc">可跟随系统，也可以固定亮色或暗色。</div></div>
+              <div class="setting-control">
+                <div class="seg" id="themeMode">
+                  <button type="button" data-theme-mode="system">跟随系统</button>
+                  <button type="button" data-theme-mode="light">亮色</button>
+                  <button type="button" data-theme-mode="dark">暗色</button>
+                </div>
+              </div>
+            </div>
+            <div class="setting-item">
+              <div><div class="setting-title">语录刷新间隔</div><div class="setting-desc">每次随机抽取新语录的间隔，单位为秒。</div></div>
+              <div class="setting-control"><input type="number" id="c-ticker_refresh_seconds" min="10" max="3600" step="5"></div>
+            </div>
+          </div>
+        </section>
+        <section class="setting-section">
+          <h3>分析与数据</h3>
+          <div class="setting-list">
+            <div class="setting-item">
+              <div><div class="setting-title">数据保留天数</div><div class="setting-desc">填 0 表示永久保留；大于 0 会自动清理更早数据。</div></div>
+              <div class="setting-control"><input type="number" id="c-retention_days" min="0"></div>
+            </div>
+            <div class="setting-item">
+              <div><div class="setting-title">分段间隔</div><div class="setting-desc">超过该停顿或切换程序就视为新的一段，影响分词与序列。</div></div>
+              <div class="setting-control"><input type="number" id="c-run_gap_seconds" step="0.5" min="0"></div>
+            </div>
+            <div class="setting-item">
+              <div><div class="setting-title">会话间隔</div><div class="setting-desc">用于计算活跃时长、连续输入和有效删除。</div></div>
+              <div class="setting-control"><input type="number" id="c-session_gap_seconds" step="5" min="0"></div>
+            </div>
+            <div class="setting-item">
+              <div><div class="setting-title">仪表盘端口</div><div class="setting-desc">仅浏览器预览模式使用；修改后需重启生效。</div></div>
+              <div class="setting-control"><input type="number" id="c-dashboard_port" min="1" max="65535"></div>
+            </div>
+            <div class="setting-item">
+              <div><div class="setting-title">不统计的程序</div><div class="setting-desc">每行一个进程名，例如 keepass.exe。</div></div>
+              <div class="setting-control"><textarea id="c-blacklist_apps" placeholder="keepass.exe"></textarea></div>
+            </div>
+          </div>
+        </section>
       </div>
       <div class="btnrow" style="margin-top:16px">
         <button class="btn primary" id="cfgSave">保存设置</button>
@@ -729,7 +851,13 @@
       <div id="relocBar" class="progwrap" style="display:none"><div class="progbar"><i id="relocProg"></i></div><div class="proglabel" id="relocProgLabel"></div></div>
       <div id="relocMsg"></div>
       <div class="btnrow" style="margin-top:10px">
-        <span class="custom">删除区间 <input type="date" id="del-start"> 至 <input type="date" id="del-end"></span>
+        <span class="custom"><span class="custom-title">删除区间</span>
+          <span class="date-range" aria-label="删除日期范围">
+            <label class="datefield"><span class="date-label">开始日期</span><input type="date" id="del-start"></label>
+            <span class="date-arrow">至</span>
+            <label class="datefield"><span class="date-label">结束日期</span><input type="date" id="del-end"></label>
+          </span>
+        </span>
         <button class="btn danger" id="delRange">删除该区间</button>
         <button class="btn danger" id="clearAll">清空全部数据</button>
       </div>
@@ -854,7 +982,7 @@ function rangeParams(extra){
   if(range === "custom"){ p.start = custom.start||""; p.end = custom.end||""; }
   return p;
 }
-function qs(){ return new URLSearchParams(rangeParams()).toString(); }
+function qs(extra){ return new URLSearchParams(rangeParams(extra)).toString(); }
 async function apiGet(endpoint, params){
   params = params || {};
   const t0 = performance.now();
@@ -895,7 +1023,7 @@ const DT = {
   data_delete: (start,end)=> isNative()? nApi().data_delete(start,end) : fetch("/api/data/delete",_post({start,end})).then(_j),
   card_png: (period)=> isNative()? nApi().card_png(period) : Promise.resolve("/api/card?period="+encodeURIComponent(period)+"&t="+Date.now()),
   save_card: (period)=> isNative()? nApi().save_card(period) : (window.open("/api/card?period="+encodeURIComponent(period)), Promise.resolve({ok:true})),
-  export_sequence: (fmt)=> isNative()? nApi().export_sequence(fmt, rangeParams()) : (window.open("/api/export/sequence."+fmt+"?"+qs()), Promise.resolve({ok:true})),
+  export_sequence: (fmt, params)=> isNative()? nApi().export_sequence(fmt, params || rangeParams()) : (window.open("/api/export/sequence."+fmt+"?"+new URLSearchParams(params || rangeParams()).toString()), Promise.resolve({ok:true})),
   report_generate: (p)=> isNative()? nApi().report_generate(p) : fetch("/api/report/generate",_post(p)).then(_j),
   report_progress: ()=> isNative()? nApi().report_progress() : fetch("/api/report/progress").then(_j),
 };
@@ -987,6 +1115,19 @@ document.getElementById("tabs").addEventListener("click", e=>{
 });
 
 // ---- range / refresh ----
+function syncDateFields(){
+  document.querySelectorAll('.datefield input[type="date"]').forEach(inp=>{
+    const box = inp.closest(".datefield");
+    if(box) box.classList.toggle("empty", !inp.value);
+  });
+}
+document.addEventListener("input", e=>{
+  if(e.target && e.target.matches('.datefield input[type="date"]')) syncDateFields();
+});
+document.addEventListener("change", e=>{
+  if(e.target && e.target.matches('.datefield input[type="date"]')) syncDateFields();
+});
+syncDateFields();
 document.getElementById("ranges").addEventListener("click", e=>{
   if(!e.target.dataset.r) return;
   range = e.target.dataset.r;
@@ -1592,11 +1733,29 @@ function renderReportRows(r){
   else if(r.peak_hour!==null && r.peak_hour!==undefined) rows.push(["高峰时段", String(r.peak_hour).padStart(2,"0")+":00"]);
   if(r.fav_char) rows.push(["最爱的字", r.fav_char]);
   if(r.top_app) rows.push(["主力应用", r.top_app + " · " + r.top_app_share + "%"]);
+  if(r.busiest_week) rows.push(["最忙周", r.busiest_week + " · " + (r.busiest_week_count||0).toLocaleString() + " 字"]);
+  if(r.quietest_week && r.quietest_week !== r.busiest_week) rows.push(["最闲周", r.quietest_week + " · " + (r.quietest_week_count||0).toLocaleString() + " 字"]);
+  if(r.busiest_weekday) rows.push(["最忙星期", r.busiest_weekday + " · " + (r.busiest_weekday_count||0).toLocaleString() + " 字"]);
+  if(r.quietest_weekday && r.quietest_weekday !== r.busiest_weekday) rows.push(["最闲星期", r.quietest_weekday + " · " + (r.quietest_weekday_count||0).toLocaleString() + " 字"]);
   if(r.best_day) rows.push(["最高产日", r.best_day + (r.best_day_weekday?("（"+r.best_day_weekday+"，"):"（") + r.best_day_count + " 字）"]);
   if(r.longest_session_min) rows.push(["最长连续输入", r.longest_session_min + " 分钟"]);
   if(r.streak_best) rows.push(["最长连续天数", r.streak_best + " 天"]);
   document.getElementById("reportRows").innerHTML = rows.map(
     ([k,v])=>`<div class="rrow"><span>${k}</span><b>${escapeHtml(String(v))}</b></div>`).join("");
+}
+function highlightMetric(body, metric){
+  const text = String(body || "");
+  const key = String(metric || "").trim();
+  if(!key || !text.includes(key)) return escapeHtml(text);
+  return text.split(key).map(escapeHtml).join(`<mark>${escapeHtml(key)}</mark>`);
+}
+function renderReportInsights(items){
+  const el = document.getElementById("reportInsights");
+  if(!items || !items.length){ el.innerHTML = ""; return; }
+  el.innerHTML = items.map(x=>`<div class="insight tone-${escapeAttr(x.tone||"neutral")}">
+    ${x.metric ? `<span class="metric">${escapeHtml(x.metric)}</span>` : ""}
+    <b>${escapeHtml(x.title||"洞察")}</b><p>${highlightMetric(x.body, x.metric)}</p>
+  </div>`).join("");
 }
 async function loadReport(params){
   const seq = ++reportReqSeq;
@@ -1606,6 +1765,9 @@ async function loadReport(params){
   resetRichReport();
   document.getElementById("reportNarrative").className = "narrative skel";
   document.getElementById("reportNarrative").textContent = "正在生成小结…";
+  document.getElementById("reportInsights").innerHTML =
+    '<div class="insight"><div class="skel-line" style="width:52%"></div><div class="skel-line" style="width:86%;margin-top:10px"></div></div>'+
+    '<div class="insight"><div class="skel-line" style="width:48%"></div><div class="skel-line" style="width:78%;margin-top:10px"></div></div>';
   document.getElementById("reportRows").innerHTML =
     '<div class="skel-line" style="width:76%;height:18px"></div><div class="skel-line" style="width:62%;height:18px;margin-top:16px"></div><div class="skel-line" style="width:70%;height:18px;margin-top:16px"></div>';
   // PNG card only supports the named calendar periods.
@@ -1625,6 +1787,7 @@ async function loadReport(params){
   window.__reportFast = fast;
   document.getElementById("reportNarrative").className = "narrative";
   document.getElementById("reportNarrative").textContent = fast.narrative || "";
+  renderReportInsights(fast.insights || []);
   renderReportRows(fast);
   if(!isCustom){
     DT.card_png(period).then(src=>{
@@ -1676,6 +1839,11 @@ function chipsRow(items, fresh){
   if(!items || !items.length) return '<div class="empty" style="padding:8px 0">暂无</div>';
   return items.map(x=>`<span class="nw ${fresh?"fresh":""}">${escapeHtml(x.word)}<b>${x.count}</b></span>`).join("");
 }
+function copyIcon(done=false){
+  return done
+    ? `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>`
+    : `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
+}
 function repGroup(title, tag, hint, body){
   return `<div class="repGroup"><h4>${escapeHtml(title)}${tag?`<span class="tag">${escapeHtml(tag)}</span>`:""}</h4>
     ${hint?`<div class="gh">${escapeHtml(hint)}</div>`:""}${body}</div>`;
@@ -1709,20 +1877,88 @@ function renderRichReport(r){
 }
 
 // ---- sequence ----
-async function loadSequence(){
-  const runs = await getJSON("/api/sequence?limit=300");
-  const el = document.getElementById("seq");
-  if(!runs.length){ el.innerHTML = "<div class='empty'>暂无序列数据（需要钩子已就绪且有上屏汉字）。</div>"; }
-  else el.innerHTML = runs.map(r=>{
-    const t = r.ts ? new Date(r.ts*1000).toLocaleString() : "";
-    return `<div class="run"><div class="meta"><span>${t}</span><span>${escapeHtml(r.app||"")}</span></div><div class="text">${escapeHtml(r.text)}</div></div>`;
+let seqFilterApp = "", seqFilterDay = "";
+function sequenceParams(extra){
+  const p = rangeParams(extra || {});
+  if(seqFilterApp) p.app = seqFilterApp;
+  if(seqFilterDay) p.day = seqFilterDay;
+  return p;
+}
+async function loadSequenceApps(){
+  const p = rangeParams();
+  if(seqFilterDay) p.day = seqFilterDay;
+  const apps = await apiGet("sequence_apps", p);
+  const sel = document.getElementById("seqApp");
+  const current = seqFilterApp;
+  sel.innerHTML = '<option value="">全部应用</option>' + (apps||[]).map(a=>{
+    const label = (a.app || "(unknown)") + " · " + a.count;
+    return `<option value="${escapeAttr(a.app||"")}">${escapeHtml(label)}</option>`;
   }).join("");
+  sel.value = current;
+  if(current && sel.value !== current){
+    seqFilterApp = "";
+    sel.value = "";
+  }
+}
+async function loadSequence(){
+  const params = sequenceParams({limit:300});
+  const [runs] = await Promise.all([
+    apiGet("sequence", params),
+    loadSequenceApps().catch(()=>{})
+  ]);
+  const el = document.getElementById("seq");
+  document.getElementById("seqDay").value = seqFilterDay;
+  syncDateFields();
+  document.getElementById("seqStat").textContent =
+    (seqFilterDay ? seqFilterDay + " · " : "") +
+    (seqFilterApp ? seqFilterApp + " · " : "") +
+    `${runs.length} 段`;
+  if(!runs.length){ el.innerHTML = "<div class='empty'>暂无序列数据（需要钩子已就绪且有上屏汉字）。</div>"; }
+  else el.innerHTML = runs.map((r, i)=>{
+    const t = r.ts ? new Date(r.ts*1000).toLocaleString() : "";
+    return `<div class="run"><div class="meta"><span>${t}</span><span>${escapeHtml(r.app||"")}</span>`+
+      `<button class="copyrun" data-i="${i}" title="复制这一段" aria-label="复制这一段">${copyIcon()}</button></div>`+
+      `<div class="text">${escapeHtml(r.text)}</div></div>`;
+  }).join("");
+  window.__seqRuns = runs;
   ["txt","csv","json"].forEach(f=>{
     const a = document.getElementById("exp-"+f);
     a.removeAttribute("href");
-    a.onclick = (e)=>{ e.preventDefault(); DT.export_sequence(f); };
+    a.onclick = (e)=>{ e.preventDefault(); DT.export_sequence(f, sequenceParams()); };
   });
 }
+document.getElementById("seqApp").addEventListener("change", e=>{
+  seqFilterApp = e.target.value;
+  loadSequence();
+});
+document.getElementById("seqJump").addEventListener("click", ()=>{
+  seqFilterDay = document.getElementById("seqDay").value;
+  if(!seqFilterDay){ alert("请选择要跳转的日期。"); return; }
+  loadSequence();
+});
+document.getElementById("seqReset").addEventListener("click", ()=>{
+  seqFilterApp = ""; seqFilterDay = "";
+  document.getElementById("seqDay").value = "";
+  syncDateFields();
+  loadSequence();
+});
+document.getElementById("seq").addEventListener("click", async e=>{
+  const btn = e.target.closest(".copyrun");
+  if(!btn) return;
+  const r = (window.__seqRuns || [])[Number(btn.dataset.i)];
+  if(!r) return;
+  try{
+    await navigator.clipboard.writeText(r.text || "");
+    btn.innerHTML = copyIcon(true);
+    setTimeout(()=>btn.innerHTML=copyIcon(false), 1200);
+  }catch(err){
+    const ta = document.createElement("textarea");
+    ta.value = r.text || ""; document.body.appendChild(ta); ta.select();
+    try{ document.execCommand("copy"); btn.innerHTML = copyIcon(true); }
+    catch(e2){ btn.title = "复制失败"; }
+    ta.remove(); setTimeout(()=>{ btn.innerHTML=copyIcon(false); btn.title="复制这一段"; }, 1200);
+  }
+});
 
 // ---- fun ----
 function chips(items, fmt){ return items && items.length ? items.map(fmt).join("") : "<div class='empty'>暂无</div>"; }
@@ -1738,11 +1974,10 @@ async function loadFun(){
 }
 
 // ---- health banner + rotating ticker ----
-// Pool = code-generated data facts (from /api/ticker) + rotating phrases,
-// shuffled. Auto-advances, and 🔀 lets the user pull another line on demand.
-let tickerPool = [], tickerIdx = 0, tickerAt = 0;
+// Pool = code-generated data facts (from /api/ticker) + rotating phrases.
+// Each auto/manual advance draws a random line from the current pool.
+let tickerPool = [], tickerCurrent = null, tickerSeq = 0, tickerAt = 0;
 let tickerPhrases = new Set(), tickerReported = -1;
-function shuffle(a){ for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; }
 // Little duck illustrations sprinkled around the UI; the spot re-rolls on every
 // rotation/refresh so the page feels alive.
 const DUCKS = ["01_idle","02_smile","03_wave","04_walk","05_run_fixed","06_jump",
@@ -1759,19 +1994,30 @@ function reportQuoteSeen(msg){
   if(!tickerPhrases.has(msg)) return;
   try{ DT.quote_seen(msg); }catch(e){}
 }
+function pickTicker(){
+  if(!tickerPool.length) return null;
+  if(tickerPool.length === 1) return tickerPool[0];
+  let msg = tickerPool[Math.floor(Math.random()*tickerPool.length)];
+  if(msg === tickerCurrent){
+    const alternatives = tickerPool.filter(x=>x !== tickerCurrent);
+    if(alternatives.length) msg = alternatives[Math.floor(Math.random()*alternatives.length)];
+  }
+  return msg;
+}
 async function loadTicker(){
   try{
     const t = await DT.ticker();
     tickerPhrases = new Set(t.phrases||[]);
-    tickerPool = shuffle([...(t.facts||[]), ...(t.phrases||[])].filter(Boolean));
-    tickerIdx = 0; tickerAt = Date.now(); tickerReported = -1;
-  }catch(e){ tickerPool = []; tickerPhrases = new Set(); }
+    tickerPool = [...(t.facts||[]), ...(t.phrases||[])].filter(Boolean);
+    tickerCurrent = null; tickerSeq = 0; tickerAt = Date.now(); tickerReported = -1;
+  }catch(e){ tickerPool = []; tickerCurrent = null; tickerPhrases = new Set(); }
 }
 function renderTicker(){
   const el = document.getElementById("banner");
   if(!tickerPool.length){ el.className = "banner"; return; }
   el.className = "banner fun show";
-  const msg = tickerPool[tickerIdx % tickerPool.length];
+  if(tickerCurrent === null) tickerCurrent = pickTicker();
+  const msg = tickerCurrent;
   const blank = isBlankQuote(msg);   // the hidden "留白" easter-egg line
   const duck = blank ? duckURL("25_sleep") : randomDuck();
   el.innerHTML = `<img src="${duck}" alt="" onerror="this.onerror=null;this.src='duck.png'">`+
@@ -1785,10 +2031,11 @@ function renderTicker(){
     `<path d="M21 3v5h-5"/></svg></button>`;
   // Count this view once per new position (renderTicker can re-run for the same
   // line, e.g. on resize, without it counting again).
-  if(tickerIdx !== tickerReported){ tickerReported = tickerIdx; reportQuoteSeen(msg); }
+  if(tickerSeq !== tickerReported){ tickerReported = tickerSeq; reportQuoteSeen(msg); }
 }
 function nextTicker(resetTimer=false){
-  tickerIdx++;
+  tickerCurrent = pickTicker();
+  tickerSeq++;
   renderTicker();
   if(resetTimer) resetTickerTimer();
 }
@@ -1830,7 +2077,9 @@ async function checkHealth(){
     el.innerHTML = "<b>输入捕获组件未能启动</b>。常见原因是安全软件拦截，或目标程序与 DuckType 位数不一致。详情可查看 DuckType 日志。";
   } else if((s.chars_captured||0) === 0 && (s.code_units||0) === 0){
     el.className = "banner warn show";
-    el.innerHTML = "<b>输入捕获组件已启动，但还没有收到字符</b>。可以先在记事本里输入几个字测试；如果仍然没有记录，通常是被安全软件拦截或目标程序不兼容。";
+    el.innerHTML = "<b>输入捕获组件已启动，但还没有收到字符</b>。可以直接在下面输入几个汉字测试，或在记事本里试一下；如果刷新后仍没有记录，通常是被安全软件拦截或目标程序不兼容。"+
+      `<div class="capture-test"><textarea id="captureTestInput" placeholder="在这里输入几个汉字，例如：今天开始记录"></textarea>`+
+      `<button class="btn primary" id="healthRefresh">刷新检测</button></div>`;
   } else {
     // Healthy: show the ticker. Refresh the pool when stale (~3 min) or on first
     // run; otherwise just keep the existing rotation going / resume from a warning.
@@ -1839,6 +2088,7 @@ async function checkHealth(){
     if(!tickerPool.length) el.className = "banner";
   }
 }
+document.addEventListener("click", e=>{ if(e.target.closest("#healthRefresh")) checkHealth(); });
 
 // ---- settings ----
 const CFG_BOOL = ["paused","exclude_password_fields","autostart","open_dashboard_on_start"];
@@ -2081,25 +2331,42 @@ try{ const fd=document.getElementById("footDuck"); fd.onerror=()=>{fd.onerror=nu
 // for the bridge before the first load. A dev browser (no window.pywebview) runs
 // immediately.
 let __booted = false;
+function expectsNativeBridge(){
+  return location.protocol === "file:" || !!window.pywebview;
+}
+function showBridgeWaiting(long=false){
+  if(!boardLoaded) setBoardLoading(true);
+  const el = document.getElementById("banner");
+  el.className = "banner warn show";
+  el.innerHTML = long
+    ? "<b>仍在等待数据引擎</b>。如果这里停留太久，请从托盘退出 DuckType 后重新打开。"
+    : "<b>正在连接数据引擎</b>，看板会在连接完成后自动显示。";
+}
 function firstLoad(){
   if(__booted) return;
+  if(location.protocol === "file:" && !isNative()){
+    showBridgeWaiting(false);
+    return;
+  }
   __booted = true;
   loadDashboardPrefs().then(()=>resetTickerTimer());
   refreshBoard();
   checkHealth();
 }
 function bootWhenReady(){
-  if(isNative() || !window.pywebview){ firstLoad(); return; }
+  if(isNative() || !expectsNativeBridge()){ firstLoad(); return; }
   // native but bridge not injected yet: wait for the ready event, with a poll fallback.
+  showBridgeWaiting(false);
   window.addEventListener("pywebviewready", firstLoad, {once:true});
   let tries = 0;
   const t = setInterval(()=>{
-    if(isNative() || tries++ > 60){ clearInterval(t); firstLoad(); }
+    if(isNative()){ clearInterval(t); firstLoad(); return; }
+    if(tries++ === 80) showBridgeWaiting(true);
   }, 100);
 }
 bootWhenReady();
-setInterval(()=>{ if(document.querySelector("#tabs button.active").dataset.v==="board") refreshBoard(); }, 30000);
-setInterval(checkHealth, 20000);
+setInterval(()=>{ if(__booted && document.querySelector("#tabs button.active").dataset.v==="board") refreshBoard(); }, 30000);
+setInterval(()=>{ if(__booted) checkHealth(); }, 20000);
 </script>
 </body>
 </html>

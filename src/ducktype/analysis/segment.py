@@ -23,7 +23,7 @@ _HAN = lambda ch: "一" <= ch <= "鿿" or "㐀" <= ch <= "䶿"
 
 # Bump when segmentation/POS logic changes so the materialized word_freq/pos_freq
 # caches rebuild instead of keeping stale tags (see build_words).
-_SEG_VERSION = "2"
+_SEG_VERSION = "3"
 
 # jieba's bundled dictionary mistags a handful of very common words (its tags come
 # from one corpus and have known per-word errors). Correct only clear, high-
@@ -129,6 +129,7 @@ def build_words(db, run_gap: float = 3.0) -> None:
             con.execute("DELETE FROM pos_freq")
             con.execute("DELETE FROM word_freq_daily")
             con.execute("DELETE FROM pos_freq_daily")
+            con.execute("DELETE FROM pos_word_freq_daily")
             con.commit()
         finally:
             con.close()
@@ -163,15 +164,20 @@ def build_words(db, run_gap: float = 3.0) -> None:
         # Per-day rollups, attributing each run to the local day of its first char.
         day_wc: Dict[str, Dict[str, int]] = {}
         day_pc: Dict[str, Dict[str, int]] = {}
+        day_pw: Dict[str, Dict[Tuple[str, str], int]] = {}
         for first_ts, run in _runs_with_ts_from_rows(
                 [(r[1], r[2], r[3]) for r in closed], run_gap):
             a, b, c = _segment_text(run)
             day = datetime.fromtimestamp(first_ts).strftime("%Y-%m-%d")
             dwc = day_wc.setdefault(day, {})
             dpc = day_pc.setdefault(day, {})
+            dpw = day_pw.setdefault(day, {})
             for k, v in a.items():
                 total_wc[k] = total_wc.get(k, 0) + v
                 dwc[k] = dwc.get(k, 0) + v
+                pos = b.get(k) or "x"
+                key = (pos, k)
+                dpw[key] = dpw.get(key, 0) + v
             total_wp.update(b)
             for k, v in c.items():
                 total_pc[k] = total_pc.get(k, 0) + v
@@ -203,6 +209,15 @@ def build_words(db, run_gap: float = 3.0) -> None:
                     "INSERT INTO pos_freq_daily(day, pos, count) VALUES (?,?,?) "
                     "ON CONFLICT(day, pos) DO UPDATE SET count=count+excluded.count",
                     (day, pos, cnt),
+                )
+        for day, dpw in day_pw.items():
+            for (pos, word), cnt in dpw.items():
+                con.execute(
+                    "INSERT INTO pos_word_freq_daily(day, pos, word, count) "
+                    "VALUES (?,?,?,?) "
+                    "ON CONFLICT(day, pos, word) DO UPDATE SET "
+                    "count=count+excluded.count",
+                    (day, pos, word, cnt),
                 )
         con.commit()
         db.set_meta("word_cursor", str(new_cursor))

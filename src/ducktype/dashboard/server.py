@@ -13,7 +13,7 @@ import io
 import json
 import logging
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -116,11 +116,17 @@ def create_app(db, config, status_fn=None, on_quit=None) -> Flask:
     # ---- sequence export (browser variant streams the file) ------------
     @app.route("/api/export/sequence.<fmt>")
     def api_export_sequence(fmt):
-        since, until = stats.resolve_range(
-            request.args.get("range", "7d"),
-            request.args.get("start"), request.args.get("end"))
+        day = (request.args.get("day") or "").strip()
+        if day:
+            start = datetime.strptime(day, "%Y-%m-%d")
+            since, until = start.timestamp(), (start + timedelta(days=1)).timestamp()
+        else:
+            since, until = stats.resolve_range(
+                request.args.get("range", "7d"),
+                request.args.get("start"), request.args.get("end"))
         runs = list(reversed(stats.sequence_recent(
-            db, since, config.run_gap_seconds, 10_000_000, until)))
+            db, since, config.run_gap_seconds, 10_000_000, until,
+            request.args.get("app", ""))))
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         if fmt == "txt":
             body, mime = "\n".join(r["text"] for r in runs), "text/plain"

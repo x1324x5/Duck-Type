@@ -18,7 +18,7 @@ import json
 import logging
 import time
 from dataclasses import asdict
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from .. import autostart, updater
@@ -58,6 +58,7 @@ READ_ENDPOINTS = (
     "board_heavy",
     "report_fast",
     "report_heavy",
+    "sequence_apps",
 )
 _READ_ENDPOINTS = frozenset(READ_ENDPOINTS)
 _STALE_CACHE_TTL = {
@@ -97,6 +98,13 @@ class Api:
     # ---- helpers ---------------------------------------------------------
     def _bounds(self, p: dict):
         return stats.resolve_range(p.get("range", "7d"), p.get("start"), p.get("end"))
+
+    def _sequence_bounds(self, p: dict):
+        day = (p.get("day") or "").strip()
+        if day:
+            start = datetime.strptime(day, "%Y-%m-%d")
+            return start.timestamp(), (start + timedelta(days=1)).timestamp()
+        return self._bounds(p)
 
     def _cached(self, endpoint: str, params: dict, fn):
         now = time.monotonic()
@@ -249,9 +257,16 @@ class Api:
                                   self._config.run_gap_seconds)
 
     def _r_sequence(self, p):
-        since, until = self._bounds(p)
+        since, until = self._sequence_bounds(p)
         limit = int(p.get("limit", 200))
-        return stats.sequence_recent(self._db, since, self._config.run_gap_seconds, limit, until)
+        return stats.sequence_recent(
+            self._db, since, self._config.run_gap_seconds, limit, until,
+            p.get("app", ""),
+        )
+
+    def _r_sequence_apps(self, p):
+        since, until = self._sequence_bounds(p)
+        return stats.sequence_apps(self._db, since, until)
 
     def _r_board(self, p):
         """Batched payload for the main board: one call instead of ~10."""
@@ -396,9 +411,10 @@ class Api:
 
     def export_sequence(self, fmt="txt", params: Optional[dict] = None):
         p = params or {}
-        since, until = self._bounds(p)
+        since, until = self._sequence_bounds(p)
         runs = list(reversed(stats.sequence_recent(
-            self._db, since, self._config.run_gap_seconds, 10_000_000, until)))
+            self._db, since, self._config.run_gap_seconds, 10_000_000, until,
+            p.get("app", ""))))
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         if fmt == "txt":
             body = "\n".join(r["text"] for r in runs).encode("utf-8")
