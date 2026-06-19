@@ -153,7 +153,9 @@
   .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:17px 18px;
     box-shadow:var(--card-shadow);transition:transform .15s ease,border-color .15s ease}
   .card:hover{transform:translateY(-2px);border-color:var(--accent)}
-  .card .v{font-size:26px;font-weight:700;letter-spacing:-.5px;line-height:1.15}
+  .card .v{font-size:26px;font-weight:700;letter-spacing:-.5px;line-height:1.15;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .card .v .u{font-size:13px;font-weight:600;color:var(--muted);margin-left:4px;letter-spacing:0}
   .card .l{color:var(--muted);font-size:12px;margin-top:5px;letter-spacing:.2px}
   .card .d{font-size:12px;margin-top:7px;font-weight:600}
   .d.up{color:var(--up)} .d.down{color:var(--down)} .d.flat{color:var(--muted)}
@@ -436,6 +438,42 @@
     border-radius:8px;padding:9px 12px;font-size:14px;font-family:inherit}
   .bignum{font-size:20px;margin-top:4px}
   .bignum b{color:var(--accent);font-size:24px}
+  /* tracked terms */
+  .trackgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;margin-top:14px}
+  .trackcard{position:relative;background:var(--panel2);border:1px solid var(--line);border-radius:12px;
+    padding:13px 14px;cursor:pointer;transition:transform .15s,border-color .15s,box-shadow .15s}
+  .trackcard:hover{transform:translateY(-2px);border-color:var(--accent);box-shadow:var(--card-shadow)}
+  .trackcard .term{font-size:15px;font-weight:700;color:var(--fg);max-width:88%;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .trackcard .numrow{display:flex;align-items:baseline;gap:8px;margin:6px 0 2px}
+  .trackcard .num{font-size:26px;font-weight:800;letter-spacing:-.5px;line-height:1.1}
+  .trackcard .num.zero{color:var(--muted);font-weight:700}
+  .trackcard .num small{font-size:12px;font-weight:600;color:var(--muted);margin-left:4px;letter-spacing:0}
+  .trackcard .delta{font-size:12px;font-weight:700;white-space:nowrap}
+  .trackcard .delta.up{color:var(--up)} .trackcard .delta.down{color:var(--down)}
+  .trackcard .delta.flat,.trackcard .delta.new{color:var(--muted)}
+  .trackcard .delta.new{color:var(--accent)}
+  .trackcard .spark{display:block;width:100%;height:24px;margin:4px 0 6px}
+  .trackcard .spark path{fill:none;stroke:var(--accent);stroke-width:1.6;
+    stroke-linejoin:round;stroke-linecap:round}
+  .trackcard .spark .fillarea{fill:var(--accent);opacity:.12;stroke:none}
+  .trackcard .sub{color:var(--muted);font-size:11.5px;line-height:1.6}
+  .trackcard .rm{position:absolute;top:8px;right:8px;width:22px;height:22px;border:0;border-radius:7px;
+    background:transparent;color:var(--muted);cursor:pointer;font-size:15px;line-height:1;
+    display:inline-flex;align-items:center;justify-content:center;opacity:0;transition:opacity .15s,background .15s,color .15s}
+  .trackcard:hover .rm{opacity:1}
+  .trackcard .rm:hover{background:var(--down);color:#fff}
+  .trackempty{color:var(--muted);font-size:13px;padding:14px 2px}
+  .demobar{display:none;align-items:center;gap:12px;margin:0 0 14px;padding:11px 15px;border-radius:12px;
+    background:linear-gradient(90deg,color-mix(in srgb,var(--accent) 16%,transparent),color-mix(in srgb,var(--accent) 4%,transparent));
+    border:1px solid var(--accent);color:var(--fg);font-size:13px}
+  .demobar.on{display:flex}
+  .demobar .grow{flex:1;line-height:1.5} .demobar b{color:var(--accent)}
+  .trackgroup{margin-top:16px}
+  .trackgroup-h{font-size:12.5px;font-weight:700;color:var(--muted);letter-spacing:.4px;
+    margin:2px 2px 2px;display:flex;align-items:center;gap:7px}
+  .trackgroup-h::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--accent)}
+  .trackgroup-h .gcount{font-weight:600;color:var(--muted);opacity:.8}
   #searchResult h3{font-size:13px;color:var(--muted);font-weight:600}
   .statgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin:14px 0}
   .statgrid .s{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
@@ -560,13 +598,15 @@
 
 <main>
   <div class="banner" id="banner"></div>
+  <div class="demobar" id="demoBar"><span class="grow">🦆 <b>演示模式</b> · 当前展示的是示例数据，你的真实记录不受影响。</span><button class="btn" id="demoExit">退出演示</button></div>
+  <div class="demobar" id="demoInvite"><span class="grow">还没有足够的数据？<b>加载一份演示数据</b>，先看看 DuckType 能展示什么。</span><button class="btn primary" id="demoStart">加载演示数据</button></div>
 
   <!-- ======================= BOARD ======================= -->
   <section class="view active" id="view-board">
     <div class="cards" id="cards"></div>
 
     <div class="panel">
-      <h2>今日目标 &amp; 连续打卡 <span>goal · streak</span></h2>
+      <h2>今日目标与连续打卡</h2>
       <div class="goalrow">
         <div class="ring" id="goalRing" style="--p:0"><div class="inner"><b id="goalPct">0%</b><small>今日目标</small></div></div>
         <div class="streaks">
@@ -580,7 +620,7 @@
 
     <div class="grid">
       <div class="panel wide">
-        <h2><span id="dailyPanelTitle">每日输入字数</span> <span id="dailyPanelSub">daily characters</span>
+        <h2><span id="dailyPanelTitle">每日输入字数</span><span id="dailyPanelSub"></span>
           <span class="ctl" id="dailyChartTools"><button class="dlbtn" data-dl="dailyChart" data-name="daily" title="保存为图片">⬇</button></span>
         </h2>
         <div class="todaycloud" id="todayCloud" hidden></div>
@@ -588,30 +628,33 @@
         <canvas id="dailyChart"></canvas>
       </div>
       <div class="panel wide">
-        <h2>按小时输入分布 <span>hourly activity</span>
+        <h2>按小时输入分布
           <span class="ctl"><div class="miniranges" id="hourRanges">
             <button data-h="today" class="active">今天</button>
             <button data-h="24">近 24 小时</button>
             <button data-h="72">近 3 天</button>
             <button data-h="168">近 7 天</button>
+          </div><div class="miniranges" id="hourStyle">
+            <button data-s="bar" class="active" title="柱状图">柱状</button>
+            <button data-s="line" title="平滑曲线">平滑</button>
           </div><button class="dlbtn" data-dl="hourlyChart" data-name="hourly" title="保存为图片">⬇</button></span>
         </h2>
         <canvas id="hourlyChart"></canvas>
       </div>
       <div class="panel">
-        <h2>高频字 <span>top characters</span>
+        <h2>高频字
           <span class="ctl rankctl"><input type="range" id="charN" min="10" max="200" step="5" value="25"><b id="charNv">25</b><button class="dlbtn" data-dl="charChart" data-name="top_chars" title="保存为图片">⬇</button></span>
         </h2>
         <div class="hbar"><div class="inner"><canvas id="charChart"></canvas></div></div>
       </div>
       <div class="panel">
-        <h2>高频词 <span>top words (2+ chars)</span>
+        <h2>高频词 <span>2 字以上</span>
           <span class="ctl rankctl"><input type="range" id="wordN" min="10" max="200" step="5" value="25"><b id="wordNv">25</b><button class="dlbtn" data-dl="wordChart" data-name="top_words" title="保存为图片">⬇</button></span>
         </h2>
         <div class="hbar"><div class="inner"><canvas id="wordChart"></canvas></div></div>
       </div>
       <div class="panel">
-        <h2>词性分布 <span>part-of-speech</span><i class="info" id="posInfo">i</i>
+        <h2>词性分布<i class="info" id="posInfo">i</i>
           <span class="ctl">
             <button class="btn" id="posBack" style="display:none">返回总览</button>
             <span class="rankctl" id="posWordCtl" style="display:none">
@@ -625,7 +668,7 @@
         <div id="posDetail" class="posnote"></div>
       </div>
       <div class="panel">
-        <h2>各应用输入量 <span>by application</span>
+        <h2>各应用输入量
           <span class="ctl">
             <button class="btn" id="appBack" style="display:none">返回总览</button>
             <button class="dlbtn" data-dl="appChart" data-name="apps" title="保存为图片">⬇</button>
@@ -634,19 +677,18 @@
         <div class="hbar" id="appOverviewWrap"><div class="inner"><canvas id="appChart"></canvas></div></div>
         <div id="appDetail" style="display:none">
           <div id="appDetailTitle" class="posnote"></div>
-          <div class="subhd">高频词 <span>top words (2+)</span></div>
+          <div class="subhd">高频词 <span>2 字以上</span></div>
           <div class="hbar"><div class="inner"><canvas id="appWordChart"></canvas></div></div>
-          <div class="subhd">高频字 <span>top characters</span></div>
+          <div class="subhd">高频字</div>
           <div class="hbar"><div class="inner"><canvas id="appCharChart"></canvas></div></div>
         </div>
       </div>
       <div class="panel wide">
-        <h2>活跃热力图 <span>characters by weekday × hour</span></h2>
+        <h2>活跃热力图 <span>星期 × 小时</span></h2>
         <div id="heatmap"></div>
       </div>
       <div class="panel wide">
-        <h2>主题关键词 <span>topics</span><i class="info"
-          id="topicInfo">i</i></h2>
+        <h2>主题关键词<i class="info" id="topicInfo">i</i></h2>
         <div class="topics" id="topics"></div>
       </div>
     </div>
@@ -655,7 +697,7 @@
   <!-- ======================= REPORT ======================= -->
   <section class="view" id="view-report">
     <div class="panel">
-      <h2>报告 <span>your typing report</span><i class="info" id="reportInfo">i</i></h2>
+      <h2>报告<i class="info" id="reportInfo">i</i></h2>
       <div class="btnrow" id="periodBtns">
         <button class="btn active" data-p="today">今日小结</button>
         <button class="btn" data-p="week">本周周报</button>
@@ -674,14 +716,14 @@
       <div class="reportwrap">
         <div class="cardprev">
           <img id="cardImg" alt="report card">
-          <div style="margin-top:12px"><a class="btn primary" id="cardDl" download>⬇ 保存图片卡片</a></div>
+          <div class="btnrow" style="margin-top:12px"><a class="btn primary" id="cardDl" download>⬇ 保存方形卡片</a><a class="btn" id="cardDlLong" download>⬇ 保存长图</a></div>
         </div>
         <div class="reportside" id="reportRows"></div>
       </div>
     </div>
 
     <div class="panel">
-      <h2>完整报告 <span>word-level deep dive</span></h2>
+      <h2>完整报告</h2>
       <div class="hint" id="repGenHint">点击下方按钮，深入分析这段时间的新词、回归词、高频双字 / 三字词、长词榜、词性与主题。首次分析可能需要几秒。</div>
       <div class="btnrow" style="margin-top:12px">
         <button class="btn primary" id="genReportBtn">⚙ 生成完整报告</button>
@@ -694,7 +736,7 @@
   <!-- ======================= SEQUENCE ======================= -->
   <section class="view" id="view-sequence">
     <div class="panel">
-      <h2>输入序列 <span>committed-character timeline (newest first)</span></h2>
+      <h2>输入序列 <span>最新在前</span></h2>
       <div class="btnrow">
         <a class="btn primary" id="exp-txt">导出 TXT</a>
         <a class="btn" id="exp-csv">导出 CSV</a>
@@ -714,36 +756,46 @@
   <!-- ======================= FUN ======================= -->
   <section class="view" id="view-fun">
     <div class="panel">
-      <h2>成就 <span>achievements</span> <span class="saved" id="gUnlockedTop" style="display:none"></span></h2>
+      <h2>成就 <span class="saved" id="gUnlockedTop" style="display:none"></span></h2>
       <div class="achCats" id="achCats" style="margin:2px 0 4px"></div>
       <div id="achievements"></div>
     </div>
     <div class="grid">
-      <div class="panel"><h2>成语 <span>idioms</span><i class="info" id="idiomInfo">i</i></h2><div class="chips" id="idioms"></div></div>
-      <div class="panel"><h2>长词 <span>long words (3+ 字)</span></h2><div class="chips" id="longWords"></div></div>
-      <div class="panel"><h2>最爱词 <span>favorite words</span></h2><div class="chips" id="favWords"></div></div>
-      <div class="panel"><h2>生僻字 <span>rare characters</span><i class="info" id="rareInfo">i</i></h2><div class="chips" id="rareChars"></div></div>
-      <div class="panel wide"><h2>只打过一次的字 <span>hapax</span></h2><div class="chips" id="hapax"></div></div>
+      <div class="panel"><h2>成语<i class="info" id="idiomInfo">i</i></h2><div class="chips" id="idioms"></div></div>
+      <div class="panel"><h2>长词 <span>3 字以上</span></h2><div class="chips" id="longWords"></div></div>
+      <div class="panel"><h2>最爱词</h2><div class="chips" id="favWords"></div></div>
+      <div class="panel"><h2>生僻字<i class="info" id="rareInfo">i</i></h2><div class="chips" id="rareChars"></div></div>
+      <div class="panel wide"><h2>只打过一次的字</h2><div class="chips" id="hapax"></div></div>
     </div>
   </section>
 
   <!-- ======================= SEARCH ======================= -->
   <section class="view" id="view-search">
     <div class="panel">
-      <h2>搜索 <span>look up a word or character</span></h2>
+      <h2>关注词<i class="info" id="trackInfo">i</i></h2>
+      <div class="hint">把人名、项目代号、口头禅等想长期留意的字词加进来。分词工具往往切不准这些词，DuckType 会直接在上屏序列里逐字精确统计，并随时间范围更新。</div>
+      <div class="searchbar" style="margin-top:10px">
+        <input id="trackInput" type="text" placeholder="添加一个关注词，如某个人名、项目名…" autocomplete="off" maxlength="32">
+        <input id="trackGroup" type="text" placeholder="分组（可选，如同事 / 项目）" autocomplete="off" maxlength="16" style="max-width:200px">
+        <button class="btn primary" id="trackAdd">添加关注</button>
+      </div>
+      <div id="trackedList" class="trackgrid"></div>
+    </div>
+    <div class="panel">
+      <h2>查询</h2>
       <div class="searchbar">
         <input id="searchInput" type="text" placeholder="输入一个字或词，如「鸭」「从前」…" autocomplete="off">
-        <button class="btn primary" id="searchBtn">搜索</button>
+        <button class="btn primary" id="searchBtn">查询</button>
       </div>
       <div class="hint">在当前时间范围内统计你输入过这个字/词的次数、首次与最近时间、各程序与每日分布。</div>
-      <div id="searchResult" class="empty">输入关键字后回车或点「搜索」。</div>
+      <div id="searchResult" class="empty">输入关键字后回车或点「查询」。</div>
     </div>
   </section>
 
   <!-- ======================= SETTINGS ======================= -->
   <section class="view" id="view-settings">
     <div class="panel">
-      <h2>设置 <span>settings</span> <span class="saved" id="cfgSaved" style="display:none">已保存 ✓</span></h2>
+      <h2>设置 <span class="saved" id="cfgSaved" style="display:none">已保存 ✓</span></h2>
       <div class="settings-layout" id="cfgForm">
         <section class="setting-section">
           <h3>记录</h3>
@@ -812,6 +864,10 @@
               <div><div class="setting-title">不统计的程序</div><div class="setting-desc">每行一个进程名，例如 keepass.exe。</div></div>
               <div class="setting-control"><textarea id="c-blacklist_apps" placeholder="keepass.exe"></textarea></div>
             </div>
+            <div class="setting-item">
+              <div><div class="setting-title">演示数据</div><div class="setting-desc">用一份示例数据预览仪表盘效果；不会改动你的真实记录，退出即恢复。</div></div>
+              <div class="setting-control"><button type="button" class="btn" id="demoToggleBtn">加载演示数据</button></div>
+            </div>
           </div>
         </section>
       </div>
@@ -821,7 +877,7 @@
     </div>
 
     <div class="panel">
-      <h2>检查更新 <span>updates</span></h2>
+      <h2>检查更新</h2>
       <div class="btnrow">
         <button class="btn" id="updCheck">检查更新</button>
         <button class="btn primary" id="updApply" style="display:none">⬇ 立即更新并重启</button>
@@ -838,7 +894,7 @@
     </div>
 
     <div class="panel">
-      <h2>数据管理 <span>data management</span></h2>
+      <h2>数据管理</h2>
       <div id="dataSummary" class="empty"></div>
       <div class="form" style="margin-top:12px">
         <label>当前数据库</label><div><code id="dbPathShow">—</code></div>
@@ -1020,9 +1076,11 @@ const DT = {
   data_relocate: (dir)=> isNative()? nApi().data_relocate(dir) : fetch("/api/data/relocate",_post({dir})).then(_j),
   data_relocate_progress: ()=> isNative()? nApi().data_relocate_progress() : fetch("/api/data/relocate/progress").then(_j),
   data_clear: ()=> isNative()? nApi().data_clear() : fetch("/api/data/clear",{method:"POST"}).then(_j),
+  demo_status: ()=> isNative()? nApi().demo_status() : fetch("/api/demo/status").then(_j),
+  demo_set: (on)=> isNative()? nApi().demo_set(on) : fetch("/api/demo",_post({on})).then(_j),
   data_delete: (start,end)=> isNative()? nApi().data_delete(start,end) : fetch("/api/data/delete",_post({start,end})).then(_j),
-  card_png: (period)=> isNative()? nApi().card_png(period) : Promise.resolve("/api/card?period="+encodeURIComponent(period)+"&t="+Date.now()),
-  save_card: (period)=> isNative()? nApi().save_card(period) : (window.open("/api/card?period="+encodeURIComponent(period)), Promise.resolve({ok:true})),
+  card_png: (period,template)=> isNative()? nApi().card_png(period,template||"card") : Promise.resolve("/api/card?period="+encodeURIComponent(period)+"&template="+(template||"card")+"&t="+Date.now()),
+  save_card: (period,template)=> isNative()? nApi().save_card(period,template||"card") : (window.open("/api/card?period="+encodeURIComponent(period)+"&template="+(template||"card")), Promise.resolve({ok:true})),
   export_sequence: (fmt, params)=> isNative()? nApi().export_sequence(fmt, params || rangeParams()) : (window.open("/api/export/sequence."+fmt+"?"+new URLSearchParams(params || rangeParams()).toString()), Promise.resolve({ok:true})),
   report_generate: (p)=> isNative()? nApi().report_generate(p) : fetch("/api/report/generate",_post(p)).then(_j),
   report_progress: ()=> isNative()? nApi().report_progress() : fetch("/api/report/progress").then(_j),
@@ -1087,6 +1145,7 @@ setTip("topicInfo", "这里会从当前时间范围内提取更有代表性的�
 setTip("reportInfo", "报告卡片在本机生成，可保存为 PNG。统计只包含正常上屏的输入内容，大段粘贴会被自动忽略。");
 setTip("idiomInfo", "这里展示被识别为成语的词，以及部分符合成语形态的四字中文词。");
 setTip("rareInfo", "这里展示你输入过但不常见的汉字。常见语气词、姓氏、地名和外来字已经做了过滤。");
+setTip("trackInfo", "关注词按你输入的原文逐字精确匹配，不依赖分词，所以人名、缩写、项目代号也能数准。统计跟随顶部时间范围；点卡片可查看详细的时段、程序和上下文分布。");
 
 // ---- tabs ----
 function scrollToTop(smooth=true){
@@ -1111,7 +1170,7 @@ document.getElementById("tabs").addEventListener("click", e=>{
   else if(v==="sequence") loadSequence();
   else if(v==="fun") loadFun();
   else if(v==="report") loadReportCurrent();
-  else if(v==="search") document.getElementById("searchInput").focus();
+  else if(v==="search"){ loadTracked(); document.getElementById("searchInput").focus(); }
 });
 
 // ---- range / refresh ----
@@ -1148,8 +1207,30 @@ function refreshActive(){
   else if(v==="sequence") loadSequence();
   else if(v==="fun") loadFun();
   else if(v==="report") loadReportCurrent();
-  else if(v==="search"){ if(document.getElementById("searchInput").value.trim()) doSearch(); }
+  else if(v==="search"){ loadTracked(); if(document.getElementById("searchInput").value.trim()) doSearch(); }
 }
+
+// ---- demo / sample data ----
+let demoOn = false;
+function applyDemoUI(){
+  document.getElementById("demoBar").classList.toggle("on", demoOn);
+  const btn = document.getElementById("demoToggleBtn");
+  if(btn) btn.textContent = demoOn ? "退出演示数据" : "加载演示数据";
+  if(demoOn) document.getElementById("demoInvite").classList.remove("on");
+}
+async function setDemo(on){
+  const btn = document.getElementById("demoToggleBtn");
+  if(btn){ btn.disabled = true; btn.textContent = on ? "加载中…" : "退出中…"; }
+  try{ const r = await DT.demo_set(!!on); demoOn = !!(r && r.on); }
+  catch(e){}
+  if(btn) btn.disabled = false;
+  applyDemoUI();
+  boardLoaded = false;            // active database changed -> rebuild the board
+  refreshActive(); checkHealth();
+}
+document.getElementById("demoExit").addEventListener("click", ()=> setDemo(false));
+document.getElementById("demoStart").addEventListener("click", ()=> setDemo(true));
+document.getElementById("demoToggleBtn").addEventListener("click", ()=> setDemo(!demoOn));
 
 // ---- board ----
 function deltaHTML(pct){
@@ -1161,20 +1242,22 @@ function deltaHTML(pct){
 function renderCards(o, trend){
   const d = (trend && trend.delta_pct) || {};
   const cards = [
-    ["总字数", o.total_chars, d.chars],
-    ["不同汉字", o.distinct_chars, null],
-    ["平均速度", o.cpm + " 字/分", d.cpm],
-    ["峰值速度", o.peak_cpm + " 字/分", null],
-    ["活跃时长", o.active_minutes + " 分", d.active_minutes],
-    ["修改率", (o.edit_ratio*100).toFixed(1) + "%", (d.edit_ratio===null||d.edit_ratio===undefined)?null:-d.edit_ratio],
-    ["删除键", o.backspace + o.delete, null],
-    ["输入会话", o.sessions, null],
+    ["总字数", o.total_chars, "", d.chars],
+    ["不同汉字", o.distinct_chars, "", null],
+    ["平均速度", o.cpm, "字/分", d.cpm],
+    ["峰值速度", o.peak_cpm, "字/分", null],
+    ["活跃时长", o.active_minutes, "分钟", d.active_minutes],
+    ["修改率", (o.edit_ratio*100).toFixed(1), "%", (d.edit_ratio===null||d.edit_ratio===undefined)?null:-d.edit_ratio],
+    ["删除键", o.backspace + o.delete, "次", null],
+    ["输入会话", o.sessions, "次", null],
   ];
   document.getElementById("cards").innerHTML = cards.map(
-    ([l,v,dl]) => `<div class="card"><div class="v">${v}</div><div class="l">${l}</div>${deltaHTML(dl)}</div>`
+    ([l,v,u,dl]) => `<div class="card" title="${l}"><div class="v">${v}${u?`<span class="u">${u}</span>`:""}</div><div class="l">${l}</div>${deltaHTML(dl)}</div>`
   ).join("");
   document.getElementById("since").textContent =
     o.tracking_since ? ("自 " + o.tracking_since + " 起记录") : "暂无数据";
+  // Invite first-time users (no data, not already in demo) to load sample data.
+  document.getElementById("demoInvite").classList.toggle("on", !o.total_chars && !demoOn);
 }
 let boardLoaded = false;
 let boardReqSeq = 0;
@@ -1185,7 +1268,7 @@ function setBoardLoading(show){
     '<div class="card skel"><div class="skel-line" style="width:58%;height:24px"></div><div class="skel-line" style="width:42%;margin-top:12px"></div></div>'
   ).join("");
   document.getElementById("dailyPanelTitle").textContent = "正在整理看板";
-  document.getElementById("dailyPanelSub").textContent = "loading";
+  document.getElementById("dailyPanelSub").textContent = "";
   document.getElementById("dailyChartTools").style.display = "none";
   document.getElementById("todayCloud").hidden = false;
   document.getElementById("todayCloud").innerHTML = '<div class="chart-skel">正在加载统计数据…</div>';
@@ -1200,7 +1283,7 @@ function setBoardHeavyLoading(){
   document.getElementById("posDetail").textContent = "正在分析词性和高频词…";
   if(range === "today"){
     document.getElementById("dailyPanelTitle").textContent = "今日主题云";
-    document.getElementById("dailyPanelSub").textContent = "analyzing";
+    document.getElementById("dailyPanelSub").textContent = "";
     document.getElementById("dailyChartTools").style.display = "none";
     document.getElementById("dailyChart").style.display = "none";
     document.getElementById("todayCloud").hidden = false;
@@ -1362,7 +1445,7 @@ function renderDailyPanel(b){
   if(charts.dailyChart){ charts.dailyChart.destroy(); charts.dailyChart = null; }
   if(isToday){
     title.textContent = "今日主题云";
-    sub.textContent = "today topics";
+    sub.textContent = "";
     tools.style.display = "none";
     canvas.style.display = "none";
     cloud.hidden = false;
@@ -1370,7 +1453,7 @@ function renderDailyPanel(b){
     return;
   }
   title.textContent = "每日输入字数";
-  sub.textContent = "daily characters";
+  sub.textContent = "";
   tools.style.display = "flex";
   cloud.hidden = true;
   document.getElementById("todayCloudDetail").className = "clouddetail";
@@ -1636,6 +1719,7 @@ document.getElementById("appBack").addEventListener("click", closeAppDetail);
 
 // ---- hourly activity (own range, independent of the board range) ----
 let hourSel = "today";
+let hourStyle = localStorage.getItem("dt-hour-style") === "line" ? "line" : "bar";
 function fmtHourTick(ts, multiday){
   const d = new Date(ts*1000), hh = String(d.getHours()).padStart(2,"0");
   return multiday ? `${d.getMonth()+1}/${d.getDate()} ${hh}` : `${hh}:00`;
@@ -1648,12 +1732,17 @@ async function loadHourly(){
   const span = pts.length ? (pts[pts.length-1].ts - pts[0].ts) : 0;
   const multiday = span > 86400;
   if(charts.hourlyChart) charts.hourlyChart.destroy();
+  const isLine = hourStyle === "line";
+  const ds = isLine
+    ? {data:pts.map(p=>p.count),borderColor:"#36d399",backgroundColor:"rgba(54,211,153,.14)",
+       fill:true,tension:.4,pointRadius:0,pointHoverRadius:4,borderWidth:2}
+    : {data:pts.map(p=>p.count),backgroundColor:"#36d399",borderRadius:3,
+       barThickness:"flex",maxBarThickness:26};
   charts.hourlyChart = new Chart(document.getElementById("hourlyChart"), {
-    type:"bar",
-    data:{labels:pts.map(p=>fmtHourTick(p.ts, multiday)),
-      datasets:[{data:pts.map(p=>p.count),backgroundColor:"#36d399",borderRadius:3,
-        barThickness:"flex",maxBarThickness:26}]},
+    type:isLine?"line":"bar",
+    data:{labels:pts.map(p=>fmtHourTick(p.ts, multiday)),datasets:[ds]},
     options:{plugins:{legend:{display:false},tooltip:{displayColors:false}},
+      interaction:isLine?{mode:"index",intersect:false}:undefined,
       scales:{x:{grid:{display:false},ticks:{autoSkip:true,maxRotation:0,
                  maxTicksLimit:multiday?14:24}},
               y:{beginAtZero:true,ticks:{precision:0}}}}
@@ -1665,6 +1754,17 @@ document.getElementById("hourRanges").addEventListener("click", e=>{
   document.querySelectorAll("#hourRanges button").forEach(b=>b.classList.toggle("active", b===e.target));
   loadHourly();
 });
+document.getElementById("hourStyle").addEventListener("click", e=>{
+  if(!e.target.dataset.s) return;
+  hourStyle = e.target.dataset.s;
+  localStorage.setItem("dt-hour-style", hourStyle);
+  document.querySelectorAll("#hourStyle button").forEach(b=>b.classList.toggle("active", b===e.target));
+  loadHourly();
+});
+(function initHourStyle(){
+  document.querySelectorAll("#hourStyle button").forEach(b=>
+    b.classList.toggle("active", b.dataset.s===hourStyle));
+})();
 // ---- rank sliders ----
 (function wireRankSlider(id, valId, onDone){
   const sl = document.getElementById(id), out = document.getElementById(valId);
@@ -1778,7 +1878,10 @@ async function loadReport(params){
     document.getElementById("cardImg").style.opacity = ".45";
     const cardDl = document.getElementById("cardDl");
     cardDl.removeAttribute("href");
-    cardDl.onclick = (e)=>{ e.preventDefault(); DT.save_card(period); };
+    cardDl.onclick = (e)=>{ e.preventDefault(); DT.save_card(period, "card"); };
+    const cardDlLong = document.getElementById("cardDlLong");
+    cardDlLong.removeAttribute("href");
+    cardDlLong.onclick = (e)=>{ e.preventDefault(); DT.save_card(period, "long"); };
   }
   let fast;
   try{ fast = await apiGet("report_fast", params); }
@@ -2136,6 +2239,109 @@ document.getElementById("relocBtn").addEventListener("click", async ()=>{
   }, 400);
 });
 
+// ---- tracked terms ----
+let trackedTerms = [];
+let trackedGroups = [];
+let trackedBusy = false;
+function fmtAgo(ts){
+  if(!ts) return "还没出现过";
+  const d = Math.floor((Date.now() - ts*1000)/86400000);
+  if(d <= 0) return "今天还在用";
+  if(d === 1) return "昨天用过";
+  if(d < 30) return d + " 天前用过";
+  return new Date(ts*1000).toLocaleDateString() + " 用过";
+}
+// Inline trend sparkline from a term's per-day counts.
+function sparkSvg(daily){
+  const vals = (daily||[]).map(d=>d.count);
+  if(vals.length < 2 || Math.max(...vals) <= 0) return "";
+  const W=100, H=24, pad=2, n=vals.length, mx=Math.max(...vals);
+  const x = i => n===1 ? W/2 : pad + i*(W-2*pad)/(n-1);
+  const y = v => H-pad - (v/mx)*(H-2*pad);
+  const line = vals.map((v,i)=>`${i?"L":"M"}${x(i).toFixed(1)} ${y(v).toFixed(1)}`).join(" ");
+  const area = `${line} L${x(n-1).toFixed(1)} ${H-pad} L${x(0).toFixed(1)} ${H-pad} Z`;
+  return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">`+
+    `<path class="fillarea" d="${area}"/><path d="${line}"/></svg>`;
+}
+// 环比 badge: delta_pct may be a number (%), "new", or null (no baseline).
+function deltaBadge(d){
+  if(d === "new") return '<span class="delta new" title="上一周期没有出现">新增</span>';
+  if(d === null || d === undefined) return "";
+  if(d === 0) return '<span class="delta flat">→ 持平</span>';
+  const up = d > 0;
+  return `<span class="delta ${up?"up":"down"}" title="较上一周期">${up?"↑":"↓"} ${Math.abs(d)}%</span>`;
+}
+function trackCardHtml(r){
+  const zero = !r.total;
+  const sub = zero ? "当前时间范围内未出现"
+    : `${fmtAgo(r.last_seen)} · ${r.active_days} 天出现${r.top_app?" · 多见于 "+escapeHtml(r.top_app):""}`;
+  return `<div class="trackcard" data-term="${escapeAttr(r.term)}" title="查看「${escapeAttr(r.term)}」的详细统计">`+
+    `<button class="rm" data-rm="${escapeAttr(r.term)}" title="移除关注" aria-label="移除关注">×</button>`+
+    `<div class="term">${escapeHtml(r.term)}</div>`+
+    `<div class="numrow"><span class="num${zero?" zero":""}">${r.total}<small>次</small></span>${deltaBadge(r.delta_pct)}</div>`+
+    sparkSvg(r.daily)+
+    `<div class="sub">${sub}</div></div>`;
+}
+function renderTracked(rows){
+  const box = document.getElementById("trackedList");
+  trackedTerms = rows.map(r=>r.term);
+  trackedGroups = rows.map(r=>r.group||"");
+  if(!rows.length){
+    box.innerHTML = '<div class="trackempty">还没有关注词。添加一个人名或项目名，就能看到你输入它的频率。</div>';
+    return;
+  }
+  // Bucket by group, preserving first-seen order; render flat if all ungrouped.
+  const order = [], buckets = {};
+  rows.forEach(r=>{ const g = r.group||""; if(!(g in buckets)){ buckets[g]=[]; order.push(g);} buckets[g].push(r); });
+  const grouped = order.some(g=>g!=="");
+  if(!grouped){ box.innerHTML = `<div class="trackgrid">${rows.map(trackCardHtml).join("")}</div>`; return; }
+  // Named groups first (in order), ungrouped bucket last.
+  order.sort((a,b)=> (a==="") - (b==="") );
+  box.innerHTML = order.map(g=>{
+    const head = `<div class="trackgroup-h">${g?escapeHtml(g):"未分组"}<span class="gcount">${buckets[g].length}</span></div>`;
+    return `<div class="trackgroup">${head}<div class="trackgrid">${buckets[g].map(trackCardHtml).join("")}</div></div>`;
+  }).join("");
+}
+async function loadTracked(){
+  const box = document.getElementById("trackedList");
+  if(!box) return;
+  let r; try{ r = await apiGet("tracked", rangeParams()); }
+  catch(e){ box.innerHTML = '<div class="trackempty">加载关注词失败。</div>'; return; }
+  renderTracked((r && r.terms) || []);
+}
+async function saveTracked(terms, groups){
+  trackedBusy = true;
+  try{ await DT.config_set({tracked_terms: terms, tracked_groups: groups}); }
+  finally{ trackedBusy = false; }
+  await loadTracked();
+}
+async function addTracked(){
+  if(trackedBusy) return;
+  const inp = document.getElementById("trackInput");
+  const ginp = document.getElementById("trackGroup");
+  const term = inp.value.trim().slice(0,32);
+  const group = (ginp.value.trim()||"").slice(0,16);
+  if(!term) return;
+  if(trackedTerms.includes(term)){ inp.value=""; gotoSearch(term); return; }
+  if(trackedTerms.length >= 100){ alert("关注词最多 100 个。"); return; }
+  inp.value = "";
+  await saveTracked([...trackedTerms, term], [...trackedGroups, group]);
+}
+document.getElementById("trackAdd").addEventListener("click", addTracked);
+document.getElementById("trackInput").addEventListener("keydown", e=>{ if(e.key==="Enter") addTracked(); });
+document.getElementById("trackGroup").addEventListener("keydown", e=>{ if(e.key==="Enter") addTracked(); });
+document.getElementById("trackedList").addEventListener("click", e=>{
+  const rm = e.target.closest("[data-rm]");
+  if(rm){ e.stopPropagation(); const t = rm.dataset.rm;
+    const i = trackedTerms.indexOf(t);
+    if(i<0) return;
+    const terms = trackedTerms.slice(); const groups = trackedGroups.slice();
+    terms.splice(i,1); groups.splice(i,1);
+    saveTracked(terms, groups); return; }
+  const card = e.target.closest(".trackcard");
+  if(card) gotoSearch(card.dataset.term);
+});
+
 // ---- search ----
 function renderFullExample(e){
   const pre = e.pre !== undefined ? e.pre : (e.text || "").slice(0, e.start || 0);
@@ -2172,9 +2378,9 @@ async function doSearch(){
     `<div class="bignum">「${escapeHtml(q)}」共出现 <b>${r.total}</b> 次</div>`+
     `<div class="hint" style="margin:6px 0 4px">首次输入：${fmt(r.first_seen)} ｜ 最近输入：${fmt(r.last_seen)}</div>`+
     `<div class="statgrid">${stats.map(([v,l])=>`<div class="s"><b>${v}</b><small>${l}</small></div>`).join("")}</div>`+
-    `<h3 style="margin:10px 0 6px">各时段分布 <span style="font-weight:400">by hour</span></h3>`+
+    `<h3 style="margin:10px 0 6px">各时段分布</h3>`+
     `<div style="position:relative;height:150px"><canvas id="searchHour"></canvas></div>`+
-    (exs ? `<h3 style="margin:16px 0 6px">出现的上下文 <span style="font-weight:400">examples</span></h3><div class="exs">${exs}</div>` : "")+
+    (exs ? `<h3 style="margin:16px 0 6px">出现的上下文</h3><div class="exs">${exs}</div>` : "")+
     `<h3 style="margin:16px 0 6px">各程序</h3><div class="chips">${apps}</div>`+
     `<h3 style="margin:14px 0 6px">每日次数</h3><div class="chips">${days}</div>`;
   if(charts.searchHour) charts.searchHour.destroy();
@@ -2350,6 +2556,7 @@ function firstLoad(){
   }
   __booted = true;
   loadDashboardPrefs().then(()=>resetTickerTimer());
+  DT.demo_status().then(r=>{ demoOn = !!(r && r.on); applyDemoUI(); }).catch(()=>{});
   refreshBoard();
   checkHealth();
 }

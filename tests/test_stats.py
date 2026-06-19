@@ -135,6 +135,71 @@ def test_search_counts_occurrences(db, insert_chars, now):
     assert r["apps"] == [{"app": "a", "count": 2}]
 
 
+def test_tracked_terms_count_per_term(db, insert_chars, now):
+    insert_chars(db, [
+        (now, "张", "wechat.exe"), (now, "三", "wechat.exe"), (now + 1, "你", "wechat.exe"),
+        (now + 100, "张", "word.exe"), (now + 100, "三", "word.exe"),
+        (now + 200, "李", "wechat.exe"), (now + 200, "四", "wechat.exe"),
+    ])
+    rows = stats.tracked_terms(db, ["张三", "李四", "王五"], None, run_gap=3.0)
+    assert [r["term"] for r in rows] == ["张三", "李四", "王五"]
+    by = {r["term"]: r for r in rows}
+    assert by["张三"]["total"] == 2
+    assert by["张三"]["active_days"] >= 1
+    assert by["张三"]["top_app"]  # whatever pretty_app renders, it is set
+    assert by["李四"]["total"] == 1
+    assert by["王五"]["total"] == 0
+    assert by["王五"]["last_seen"] is None
+
+
+def test_tracked_terms_does_not_span_a_pause(db, insert_chars, now):
+    insert_chars(db, [(now, "张", "a"), (now + 100, "三", "a")])
+    rows = stats.tracked_terms(db, ["张三"], None, run_gap=3.0)
+    assert rows[0]["total"] == 0
+
+
+def test_tracked_terms_empty_list(db, insert_chars, now):
+    insert_chars(db, [(now, "字", "a")])
+    assert stats.tracked_terms(db, [], None, run_gap=3.0) == []
+    assert stats.tracked_terms(db, ["", "  "], None, run_gap=3.0) == []
+
+
+def test_tracked_terms_returns_daily_series_for_sparkline(db, insert_chars, now):
+    day = 86400
+    insert_chars(db, [
+        (now - 2 * day, "张", "a"), (now - 2 * day, "三", "a"),
+        (now, "张", "a"), (now, "三", "a"),
+        (now + 1, "张", "a"), (now + 1, "三", "a"),
+    ])
+    rows = stats.tracked_terms(db, ["张三"], None, run_gap=3.0)
+    daily = rows[0]["daily"]
+    assert {d["date"] for d in daily}  # has dated buckets
+    assert sum(d["count"] for d in daily) == rows[0]["total"] == 3
+    # two distinct days -> two buckets, matching active_days
+    assert len(daily) == rows[0]["active_days"] == 2
+
+
+def test_user_terms_make_a_name_segment_as_one_word(db, insert_chars, now):
+    """A tracked name jieba would otherwise split should, once registered via
+    set_user_terms, appear as a whole word in the word-frequency rollup."""
+    from ducktype.analysis import segment
+    if not segment.HAS_JIEBA:
+        import pytest
+        pytest.skip("jieba is optional")
+    name = "张小满"
+    text = (name + "今天写了很多字") * 3
+    insert_chars(db, [(now + i * 0.1, ch, "a.exe") for i, ch in enumerate(text)])
+    try:
+        segment.set_user_terms([])
+        v0 = segment.effective_seg_version()
+        segment.set_user_terms([name])
+        assert segment.effective_seg_version() != v0  # rollups will rebuild
+        after = dict(stats.top_words(db, None, 50, run_gap=3.0))
+        assert name in after
+    finally:
+        segment.set_user_terms([])   # don't leak the global into other tests
+
+
 def test_search_does_not_match_across_a_pause(db, insert_chars, now):
     # '好' then a long gap then '世' must NOT count as the word '好世'.
     insert_chars(db, [(now, "好", "a"), (now + 100, "世", "a")])

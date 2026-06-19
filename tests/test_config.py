@@ -50,6 +50,41 @@ def test_apply_blacklist_accepts_comma_string(tmp_path, monkeypatch):
     assert cfg.blacklist_apps == ["keepass.exe", "secret.exe", "vault.exe"]
 
 
+def test_apply_tracked_terms_dedupes_and_keeps_order_and_case(tmp_path, monkeypatch):
+    cm = _fresh_config(tmp_path, monkeypatch)
+    cfg = cm.Config.load()
+    cfg.apply({"tracked_terms": [" 张三 ", "DuckType", "张三", "", "李四"]})
+    # order preserved, blanks/dupes dropped, case kept (unlike the blacklist).
+    assert cfg.tracked_terms == ["张三", "DuckType", "李四"]
+
+
+def test_apply_tracked_terms_accepts_comma_string(tmp_path, monkeypatch):
+    cm = _fresh_config(tmp_path, monkeypatch)
+    cfg = cm.Config.load()
+    cfg.apply({"tracked_terms": "张三, 李四\n王五"})
+    assert cfg.tracked_terms == ["张三", "李四", "王五"]
+
+
+def test_apply_tracked_groups_align_to_terms(tmp_path, monkeypatch):
+    cm = _fresh_config(tmp_path, monkeypatch)
+    cfg = cm.Config.load()
+    cfg.apply({"tracked_terms": ["张三", "李四", "王五"],
+               "tracked_groups": ["同事", "同事"]})
+    # groups are padded to the same length as terms ("" = ungrouped).
+    assert cfg.tracked_groups == ["同事", "同事", ""]
+    # removing a term re-aligns groups (frontend sends both arrays together).
+    cfg.apply({"tracked_terms": ["张三", "王五"], "tracked_groups": ["同事", ""]})
+    assert cfg.tracked_groups == ["同事", ""]
+
+
+def test_apply_tracked_groups_reconcile_when_only_terms_sent(tmp_path, monkeypatch):
+    cm = _fresh_config(tmp_path, monkeypatch)
+    cfg = cm.Config.load()
+    cfg.apply({"tracked_terms": ["甲", "乙"], "tracked_groups": ["A", "B"]})
+    cfg.apply({"tracked_terms": ["甲"]})           # groups not resent
+    assert cfg.tracked_groups == ["A"]              # truncated to match terms
+
+
 def test_apply_reports_restart_for_port(tmp_path, monkeypatch):
     cm = _fresh_config(tmp_path, monkeypatch)
     cfg = cm.Config.load()

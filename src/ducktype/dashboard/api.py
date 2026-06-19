@@ -22,7 +22,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from .. import autostart, updater
-from ..analysis import stats
+from ..analysis import segment, stats
 from ..analysis.report_jobs import ReportJob
 from ..perf import timed
 from .relocate import Relocator
@@ -30,8 +30,9 @@ from .relocate import Relocator
 log = logging.getLogger("ducktype")
 
 # Read endpoints whose result depends only on the data revision (safe to cache).
-# Excludes time-window queries and live status/progress.
-_NO_CACHE = {"timeseries"}
+# Excludes time-window queries, live status/progress, and config-driven reads
+# (``tracked`` depends on Config.tracked_terms, which a write does not bump).
+_NO_CACHE = {"timeseries", "tracked"}
 
 READ_ENDPOINTS = (
     "overview",
@@ -48,6 +49,7 @@ READ_ENDPOINTS = (
     "edits",
     "trend",
     "search",
+    "tracked",
     "fun",
     "gamify",
     "ticker",
@@ -79,6 +81,9 @@ class Api:
 
     def __init__(self, db, config, status_fn=None, on_quit=None):
         self._db = db
+        self._real_db = db          # the live database; restored when demo ends
+        self._demo_db = None        # lazily built throwaway sample database
+        self._demo = False
         self._config = config
         self._status_fn = status_fn
         self._on_quit = on_quit
@@ -91,6 +96,10 @@ class Api:
         self._window_maximized = False
         self._cache: dict = {}
         self._cache_rev = -1
+        # Teach jieba the tracked terms so they segment as whole words in the
+        # word/POS/topic panels (cheap: just records the desired set; jieba is
+        # touched lazily on the first segmentation).
+        segment.set_user_terms(self._config.tracked_terms)
 
     def _set_window(self, window) -> None:
         self._window = window
@@ -232,6 +241,43 @@ class Api:
         return stats.search(self._db, p.get("q", ""), since,
                             self._config.run_gap_seconds, until)
 
+    def _r_tracked(self, p):
+        since, until = self._bounds(p)
+        terms = p.get("terms")
+        groups = None
+        if terms is None:
+            terms = list(self._config.tracked_terms)
+            groups = list(self._config.tracked_groups)
+        elif isinstance(terms, str):
+            terms = [t.strip() for t in terms.replace("\n", ",").split(",") if t.strip()]
+        rg = self._config.run_gap_seconds
+        rows = stats.tracked_terms(self._db, terms, since, rg, until)
+        # 环比: compare each term against the immediately preceding window of equal
+        # length (skipped for the unbounded "all" range, which has no baseline).
+        prev_totals = {}
+        if since is not None:
+            import time as _time
+            end = until if until is not None else _time.time()
+            length = end - since
+            if length > 0:
+                for r in stats.tracked_terms(self._db, terms, since - length, rg, since):
+                    prev_totals[r["term"]] = r["total"]
+        # Attach the matching group label (by original term position) + delta.
+        group_for = {}
+        if groups is not None:
+            for t, g in zip(self._config.tracked_terms, self._config.tracked_groups):
+                group_for[t] = g
+        for r in rows:
+            r["group"] = group_for.get(r["term"], "")
+            prev = prev_totals.get(r["term"])
+            if since is None or prev is None:
+                r["delta_pct"] = None      # no comparable baseline
+            elif prev == 0:
+                r["delta_pct"] = None if r["total"] == 0 else "new"
+            else:
+                r["delta_pct"] = round((r["total"] - prev) / prev * 100, 1)
+        return {"terms": rows}
+
     def _r_fun(self, p):
         since, until = self._bounds(p)
         return stats.fun_rankings(self._db, since, self._config.run_gap_seconds, until)
@@ -335,6 +381,33 @@ class Api:
         return self._report_job.progress()
 
     # ---- config ----------------------------------------------------------
+    # ---- demo / sample data ---------------------------------------------
+    def demo_status(self):
+        return {"on": self._demo}
+
+    def demo_set(self, on=True):
+        """Swap the dashboard between the live database and a throwaway sample
+        one. The user's real records are never touched -- demo data lives in its
+        own temp file. Reads are re-pointed and the cache is cleared so the board
+        reflects the active database immediately."""
+        want = bool(on)
+        if want == self._demo:
+            return {"on": self._demo}
+        if want:
+            if self._demo_db is None:
+                from .. import demo_data
+                self._demo_db = demo_data.build_demo_database()
+            self._db = self._demo_db
+        else:
+            self._db = self._real_db
+        self._demo = want
+        # Reports/relocator captured the db at construction; re-point reports so
+        # the report tab matches the active data set (relocation stays on real).
+        self._report_job = ReportJob(self._db, self._config)
+        self._cache = {}
+        self._cache_rev = -1
+        return {"on": self._demo}
+
     def config_get(self):
         data = {k: v for k, v in asdict(self._config).items() if not k.startswith("_")}
         data["editable"] = list(self._config.EDITABLE)
@@ -349,6 +422,15 @@ class Api:
                 autostart.set_enabled(self._config.autostart)
             except Exception:
                 log.exception("Failed to toggle autostart from dashboard")
+        if "tracked_terms" in updates:
+            # Re-teach jieba and bump the data revision so cached word/POS/topic
+            # reads recompute; the next segmentation pass rebuilds the rollups
+            # under the new dictionary (see segment.effective_seg_version).
+            segment.set_user_terms(self._config.tracked_terms)
+            try:
+                self._db.revision += 1
+            except Exception:
+                pass
         return {"ok": True, "restart_required": restart}
 
     # ---- data management -------------------------------------------------
@@ -394,20 +476,35 @@ class Api:
         return {"ok": True}
 
     # ---- binary: card image + native-save exports -----------------------
-    def card_png(self, period="today"):
+    def _long_card_data(self, period):
+        """Enrich the report payload with the extra series the long share image
+        needs (daily trend, top words, per-application breakdown)."""
+        rep = dict(self._report_data(period))
+        rg = self._config.run_gap_seconds
+        since, until, _ps, _pe, _label = stats.report_bounds(period)
+        rep["daily"] = stats.daily(self._db, since, until)
+        rep["apps"] = [(stats.pretty_app(a), c)
+                       for a, c in stats.per_app(self._db, since, 6, until)]
+        rep["top_words"] = stats.top_words_daily(self._db, since, until, 12, rg)
+        return rep
+
+    def _render_card_image(self, period, template):
         from .. import cards
-        rep = self._report_data(period)
+        if template == "long":
+            return cards.render_long_card(self._long_card_data(period))
+        return cards.render_card(self._report_data(period))
+
+    def card_png(self, period="today", template="card"):
         buf = io.BytesIO()
-        cards.render_card(rep).save(buf, format="PNG")
+        self._render_card_image(period, template).save(buf, format="PNG")
         b64 = base64.b64encode(buf.getvalue()).decode("ascii")
         return "data:image/png;base64," + b64
 
-    def save_card(self, period="today"):
-        from .. import cards
-        rep = self._report_data(period)
+    def save_card(self, period="today", template="card"):
         buf = io.BytesIO()
-        cards.render_card(rep).save(buf, format="PNG")
-        return self._save_dialog(f"ducktype_{period}.png", buf.getvalue(), binary=True)
+        self._render_card_image(period, template).save(buf, format="PNG")
+        suffix = "_long" if template == "long" else ""
+        return self._save_dialog(f"ducktype_{period}{suffix}.png", buf.getvalue(), binary=True)
 
     def export_sequence(self, fmt="txt", params: Optional[dict] = None):
         p = params or {}

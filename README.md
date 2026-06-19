@@ -1,149 +1,123 @@
-# 🦆 DuckType · 码字鸭
+# DuckType · 码字鸭
 
-[![CI](https://github.com/x1324x5/Duck-Type/actions/workflows/build.yml/badge.svg)](https://github.com/x1324x5/Duck-Type/actions/workflows/build.yml)
-[![Release](https://img.shields.io/github/v/release/x1324x5/Duck-Type?include_prereleases)](https://github.com/x1324x5/Duck-Type/releases)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-![Platform](https://img.shields.io/badge/platform-Windows-blue)
+<p align="center">
+  <img src="assets/duck.png" alt="DuckType mascot" width="120">
+</p>
 
-一只安静蹲在后台的小鸭子：统计你通过输入法**上屏**的汉字，记录字频、词频、
-输入序列，并提供一个本地桌面仪表盘查看各种统计。**只记录汉字**，拼音/英文/数字不入库。
+<p align="center">
+  <strong>一只蹲在 Windows 后台、只数中文的码字小鸭。</strong><br>
+  它不记你按了什么键，只看输入法最终上屏的汉字——于是你第一次能清楚看见：<br>
+  我最近到底写了多少、在什么时候最顺、把字都敲进了哪些应用。
+</p>
 
-> Windows only（依赖 Win32 输入法消息钩子）。后台运行，不打断正常使用。
+<p align="center">
+  <a href="https://github.com/x1324x5/Duck-Type/actions/workflows/build.yml"><img alt="CI" src="https://github.com/x1324x5/Duck-Type/actions/workflows/build.yml/badge.svg"></a>
+  <a href="https://github.com/x1324x5/Duck-Type/releases"><img alt="Release" src="https://img.shields.io/github/v/release/x1324x5/Duck-Type?include_prereleases"></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg"></a>
+  <img alt="Platform" src="https://img.shields.io/badge/platform-Windows-blue">
+</p>
 
-## ✨ 功能
+<p align="center">
+  <img src="docs/screenshots/ducktype-dashboard.png" alt="DuckType 仪表盘" width="860">
+</p>
 
-- **字频 / 词频**：高频字、jieba 分词后的高频词。
-- **输入序列浏览与导出**：按时间线查看上屏汉字（即"打过的词语序列"），可按应用筛选、跳转日期、复制单段内容，并一键导出 TXT / CSV / JSON。
-- **词性统计**：基于 jieba 词性标注的名/动/形/… 分布，可下钻查看某类词性下的高频词。
-- **主题关键词**：用 TF-IDF 关键词提取概括一段时间内输入的主题。
-- **输入效率**：平均速度、60 秒峰值速度（字/分）、活跃时长、会话数。
-- **删改频率**：退格 / Delete 次数与"修改率"（估计真实删除汉字数 ÷ 上屏字数）。
-- **分应用统计**：哪个程序里打字最多。
-- **活跃热力图**：星期 × 小时 的输入热力分布；每日趋势。
-- **自定义时间范围**：今天 / 近 7 天 / 近 30 天 / 全部，或任意起止日期（周报、月报都是范围特例）。
-- **趋势环比**：关键指标与上一等长周期对比，卡片上直接显示升/降幅度。
-- **目标 · 连续打卡 · 成就**：每日目标进度环、连续码字 streak、字数 / 生僻字 / 单字重复 / 趣味彩蛋等成就徽章墙。
-- **报告行为洞察**：今日 / 周 / 月 / 年报告会总结高产时段、主力应用、修改习惯、产出变化、表达覆盖面与月/年节奏。
-- **趣味榜单**：最爱词、成语/长词、生僻字、只打过一次的字。
-- **设置页**：在仪表盘里按分组直接改黑名单、目标、阈值、自启、窗口启动方式等，免手动改 JSON。
-- **数据管理与隐私**：一键清空、按日期区间删除、保留期限自动清理。
-- **托盘常驻**：暂停/继续、开机自启、打开仪表盘、打开数据文件夹、退出。关闭仪表盘窗口会收起到托盘，不会停止后台统计。
-- **隐私保护**：自动跳过 Win32 密码框；可配置程序黑名单（默认含常见密码管理器）。
+---
 
-## 🧠 工作原理（重点）
+## 为什么会有这只鸭子
 
-普通的全局键盘钩子只能拿到你按下的**拼音字母**，拿不到输入法最终**上屏的汉字**。
-要拿到上屏汉字，需要把一段代码注入到每个程序里去观察文本提交——本项目通过一个被系统
-注入到其它进程的 `WH_GETMESSAGE` 钩子 DLL 来做到，并用**两条通路**覆盖新老程序：
+普通的打字统计工具数的是「按键」，可中文输入是一串拼音换来一个词——按了多少键，跟你真正写了多少字几乎没关系。市面上能数清「中文上屏量」的本地工具又意外地少。
 
-- **TSF 通路（现代程序）**：搜狗、微软拼音等在 Win10/11 的现代程序（微信、VS Code、
-  Win11 记事本、浏览器、Office…）里通过 **TSF 文本服务框架**提交中文，**不发 `WM_CHAR`**。
-  DLL 在每个进程里挂上 `ITfThreadMgrEventSink` / `ITfTextEditSink`，监听 TSF 的文本提交。
-- **WM_CHAR 通路（经典程序）**：传统 Win32 输入框（如 Win+R 运行框）仍走 `WM_CHAR /
-  WM_IME_CHAR`。DLL 在 TSF 未接管该线程时回退到这条通路，且两路互斥，**不会重复计数**。
+DuckType 想做的事情很小：**安静地待在托盘里，只统计你通过输入法真正敲定的每一个汉字**，然后把这些数据整理成一个好看、能一眼扫过去的本地仪表盘。它不是监控软件，也不联网——拼音、英文、数字都不入库，大段粘贴会被自动忽略，所有记录都躺在你自己选的那个文件夹里。
 
-因此本项目由两部分组成：
+适合长期用中文写东西的人：写论文的研究生、做内容的创作者、爱记笔记的人，以及任何偶尔会好奇「我这周到底码了多少字」的人。
 
-1. `native/ducktype_hook.cpp` —— 注入式钩子 DLL（C++/COM），把每个上屏字符通过一个系统
-   范围的注册消息 `PostMessage` 回主程序（只传一个标量，不做跨进程指针传递）。
-2. Python 主程序 —— 创建隐藏窗口接收字符、用纯 ctypes 的低级键盘钩子统计退格/删除、
-   写入 SQLite、跑分词与统计、通过 pywebview/WebView2 打开本地桌面仪表盘、托盘常驻。
+## 打开它你会看到什么
 
-打包版会先把 bundled 钩子 DLL 复制到数据根目录下的 `native\ducktype_hook_<hash>.dll`
-再注入，避免 PyInstaller one-file 的随机 `_MEI...` 临时目录被长驻程序里的 pinned DLL 占住，
-也避免反复重启后在同一目标程序中累积多个钩子副本。
+**一块仪表盘，而不是一张报表。** 首屏先给你最关心的几个数字——总字数、平均与峰值速度、活跃时长、修改率——再往下是今日目标环、每日产出曲线、按小时的输入节奏，以及高频字、高频词、词性分布和一张「星期 × 小时」的活跃热力图。点任意一个字或词，都能跳进去看它的来龙去脉。
 
-> **位数限制**：64 位的钩子只能捕获 64 位程序里的输入（绝大多数现代程序都是 64 位）。
-> 要覆盖 32 位老程序需要再跑一个 32 位宿主，属于进阶用法。
+**报告，会替你把数字翻译成人话。** 今日 / 周 / 月 / 年都有一段自然语言小结，配上「行为洞察」卡片：你的高产窗口落在几点、产出比上一周期涨了还是跌了、是不是改得有点多。每份报告都能存成一张分享用的方形 PNG 卡片，或一张包含每日趋势、洞察、高频词与各应用分布的「长图」，更适合做周报或年度回顾。
 
-## 🚀 快速开始
+**关注词，盯住分词器盯不住的东西。** 人名、项目代号、自己的口头禅——这些词 jieba 之类的分词工具往往切不准，于是从来不会出现在词频榜里。把它们加进「关注词」，DuckType 就直接在上屏序列里逐字精确数：出现了多少次、最近一次什么时候、横跨了几天、最常出现在哪个应用，还能按分组归类，并看到每个词的趋势曲线与环比。它们同时会被教给分词器，于是也能正常出现在高频词、词性和主题里。每张卡片跟着顶部时间范围实时刷新，点开就是完整的时段与上下文分布。
 
-### 方式 A：下载发行版（推荐）
+**输入序列，是你自己的写作回放。** 真正上屏的中文片段按时间线倒序铺开，可以按应用筛选、跳到某一天、复制单段，也能整段导出成 TXT / CSV / JSON——回看、归档、二次分析都行。
 
-在 GitHub 的 Releases 下载 `DuckType.exe`（由 CI 自动编译 DLL + 生成图标并打包）。双击运行，
-托盘出现🦆小鸭图标即在统计。右键托盘可打开仪表盘 / 数据文件夹 / 开机自启 / 暂停 / 退出。
-打包版首次启动会要求选择一个数据文件夹。
+**还有一点点不正经。** 连续打卡、每日目标、成就徽章、最爱词、成语长词、生僻字、只敲过一次的字……让一个统计工具不至于太严肃。看板顶部还有一句会定时换的语录陪你写字。
 
-### 方式 B：从源码运行
+亮色 / 暗色 / 跟随系统，三种主题随手切换并记住。
+
+## 它怎么做到「只数中文」
+
+普通的全局键盘钩子只能看到按键，拿不到输入法最终提交的汉字。DuckType 用一个原生的 `WH_GETMESSAGE` 钩子 DLL 注入到 GUI 进程里，直接观察文本提交事件，再把字符回传给 Python 主程序：
+
+- 现代程序（微信、VS Code、浏览器、Office、Win11 记事本等）走 TSF 文本服务框架；
+- 经典 Win32 输入框走 `WM_CHAR` / `WM_IME_CHAR`；
+- 两条通路互斥，同一段文本不会被数两遍；
+- 单次插入超过约 30 个汉字会被当作粘贴，不计入。
+
+也有它做不到的地方，说在前面：目前只支持 Windows；默认 64 位版本主要捕获 64 位程序；极少数完全自绘、既不走 TSF 也不走 `WM_CHAR` 的输入框可能会漏记。
+
+## 隐私这件事
+
+DuckType 默认只在本机保存三类数据：每个上屏汉字（含时间戳与当时的应用名）、少量退格 / Delete 编辑键事件（用来估算修改率）、以及语录浏览次数的哈希（用于相关成就）。
+
+它**不上传任何数据，也不保存拼音、英文、数字或普通快捷键**。默认会跳过 Win32 能识别的密码框，并内置常见密码管理器黑名单。需要注意的是，浏览器、Electron 或完全自绘的密码区域不一定能被系统识别为密码框——遇到敏感应用，建议直接把它加进黑名单。
+
+## 快速开始
+
+### 下载即用
+
+到 [Releases](https://github.com/x1324x5/Duck-Type/releases) 下载 `DuckType.exe`。第一次启动会让你选一个数据文件夹，之后小鸭就常驻系统托盘。关掉仪表盘窗口只是收进托盘，统计照常进行；想彻底退出，从托盘菜单选退出。
+
+还没有积累数据时，看板会提示「加载演示数据」——用一份示例数据先看看 DuckType 能展示什么，它不会改动你的真实记录，退出即恢复。
+
+### 从源码运行
 
 ```bat
-pip install -r requirements.txt
-native\build_dll.bat        :: 需要 MinGW-w64 (gcc) 或 MSVC (cl.exe)
+conda create -n ducktype python=3.11
+conda activate ducktype
+python -m pip install -r requirements.txt
+cmd /c native\build_dll.bat
+python tools\make_icon.py
 python -m ducktype
 ```
 
-没有编译器也能运行——只是在装好 DLL 之前不会记录上屏汉字（退格/速度等仍可用）。
-源码运行默认使用系统数据目录；如需指定数据根目录，可设置 `DUCKTYPE_DATA_DIR`。
+`native\build_dll.bat` 需要 MinGW-w64 或 MSVC。没编译这个 DLL 时仪表盘照样能打开，只是不会记录上屏汉字。
 
-### 方式 C：自己打包 exe
-
-```bat
-build.bat                   :: 编译 DLL + 生成图标 + 安装依赖 + PyInstaller 打包
-:: 产物：dist\DuckType.exe
-```
-
-## 💻 命令行
+也支持纯命令行：
 
 ```bat
-python -m ducktype                 :: 后台运行（托盘 + 仪表盘）
+python -m ducktype                 :: 托盘 + 原生仪表盘
 python -m ducktype --report        :: 打印文本摘要
-python -m ducktype --export out\   :: 导出字频/词频/序列
-python -m ducktype --clear         :: 清空全部已记录数据
 python -m ducktype --report --range 7d
+python -m ducktype --export out\   :: 导出字频、词频、输入序列
+python -m ducktype --clear         :: 清空全部记录
 ```
 
-默认运行方式是托盘 + pywebview 原生窗口，不启动 HTTP 服务，也不占用端口。
-如需用普通浏览器调试前端，可运行 `_preview_server.py`，它会启动开发用 Flask shim。
+## 配置与数据
 
-## 🗂️ 数据与配置
+绝大多数设置都在仪表盘的「设置」页：每日目标、暂停统计、程序黑名单、跳过密码框、分段 / 会话间隔、数据保留天数、界面主题、开机自启等。改完即时保存。
 
-DuckType 使用一个“数据根目录”保存运行期文件。打包版首次启动会让你选择目录；
-源码/CLI 默认回退到 `%APPDATA%\DuckType\`，也可用 `DUCKTYPE_DATA_DIR` 覆盖。
-固定留在 `%APPDATA%\DuckType\location.json` 的只有数据根目录指针。
+运行期文件放在你选择的「数据根目录」里（源码运行默认回退到 `%APPDATA%\DuckType\`，也可用环境变量 `DUCKTYPE_DATA_DIR` 覆盖）：`ducktype.db` 是 SQLite 数据库，`config.json` 是配置，`phrases.txt` 可自定义看板语录，`ducktype.log` 记录运行与捕获诊断。固定留在 `%APPDATA%\DuckType\location.json` 的只有一个指针，用来下次启动找到你选的位置。想换电脑或换盘？设置页的「数据管理」可以整体迁移数据根目录。
 
-- `ducktype.db` —— SQLite 数据库（字符序列、按键事件、词频缓存）。
-- `config.json` —— 配置（也可在仪表盘「设置」页里改）。
-- `ducktype.log` —— 运行日志。
+## 开发与测试
 
-数据全部留在本机。打包版仪表盘通过进程内 pywebview bridge 与 Python 后端通信，不上传任何内容。
-
-## ⚙️ 配置项（config.json）
-
-| 键 | 说明 | 默认 |
-|---|---|---|
-| `paused` | 是否暂停统计 | false |
-| `exclude_password_fields` | 跳过 Win32 密码输入框 | true |
-| `blacklist_apps` | 不统计的程序（进程名，小写） | 常见密码管理器 |
-| `run_gap_seconds` | 超过该间隔或切换程序即视为新的一段输入（影响分词） | 3.0 |
-| `session_gap_seconds` | 超过该空闲秒数视为新的输入会话（影响效率统计） | 60.0 |
-| `retention_days` | 自动删除早于该天数的数据；0 = 永久保留 | 0 |
-| `daily_goal` | 每日字数目标（用于目标环 / streak） | 500 |
-| `dashboard_host` / `dashboard_port` | 旧浏览器预览服务配置；打包版原生窗口不使用端口 | 127.0.0.1 / 8765 |
-| `open_dashboard_on_start` | 启动即显示原生仪表盘窗口；关闭窗口会收起到托盘 | true |
-| `autostart` | 开机自启（写 HKCU Run） | false |
-
-## 🎨 图标
-
-图标优先使用 `assets/duck.png`，`tools/make_icon.py` 会据此生成仪表盘/托盘用的
-`src/ducktype/assets/duck.png` 和打包用的多尺寸 `duck.ico`。
-想换成自己的鸭子图：替换 `assets/duck.png`，再跑一次 `python tools/make_icon.py` 即可。
-
-## 🧪 测试
-
-```bash
-pip install pytest
-pytest -q
+```bat
+python -m pip install -r requirements.txt pytest pyinstaller
+python -m pytest -q
 ```
 
-分析层、存储层、配置层的测试与平台无关，CI 在 Ubuntu + Windows 上都会跑。
+改动捕获相关代码后，请在 Windows 真机上验证一次：编译 DLL → 启动 DuckType → 在微信 / VS Code / 记事本里用输入法打中文 → 确认「序列」出现汉字 → 退出后确认宿主应用没有 TSF/MSCTF 相关崩溃。
 
-## ⚠️ 已知限制
+打包：
 
-- 仅 Windows；目标进程需与钩子位数一致（默认 64 位）。
-- 浏览器 / Electron 应用内的密码框不是 Win32 控件，无法被密码框检测识别——请用程序黑名单。
-- 极个别既不走 TSF、又用完全自绘文本框的程序，可能仍会漏记。
-- 安全软件可能拦截全局钩子注入；若仪表盘横幅提示"未捕获"，看健康横幅与日志排查。
+```bat
+cmd /c native\build_dll.bat
+python tools\make_icon.py
+python -m PyInstaller --noconfirm ducktype.spec
+```
 
-## 📄 许可证
+产物在 `dist\DuckType.exe`。
 
-MIT，见 [LICENSE](LICENSE)。这是一个本地统计工具，请仅用于统计**你自己**的输入。
+## 许可证
+
+[MIT](LICENSE)。请只用 DuckType 统计你自己的输入。

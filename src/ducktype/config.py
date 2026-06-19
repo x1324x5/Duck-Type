@@ -45,6 +45,16 @@ class Config:
     # gamification: per-day character goal used by the goal ring / streak.
     daily_goal: int = 500
 
+    # tracked terms: user-picked characters/words/names that jieba would not
+    # segment on its own (e.g. personal names, project codenames). The dashboard
+    # counts every committed occurrence of each term directly from the character
+    # stream, independent of segmentation. Stored in entry order.
+    tracked_terms: List[str] = field(default_factory=list)
+    # optional group label per tracked term (parallel to tracked_terms, "" =
+    # ungrouped). Lets the dashboard cluster names/projects under headers. Always
+    # reconciled to the same length as tracked_terms.
+    tracked_groups: List[str] = field(default_factory=list)
+
     # dashboard
     # dashboard_host/port are LEGACY: the app now renders in a native window
     # (desktop.py) with no HTTP server. Kept only for the dev/preview server.
@@ -62,6 +72,8 @@ class Config:
 
     def __post_init__(self) -> None:
         self.blacklist_apps = _normalise_blacklist(self.blacklist_apps)
+        self.tracked_terms = _normalise_terms(self.tracked_terms)
+        self.tracked_groups = _reconcile_groups(self.tracked_groups, self.tracked_terms)
         if self.theme_mode not in ("system", "light", "dark"):
             self.theme_mode = "system"
         self.ticker_refresh_seconds = _bounded_int(
@@ -99,7 +111,7 @@ class Config:
         "paused", "exclude_password_fields", "blacklist_apps",
         "run_gap_seconds", "session_gap_seconds", "retention_days",
         "daily_goal", "dashboard_port", "open_dashboard_on_start", "autostart",
-        "theme_mode", "ticker_refresh_seconds",
+        "theme_mode", "ticker_refresh_seconds", "tracked_terms", "tracked_groups",
     )
     # Changing these takes effect only after a restart.
     RESTART_REQUIRED = ("dashboard_port",)
@@ -131,7 +143,12 @@ class Config:
                 except (TypeError, ValueError):
                     value = old
             elif isinstance(old, list):
-                value = _normalise_blacklist(value)
+                if key == "tracked_terms":
+                    value = _normalise_terms(value)
+                elif key == "tracked_groups":
+                    value = _normalise_group_list(value)
+                else:
+                    value = _normalise_blacklist(value)
             elif isinstance(old, str):
                 value = str(value)
             if key == "theme_mode" and value not in ("system", "light", "dark"):
@@ -141,6 +158,9 @@ class Config:
             if value != old and key in self.RESTART_REQUIRED:
                 restart = True
             setattr(self, key, value)
+        # Groups are positional metadata for tracked_terms; keep them aligned
+        # even if only one of the two arrays was sent in this update.
+        self.tracked_groups = _reconcile_groups(self.tracked_groups, self.tracked_terms)
         self.save()
         return restart
 
@@ -160,6 +180,52 @@ def _normalise_blacklist(value) -> List[str]:
         except TypeError:
             raw = []
     return [str(x).strip().lower() for x in raw if str(x).strip()]
+
+
+def _normalise_terms(value) -> List[str]:
+    """Tracked terms: split on newlines/commas, trim, drop blanks, de-dupe while
+    preserving entry order. Case is kept as typed (Chinese has none anyway).
+    Capped at 100 terms of <=32 chars each to keep the single-pass scan cheap."""
+    if isinstance(value, str):
+        raw = value.replace("\n", ",").split(",")
+    else:
+        try:
+            raw = list(value)
+        except TypeError:
+            raw = []
+    out: List[str] = []
+    seen = set()
+    for x in raw:
+        term = str(x).strip()[:32]
+        if term and term not in seen:
+            seen.add(term)
+            out.append(term)
+        if len(out) >= 100:
+            break
+    return out
+
+
+def _normalise_group_list(value) -> List[str]:
+    """Group labels for tracked terms: a positional list, one per term. Blanks
+    are kept (they mean "ungrouped") so positions stay aligned. Each label is
+    trimmed and capped at 16 chars; the list is capped at 100 to match terms."""
+    if isinstance(value, str):
+        raw = value.split("\n")
+    else:
+        try:
+            raw = list(value)
+        except TypeError:
+            raw = []
+    return [str(x).strip()[:16] for x in raw][:100]
+
+
+def _reconcile_groups(groups, terms) -> List[str]:
+    """Pad/truncate the group list so it lines up 1:1 with ``terms``."""
+    groups = _normalise_group_list(groups)
+    n = len(terms)
+    if len(groups) < n:
+        groups = groups + [""] * (n - len(groups))
+    return groups[:n]
 
 
 def _bounded_int(value, default: int, lower: int, upper: int) -> int:

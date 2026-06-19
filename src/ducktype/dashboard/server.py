@@ -98,6 +98,16 @@ def create_app(db, config, status_fn=None, on_quit=None) -> Flask:
         body = request.get_json(force=True, silent=True) or {}
         return jsonify(api.data_delete(body.get("start"), body.get("end")))
 
+    # ---- demo / sample data --------------------------------------------
+    @app.route("/api/demo/status")
+    def api_demo_status():
+        return jsonify(api.demo_status())
+
+    @app.route("/api/demo", methods=["POST"])
+    def api_demo_set():
+        body = request.get_json(force=True, silent=True) or {}
+        return jsonify(api.demo_set(bool(body.get("on"))))
+
     @app.route("/api/quote_seen", methods=["POST"])
     def api_quote_seen():
         data = request.get_json(silent=True) or {}
@@ -107,11 +117,13 @@ def create_app(db, config, status_fn=None, on_quit=None) -> Flask:
     @app.route("/api/card")
     def api_card():
         period = request.args.get("period", "today")
-        data_uri = api.card_png(period)
+        template = request.args.get("template", "card")
+        data_uri = api.card_png(period, template)
         raw = base64.b64decode(data_uri.split(",", 1)[1])
+        suffix = "_long" if template == "long" else ""
         return Response(raw, mimetype="image/png",
                         headers={"Content-Disposition":
-                                 f'attachment; filename="ducktype_{period}.png"'})
+                                 f'attachment; filename="ducktype_{period}{suffix}.png"'})
 
     # ---- sequence export (browser variant streams the file) ------------
     @app.route("/api/export/sequence.<fmt>")

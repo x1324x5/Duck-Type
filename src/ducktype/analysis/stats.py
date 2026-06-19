@@ -828,6 +828,89 @@ def search(db, query: str, since: Optional[float], run_gap: float,
     }
 
 
+def tracked_terms(db, terms: List[str], since: Optional[float], run_gap: float,
+                  until: Optional[float] = None) -> List[Dict]:
+    """Count committed occurrences of each user-tracked term in the window.
+
+    A single pass reconstructs the typed runs (same run-grouping as everything
+    else, so a match never spans a pause or app switch), then counts every
+    term's non-overlapping occurrences inside each run. This is independent of
+    jieba segmentation, which is the whole point: names and codenames that the
+    segmenter would split are still counted exactly. Returns one row per term in
+    the order given, each with total, first/last-seen, active days and the app
+    where it shows up most.
+    """
+    cleaned: List[str] = []
+    seen = set()
+    for t in terms or []:
+        t = (t or "").strip()
+        if t and t not in seen:
+            seen.add(t)
+            cleaned.append(t)
+    if not cleaned:
+        return []
+
+    # Per-term accumulators, parallel to ``cleaned``.
+    totals = [0] * len(cleaned)
+    first_ts: List[Optional[float]] = [None] * len(cleaned)
+    last_ts: List[Optional[float]] = [None] * len(cleaned)
+    apps: List[Dict[str, int]] = [dict() for _ in cleaned]
+    days: List[Dict[str, int]] = [dict() for _ in cleaned]
+    lengths = [len(t) for t in cleaned]
+
+    con = db.connect()
+    try:
+        rows = segment._bounded_rows(con, "ts, ch, app", since, until)
+    finally:
+        con.close()
+
+    def _scan(run: List[Tuple[float, str, Optional[str]]]) -> None:
+        text = "".join(r[1] for r in run)
+        for idx, term in enumerate(cleaned):
+            qlen = lengths[idx]
+            if len(text) < qlen:
+                continue
+            i = text.find(term)
+            while i != -1:
+                ts0, _ch, app0 = run[i]
+                totals[idx] += 1
+                if first_ts[idx] is None or ts0 < first_ts[idx]:
+                    first_ts[idx] = ts0
+                if last_ts[idx] is None or ts0 > last_ts[idx]:
+                    last_ts[idx] = ts0
+                a = app0 or "(unknown)"
+                apps[idx][a] = apps[idx].get(a, 0) + 1
+                dkey = datetime.fromtimestamp(ts0).strftime("%Y-%m-%d")
+                days[idx][dkey] = days[idx].get(dkey, 0) + 1
+                i = text.find(term, i + qlen)   # non-overlapping
+
+    run: List[Tuple[float, str, Optional[str]]] = []
+    prev_ts: Optional[float] = None
+    prev_app = None
+    for ts, ch, app in rows:
+        if run and (prev_ts is not None and (ts - prev_ts > run_gap or app != prev_app)):
+            _scan(run); run = []
+        run.append((ts, ch, app))
+        prev_ts, prev_app = ts, app
+    if run:
+        _scan(run)
+
+    out: List[Dict] = []
+    for idx, term in enumerate(cleaned):
+        top_app = max(apps[idx].items(), key=lambda kv: kv[1])[0] if apps[idx] else None
+        out.append({
+            "term": term,
+            "total": totals[idx],
+            "first_seen": first_ts[idx],
+            "last_seen": last_ts[idx],
+            "active_days": len(days[idx]),
+            "top_app": pretty_app(top_app) if top_app else None,
+            # daily counts (sorted) drive the per-card sparkline in the dashboard.
+            "daily": [{"date": d, "count": c} for d, c in sorted(days[idx].items())],
+        })
+    return out
+
+
 # ---- fun rankings ---------------------------------------------------------
 from .common_chars import COMMON_CHARS
 

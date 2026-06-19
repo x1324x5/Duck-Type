@@ -8,6 +8,7 @@ live range segmenter (``segment_range``) used for time-bounded views.
 """
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
@@ -24,6 +25,76 @@ _HAN = lambda ch: "一" <= ch <= "鿿" or "㐀" <= ch <= "䶿"
 # Bump when segmentation/POS logic changes so the materialized word_freq/pos_freq
 # caches rebuild instead of keeping stale tags (see build_words).
 _SEG_VERSION = "3"
+
+# ---- user-tracked terms fed into jieba's dictionary -----------------------
+# The dashboard's "关注词" (names, project codenames, slang) are words jieba's
+# bundled dictionary would otherwise split. Registering them with jieba.add_word
+# makes them segment as single words, so they also show up in 高频词 / 词性 /
+# 主题 -- not just the standalone tracked-term counter. ``_DESIRED_TERMS`` is the
+# set the user has asked for (set synchronously, cheap, no jieba touched);
+# ``_APPLIED_TERMS`` is what we have actually registered in jieba. Registration
+# is deferred to the first real segmentation so startup never pays jieba's load.
+_DESIRED_TERMS: Tuple[str, ...] = ()
+_APPLIED_TERMS: Optional[Tuple[str, ...]] = None
+
+
+def _normalise_user_terms(terms) -> Tuple[str, ...]:
+    """Keep only terms worth teaching jieba: multi-character and containing at
+    least one Han ideograph (single chars are already in the dictionary; pure
+    ASCII/English words never reach the Han-only word counters). De-duped and
+    sorted so the version hash is stable regardless of entry order."""
+    out = set()
+    for t in terms or []:
+        t = (t or "").strip()
+        if len(t) >= 2 and any(_HAN(c) for c in t):
+            out.add(t)
+    return tuple(sorted(out))
+
+
+def set_user_terms(terms) -> None:
+    """Record the user's tracked terms as jieba dictionary candidates.
+
+    Cheap and side-effect-free w.r.t. jieba (no dictionary load): it only stores
+    the desired set and lets ``effective_seg_version`` change, which makes
+    ``build_words`` rebuild the rollups so the new words apply to history too.
+    The actual ``jieba.add_word`` calls happen lazily in ``_apply_user_terms``.
+    """
+    global _DESIRED_TERMS
+    _DESIRED_TERMS = _normalise_user_terms(terms)
+
+
+def _apply_user_terms() -> None:
+    """Reconcile jieba's user dictionary with ``_DESIRED_TERMS`` (idempotent).
+
+    Called at the top of every segmentation pass; the common case (nothing
+    changed) is a single tuple identity/equality check. jieba is already loading
+    its dictionary here, so add_word/del_word add no perceptible cost."""
+    global _APPLIED_TERMS
+    if not HAS_JIEBA or _APPLIED_TERMS == _DESIRED_TERMS:
+        return
+    desired = set(_DESIRED_TERMS)
+    applied = set(_APPLIED_TERMS or ())
+    for term in desired - applied:
+        try:
+            jieba.add_word(term)
+        except Exception:  # pragma: no cover - defensive
+            pass
+    for term in applied - desired:
+        try:
+            jieba.del_word(term)
+        except Exception:  # pragma: no cover - defensive
+            pass
+    _APPLIED_TERMS = _DESIRED_TERMS
+
+
+def effective_seg_version() -> str:
+    """``_SEG_VERSION`` plus a short hash of the user terms, so that changing the
+    tracked terms invalidates the materialized word/POS rollups (which were built
+    under a different jieba dictionary)."""
+    if not _DESIRED_TERMS:
+        return _SEG_VERSION
+    digest = hashlib.sha1("\n".join(_DESIRED_TERMS).encode("utf-8")).hexdigest()[:8]
+    return f"{_SEG_VERSION}:u{digest}"
 
 # jieba's bundled dictionary mistags a handful of very common words (its tags come
 # from one corpus and have known per-word errors). Correct only clear, high-
@@ -77,6 +148,7 @@ def _runs_with_ts_from_rows(rows, run_gap: float):
 
 def _segment_text(text: str):
     """Return (word_counts, word_pos, pos_counts) for one run string."""
+    _apply_user_terms()
     word_counts: Dict[str, int] = {}
     word_pos: Dict[str, str] = {}
     pos_counts: Dict[str, int] = {}
@@ -101,6 +173,7 @@ def _segment_text(text: str):
 
 def _segment_text_pos_words(text: str):
     """Return {pos: {word: count}} for one run string."""
+    _apply_user_terms()
     out: Dict[str, Dict[str, int]] = {}
     if not HAS_JIEBA:
         for ch in text:
@@ -120,9 +193,11 @@ def _segment_text_pos_words(text: str):
 # ---- incremental, all-time materialization -------------------------------
 def build_words(db, run_gap: float = 3.0) -> None:
     """Segment any newly *closed* runs and fold them into word_freq/pos_freq."""
-    # If the segmentation/POS logic changed, throw away the materialized caches and
-    # rebuild from scratch so corrected tags apply to historical data too.
-    if db.get_meta("seg_version") != _SEG_VERSION:
+    # If the segmentation/POS logic *or* the user's tracked terms changed, throw
+    # away the materialized caches and rebuild from scratch so corrected tags (and
+    # newly-taught words) apply to historical data too.
+    seg_version = effective_seg_version()
+    if db.get_meta("seg_version") != seg_version:
         con = db.connect()
         try:
             con.execute("DELETE FROM word_freq")
@@ -134,7 +209,7 @@ def build_words(db, run_gap: float = 3.0) -> None:
         finally:
             con.close()
         db.set_meta("word_cursor", "0")
-        db.set_meta("seg_version", _SEG_VERSION)
+        db.set_meta("seg_version", seg_version)
     cursor = int(db.get_meta("word_cursor", "0") or "0")
     con = db.connect()
     try:

@@ -137,6 +137,40 @@ def test_bridge_keeps_heavy_runtime_objects_private(db):
     assert not (public_attrs & {"window", "db", "config", "relocator"})
 
 
+def test_tracked_endpoint_returns_group_delta_and_series(db, insert_chars, now):
+    day = 86400
+    insert_chars(db, [
+        (now - day, "张", "a"), (now - day, "三", "a"),          # earlier
+        (now, "张", "a"), (now, "三", "a"),
+        (now + 1, "张", "a"), (now + 1, "三", "a"),
+    ])
+    api = _api(db)
+    api.config_set({"tracked_terms": ["张三"], "tracked_groups": ["同事"]})
+    res = api.get("tracked", {"range": "all"})
+    row = res["terms"][0]
+    assert row["term"] == "张三" and row["group"] == "同事"
+    assert "delta_pct" in row            # present (None for the unbounded range)
+    assert isinstance(row["daily"], list) and row["daily"]
+
+
+def test_demo_mode_swaps_database_without_touching_real(db):
+    api = _api(db)
+    assert api.demo_status() == {"on": False}
+    assert api.get("overview", {"range": "all"})["total_chars"] == 0
+    assert api.demo_set(True) == {"on": True}
+    assert api.get("overview", {"range": "all"})["total_chars"] > 0   # sample data
+    assert api.demo_set(False) == {"on": False}
+    assert api.get("overview", {"range": "all"})["total_chars"] == 0  # real db intact
+
+
+def test_card_png_supports_long_template(db, insert_chars, now):
+    insert_chars(db, [(now - i, ch, "Code.exe")
+                      for i, ch in enumerate("今天天气很好我们去看电影吧")])
+    api = _api(db)
+    assert api.card_png("today").startswith("data:image/png;base64,")
+    assert api.card_png("today", "long").startswith("data:image/png;base64,")
+
+
 def test_read_endpoint_contract_matches_handlers(db):
     api = _api(db)
     assert "board" in READ_ENDPOINTS
