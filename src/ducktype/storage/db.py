@@ -421,6 +421,59 @@ class Database:
         finally:
             src.close()
 
+    # Tables that constitute the user's data, with the columns we copy on import.
+    # ``id`` columns are intentionally omitted so AUTOINCREMENT reassigns them
+    # (we never rely on absolute char_events ids -- the word cursor is reset).
+    _PORTABLE_TABLES = {
+        "char_events": "ts, ch, app",
+        "key_events": "ts, kind, app",
+        "achievements": "id, unlocked_ts",
+        "quote_views": "quote_hash, count, first_ts, last_ts",
+        "meta": "key, value",
+    }
+
+    def import_from(self, src_path) -> int:
+        """Replace all captured data with the contents of another DuckType
+        database file (used by the data-migration import). Validates that the
+        source looks like a DuckType DB, copies each portable table inside one
+        transaction, and rebuilds the word/POS materialization from scratch.
+        Returns the resulting char-event count. Raises ValueError if the source
+        is not a usable DuckType database."""
+        src_path = str(src_path)
+        try:
+            probe = sqlite3.connect(src_path)
+            try:
+                probe.execute("SELECT ts, ch, app FROM char_events LIMIT 1")
+            finally:
+                probe.close()
+        except sqlite3.DatabaseError as exc:
+            raise ValueError(f"not a valid DuckType database: {exc}") from exc
+
+        con = self.connect()
+        try:
+            con.execute("ATTACH DATABASE ? AS imp", (src_path,))
+            try:
+                con.execute("BEGIN")
+                for table, cols in self._PORTABLE_TABLES.items():
+                    con.execute(f"DELETE FROM {table}")
+                    try:
+                        con.execute(
+                            f"INSERT INTO {table}({cols}) SELECT {cols} FROM imp.{table}"
+                        )
+                    except sqlite3.OperationalError:
+                        # The imported database predates this table; skip it.
+                        pass
+                self._reset_materialization(con)
+                con.commit()
+                n = con.execute("SELECT COUNT(*) FROM char_events").fetchone()[0]
+            finally:
+                con.execute("DETACH DATABASE imp")
+            con.execute("VACUUM")
+            self.revision += 1
+            return int(n)
+        finally:
+            con.close()
+
     def stats_summary(self) -> dict:
         """Lightweight counts for the data-management UI."""
         con = self.connect()

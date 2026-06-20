@@ -12,6 +12,8 @@ import base64
 import io
 import json
 import logging
+import os
+import tempfile
 import threading
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -97,6 +99,67 @@ def create_app(db, config, status_fn=None, on_quit=None) -> Flask:
     def api_data_delete():
         body = request.get_json(force=True, silent=True) or {}
         return jsonify(api.data_delete(body.get("start"), body.get("end")))
+
+    @app.route("/api/data/export")
+    def api_data_export():
+        name, data = api._export_pack()
+        return Response(data, mimetype="application/zip",
+                        headers={"Content-Disposition":
+                                 f'attachment; filename="{name}"'})
+
+    @app.route("/api/data/import", methods=["POST"])
+    def api_data_import():
+        f = request.files.get("file")
+        if f is None:
+            return jsonify({"ok": False, "error": "no file"}), 400
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".duckpack")
+        try:
+            f.save(tmp.name)
+            tmp.close()
+            return jsonify(api.data_import(path=tmp.name))
+        finally:
+            try:
+                os.remove(tmp.name)
+            except OSError:
+                pass
+
+    # ---- lexicons (词库 subsystem) -------------------------------------
+    @app.route("/api/lexicon/list")
+    def api_lexicon_list():
+        return jsonify(api.lexicon_list())
+
+    @app.route("/api/lexicon/create", methods=["POST"])
+    def api_lexicon_create():
+        b = request.get_json(force=True, silent=True) or {}
+        return jsonify(api.lexicon_create(
+            name=b.get("name"), text=b.get("text"), words=b.get("words")))
+
+    @app.route("/api/lexicon/update", methods=["POST"])
+    def api_lexicon_update():
+        b = request.get_json(force=True, silent=True) or {}
+        return jsonify(api.lexicon_update(
+            id=b.get("id"), name=b.get("name"), enabled=b.get("enabled")))
+
+    @app.route("/api/lexicon/delete", methods=["POST"])
+    def api_lexicon_delete():
+        b = request.get_json(force=True, silent=True) or {}
+        return jsonify(api.lexicon_delete(id=b.get("id")))
+
+    @app.route("/api/lexicon/import", methods=["POST"])
+    def api_lexicon_import():
+        f = request.files.get("file")
+        if f is None:
+            return jsonify({"ok": False, "error": "no file"}), 400
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".txt")
+        try:
+            f.save(tmp.name)
+            tmp.close()
+            return jsonify(api.lexicon_import_file(path=tmp.name))
+        finally:
+            try:
+                os.remove(tmp.name)
+            except OSError:
+                pass
 
     # ---- demo / sample data --------------------------------------------
     @app.route("/api/demo/status")

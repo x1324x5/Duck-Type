@@ -16,7 +16,10 @@ import base64
 import io
 import json
 import logging
+import os
+import tempfile
 import time
+import zipfile
 from dataclasses import asdict
 from datetime import datetime, timedelta
 from typing import Optional
@@ -61,6 +64,8 @@ READ_ENDPOINTS = (
     "report_fast",
     "report_heavy",
     "sequence_apps",
+    "lexicon_stats",
+    "lexicon_report",
 )
 _READ_ENDPOINTS = frozenset(READ_ENDPOINTS)
 _STALE_CACHE_TTL = {
@@ -96,6 +101,7 @@ class Api:
         self._window_maximized = False
         self._cache: dict = {}
         self._cache_rev = -1
+        self._lexicons = None       # lazily-built LexiconStore (词库 subsystem)
         # Teach jieba the tracked terms so they segment as whole words in the
         # word/POS/topic panels (cheap: just records the desired set; jieba is
         # touched lazily on the first segmentation).
@@ -307,12 +313,68 @@ class Api:
         limit = int(p.get("limit", 200))
         return stats.sequence_recent(
             self._db, since, self._config.run_gap_seconds, limit, until,
-            p.get("app", ""),
+            p.get("apps", p.get("app", "")), p.get("q", ""),
         )
 
     def _r_sequence_apps(self, p):
         since, until = self._sequence_bounds(p)
         return stats.sequence_apps(self._db, since, until)
+
+    def _r_lexicon_stats(self, p):
+        """Per-word occurrence breakdown of one lexicon over the range (for the
+        词库 tab's share pie). Additive only -- never affects the board counts."""
+        from ..analysis import lexicon
+        since, until = self._bounds(p)
+        store = self._lexicon_store()
+        lex_id = p.get("id") or lexicon.IDIOM_ID
+        meta = store.meta(lex_id)
+        if meta is None:
+            return {"id": lex_id, "found": False, "name": "", "size": 0,
+                    "total": 0, "distinct": 0, "words": []}
+        matcher = store.matcher(lex_id, meta["builtin"])
+        counts = lexicon.scan_counts(
+            self._db, matcher, since, self._config.run_gap_seconds, until)
+        items = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)
+        n = int(p.get("n", 24))
+        return {
+            "id": lex_id, "found": True, "name": meta["name"],
+            "size": matcher.size, "total": sum(counts.values()),
+            "distinct": len(counts),
+            "words": [{"word": w, "count": c} for w, c in items[:n]],
+        }
+
+    def _r_lexicon_report(self, p):
+        """For the 报告 tab: each enabled lexicon's usage over the period, sorted
+        by total matches, each with its single most-used word."""
+        from ..analysis import lexicon
+        period = p.get("period")
+        if period == "custom":
+            since, until = stats.resolve_range("custom", p.get("start"), p.get("end"))
+        elif period:
+            try:
+                since, until, _ps, _pe, _label = stats.report_bounds(period)
+            except ValueError:
+                since, until = self._bounds(p)
+        else:
+            since, until = self._bounds(p)
+        store = self._lexicon_store()
+        rg = self._config.run_gap_seconds
+        out = []
+        for meta in store.list():
+            if not meta["enabled"]:
+                continue
+            matcher = store.matcher(meta["id"], meta["builtin"])
+            counts = lexicon.scan_counts(self._db, matcher, since, rg, until)
+            if not counts:
+                continue
+            top_word, top_count = max(counts.items(), key=lambda kv: kv[1])
+            out.append({
+                "id": meta["id"], "name": meta["name"],
+                "total": sum(counts.values()), "distinct": len(counts),
+                "top_word": top_word, "top_count": top_count,
+            })
+        out.sort(key=lambda r: r["total"], reverse=True)
+        return {"lexicons": out}
 
     def _r_board(self, p):
         """Batched payload for the main board: one call instead of ~10."""
@@ -467,6 +529,176 @@ class Api:
         since, until = stats.resolve_range("custom", start, end)
         return {"deleted": self._db.delete_range(since, until)}
 
+    # ---- full-data export / import (migration) ---------------------------
+    _PACK_FORMAT = 1
+
+    def _export_pack(self):
+        """Build the ``.duckpack`` archive (db + config + manifest) for the real
+        database. Returns (default_filename, bytes)."""
+        from ..paths import config_path
+        tmp = tempfile.mkdtemp(prefix="duckexport_")
+        db_tmp = os.path.join(tmp, "data.db")
+        try:
+            self._real_db.backup_to(db_tmp)
+            summary = self._real_db.stats_summary()
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+                z.write(db_tmp, "data.db")
+                cfg = config_path()
+                if os.path.exists(cfg):
+                    z.write(str(cfg), "config.json")
+                manifest = {
+                    "app": "DuckType",
+                    "format": self._PACK_FORMAT,
+                    "exported_at": datetime.now().isoformat(timespec="seconds"),
+                    "char_rows": summary.get("char_rows", 0),
+                }
+                z.writestr("manifest.json",
+                           json.dumps(manifest, ensure_ascii=False, indent=2))
+        finally:
+            try:
+                os.remove(db_tmp)
+                os.rmdir(tmp)
+            except OSError:
+                pass
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        return f"ducktype_backup_{stamp}.duckpack", buf.getvalue()
+
+    def data_export(self):
+        """Bundle the user's entire data set -- the SQLite database plus the
+        config -- into a single ``.duckpack`` archive and save it via the native
+        dialog. Always exports the real database, even while showing demo data."""
+        name, data = self._export_pack()
+        return self._save_dialog(name, data, binary=True)
+
+    def data_import(self, path: Optional[str] = None):
+        """Replace all current data with the contents of a ``.duckpack`` archive
+        (chosen via the native open dialog, or ``path`` for the dev shim).
+        Overwrites the real database and applies the packaged config. The capture
+        thread keeps appending to the real DB; importing is a point-in-time
+        replace, so do it when not actively typing."""
+        if not path:
+            picked = self._open_dialog([
+                "DuckType 备份 (*.duckpack;*.zip)", "所有文件 (*.*)"])
+            path = picked.get("path") or ""
+        if not path:
+            return {"ok": False, "cancelled": True}
+        try:
+            with zipfile.ZipFile(path) as z:
+                names = set(z.namelist())
+                if "data.db" not in names:
+                    return {"ok": False,
+                            "error": "不是有效的 DuckType 备份文件（缺少 data.db）。"}
+                tmp = tempfile.mkdtemp(prefix="duckimport_")
+                z.extract("data.db", tmp)
+                cfg_data = z.read("config.json") if "config.json" in names else None
+        except (zipfile.BadZipFile, OSError) as exc:
+            return {"ok": False, "error": f"无法读取备份文件：{exc}"}
+
+        db_tmp = os.path.join(tmp, "data.db")
+        try:
+            n = self._real_db.import_from(db_tmp)
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc)}
+        finally:
+            try:
+                os.remove(db_tmp)
+                os.rmdir(tmp)
+            except OSError:
+                pass
+
+        restart = []
+        if cfg_data:
+            try:
+                incoming = json.loads(cfg_data.decode("utf-8"))
+                editable = {k: incoming[k] for k in self._config.EDITABLE
+                            if k in incoming}
+                restart = self.config_set(editable).get("restart_required", [])
+            except Exception:
+                log.exception("import: applying packaged config failed")
+        # Surface the freshly imported data: drop demo mode if active, otherwise
+        # just invalidate the read cache (import_from already bumped revision).
+        if self._demo:
+            self.demo_set(False)
+        else:
+            self._cache = {}
+            self._cache_rev = -1
+        return {"ok": True, "char_rows": n, "restart_required": restart}
+
+    # ---- lexicons (词库 subsystem) ---------------------------------------
+    def _lexicon_store(self):
+        if self._lexicons is None:
+            from ..analysis.lexicon import LexiconStore
+            from ..paths import root_dir
+            store = LexiconStore(root_dir() / "lexicons")
+            # Plug the 关注词 / 生僻字 systems into 词库 as derived built-in
+            # lexicons so they get the same share pie + click-to-search.
+            store.register_provider(
+                "tracked", "关注词", lambda: list(self._config.tracked_terms))
+            store.register_provider("rare", "生僻字", self._rare_chars)
+            self._lexicons = store
+        return self._lexicons
+
+    def _rare_chars(self):
+        """All-time uncommon single characters present in the active data set --
+        the word source for the derived 生僻字 lexicon."""
+        counts = stats.top_chars(self._db, None, 5_000_000, None)
+        return [c for c, _n in counts if stats._is_uncommon(c)]
+
+    def lexicon_list(self):
+        return {"items": self._lexicon_store().list()}
+
+    def lexicon_create(self, name=None, text=None, words=None):
+        """Create a user lexicon from pasted text (``text``) or an explicit word
+        list (``words``, one entry each). Returns {ok, id}."""
+        from ..analysis import lexicon as lx
+        try:
+            if words is not None:
+                parsed = lx.parse_items(words)
+            else:
+                parsed = lx.parse_words(text or "")
+            lex_id = self._lexicon_store().create(name, parsed)
+            return {"ok": True, "id": lex_id}
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc)}
+
+    def lexicon_update(self, id=None, name=None, enabled=None):
+        ok = self._lexicon_store().update(id, name=name, enabled=enabled)
+        return {"ok": ok}
+
+    def lexicon_delete(self, id=None):
+        try:
+            self._lexicon_store().delete(id or "")
+            return {"ok": True}
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc)}
+
+    def lexicon_import_file(self, path=None):
+        """Import a dictionary file as a new lexicon (native open dialog, or
+        ``path`` for the dev shim). Keeps the first column of each line so common
+        jieba / Rime / Sogou exports adapt automatically."""
+        from ..analysis import lexicon as lx
+        if not path:
+            picked = self._open_dialog([
+                "词库文件 (*.txt;*.csv;*.dic)", "所有文件 (*.*)"])
+            path = picked.get("path") or ""
+        if not path:
+            return {"ok": False, "cancelled": True}
+        try:
+            with open(path, encoding="utf-8", errors="ignore") as f:
+                content = f.read()
+        except OSError as exc:
+            return {"ok": False, "error": f"无法读取文件：{exc}"}
+        words = lx.parse_file_lines(content)
+        if not words:
+            return {"ok": False, "error": "文件里没有找到可用的词。"}
+        name = os.path.splitext(os.path.basename(path))[0]
+        try:
+            lex_id = self._lexicon_store().create(name, words)
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc)}
+        return {"ok": True, "id": lex_id, "count": len(words)}
+
     def quote_seen(self, text=None):
         if isinstance(text, str) and text:
             try:
@@ -511,7 +743,7 @@ class Api:
         since, until = self._sequence_bounds(p)
         runs = list(reversed(stats.sequence_recent(
             self._db, since, self._config.run_gap_seconds, 10_000_000, until,
-            p.get("app", ""))))
+            p.get("apps", p.get("app", "")), p.get("q", ""))))
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         if fmt == "txt":
             body = "\n".join(r["text"] for r in runs).encode("utf-8")
@@ -528,6 +760,24 @@ class Api:
         else:
             return {"ok": False, "error": "unknown format"}
         return self._save_dialog(f"ducktype_sequence_{stamp}.{fmt}", body, binary=True)
+
+    def _open_dialog(self, file_types=None):
+        """Native open-file dialog (webview). Returns {"path": <chosen or "">}."""
+        try:
+            import webview
+            win = self._window or (webview.windows[0] if webview.windows else None)
+            if win is None:
+                return {"path": ""}
+            kwargs = {}
+            if file_types:
+                kwargs["file_types"] = tuple(file_types)
+            res = win.create_file_dialog(webview.OPEN_DIALOG, **kwargs)
+            if not res:
+                return {"path": ""}
+            return {"path": res[0] if isinstance(res, (list, tuple)) else res}
+        except Exception as exc:
+            log.exception("open dialog failed")
+            return {"path": "", "error": str(exc)}
 
     def _save_dialog(self, default_name, data, binary=False):
         """Native save dialog (webview) then write the file. Falls back to the

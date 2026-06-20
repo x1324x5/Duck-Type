@@ -334,6 +334,19 @@ def segment_range(db, since: Optional[float], run_gap: float = 3.0,
     return total_wc, total_wp, total_pc
 
 
+def iter_run_texts(db, since: Optional[float], run_gap: float = 3.0,
+                   until: Optional[float] = None) -> List[str]:
+    """Return the run strings in [since, until) -- the raw contiguous Han runs,
+    before any segmentation. Used by idiom detection, which scans the committed
+    stream directly rather than relying on jieba's word boundaries."""
+    con = db.connect()
+    try:
+        rows = _bounded_rows(con, "ts, ch, app", since, until)
+    finally:
+        con.close()
+    return list(_runs_from_rows(rows, run_gap))
+
+
 def segment_pos_words_range(db, since: Optional[float], run_gap: float = 3.0,
                             until: Optional[float] = None):
     """Segment all characters in [since, until) into {pos: {word: count}}."""

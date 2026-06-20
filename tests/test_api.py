@@ -120,6 +120,36 @@ def test_sequence_app_filter_keeps_app_boundaries(db, insert_chars, now):
     assert [r["text"] for r in seq] == ["丙", "甲"]
 
 
+def test_sequence_filters_by_multiple_apps(db, insert_chars, now):
+    insert_chars(db, [
+        (now - 6, "甲", "Code.exe"),
+        (now - 5, "乙", "Word.exe"),
+        (now - 4, "丙", "QQ.exe"),
+    ])
+    api = _api(db)
+    seq = api.get("sequence", {"range": "all", "apps": "Code.exe,Word.exe"})
+    assert {r["text"] for r in seq} == {"甲", "乙"}   # QQ.exe excluded
+
+
+def test_sequence_keyword_filter(db, insert_chars, now):
+    insert_chars(db, [(now - 10 + i, ch, "Code.exe") for i, ch in enumerate("今天天气很好")])
+    insert_chars(db, [(now + i, ch, "Code.exe") for i, ch in enumerate("明天会更好")])
+    api = _api(db)
+    seq = api.get("sequence", {"range": "all", "q": "天气"})
+    assert len(seq) == 1 and "天气" in seq[0]["text"]
+
+
+def test_export_pack_does_not_drop_source_data(db, insert_chars, now):
+    insert_chars(db, [(now - i, ch, "Code.exe")
+                      for i, ch in enumerate("今天天气很好我们去看电影吧")])
+    api = _api(db)
+    before = db.stats_summary()["char_rows"]
+    name, data = api._export_pack()
+    assert name.endswith(".duckpack") and len(data) > 0
+    # Exporting a backup must never remove the live data (the v0.2.6 bug report).
+    assert db.stats_summary()["char_rows"] == before
+
+
 def test_data_summary_reports_root(db, insert_chars, now):
     insert_chars(db, [(now, "字", "a")])
     s = _api(db).data_summary()
@@ -169,6 +199,37 @@ def test_card_png_supports_long_template(db, insert_chars, now):
     api = _api(db)
     assert api.card_png("today").startswith("data:image/png;base64,")
     assert api.card_png("today", "long").startswith("data:image/png;base64,")
+
+
+def test_data_export_import_roundtrip(db, insert_chars, now, tmp_path):
+    insert_chars(db, [(now - i, ch, "Code.exe")
+                      for i, ch in enumerate("今天天气很好我们去看电影吧")])
+    api = _api(db)
+    name, data = api._export_pack()
+    assert name.endswith(".duckpack") and len(data) > 0
+    pack = tmp_path / name
+    pack.write_bytes(data)
+
+    db.clear_all()
+    assert db.stats_summary()["char_rows"] == 0
+    res = api.data_import(path=str(pack))
+    assert res["ok"] is True
+    assert res["char_rows"] == db.stats_summary()["char_rows"] > 0
+
+
+def test_data_import_rejects_non_pack(db, tmp_path):
+    bad = tmp_path / "junk.duckpack"
+    bad.write_bytes(b"not a zip")
+    res = _api(db).data_import(path=str(bad))
+    assert res["ok"] is False and res.get("error")
+
+
+def test_db_import_from_validates_source(db, tmp_path):
+    import pytest
+    notdb = tmp_path / "plain.db"
+    notdb.write_bytes(b"definitely not sqlite")
+    with pytest.raises(ValueError):
+        db.import_from(str(notdb))
 
 
 def test_read_endpoint_contract_matches_handlers(db):

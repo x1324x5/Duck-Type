@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
 from ..perf import timed
+from . import idioms as idioms_mod
 from . import segment
 from .time_ranges import day_start as _day_start
 from .time_ranges import resolve_range, since_for
@@ -669,11 +670,29 @@ def sequence_runs(db, since: Optional[float], run_gap: float,
     return list(segment._runs_from_rows(rows, run_gap))
 
 
+def _app_filter_set(app_filter) -> Optional[set]:
+    """Normalise the sequence app filter into a set of app names, or None for
+    "all apps". Accepts a single string (possibly comma-separated) or a list."""
+    if app_filter is None:
+        return None
+    if isinstance(app_filter, str):
+        names = [a.strip() for a in app_filter.split(",")]
+    else:
+        names = [str(a).strip() for a in app_filter]
+    names = [a for a in names if a]
+    return set(names) if names else None
+
+
 def sequence_recent(db, since: Optional[float], run_gap: float, limit: int = 200,
                     until: Optional[float] = None,
-                    app_filter: Optional[str] = None) -> List[Dict]:
-    """Most recent runs (for the timeline view), each with its start time + app."""
-    app_filter = (app_filter or "").strip()
+                    app_filter=None, keyword: Optional[str] = None) -> List[Dict]:
+    """Most recent runs (for the timeline view), each with its start time + app.
+
+    ``app_filter`` keeps only runs from the given app(s) -- a single name, a
+    comma-separated string, or a list (None/empty = all). ``keyword`` further
+    keeps only runs whose text contains that substring."""
+    apps = _app_filter_set(app_filter)
+    kw = (keyword or "").strip()
     clauses, params = [], []
     if since is not None:
         clauses.append("ts>=?"); params.append(since)
@@ -693,10 +712,18 @@ def sequence_recent(db, since: Optional[float], run_gap: float, limit: int = 200
     start_ts = None
     last_ts = None
     last_app = None
+
+    def _emit():
+        if apps is not None and (last_app or "") not in apps:
+            return
+        text = "".join(cur)
+        if kw and kw not in text:
+            return
+        runs.append({"ts": start_ts, "app": last_app, "text": text})
+
     for ts, ch, app in rows:
         if cur and (last_ts is not None and (ts - last_ts > run_gap or app != last_app)):
-            if not app_filter or last_app == app_filter:
-                runs.append({"ts": start_ts, "app": last_app, "text": "".join(cur)})
+            _emit()
             cur = []
             start_ts = None
         if not cur:
@@ -704,8 +731,7 @@ def sequence_recent(db, since: Optional[float], run_gap: float, limit: int = 200
         cur.append(ch)
         last_ts, last_app = ts, app
     if cur:
-        if not app_filter or last_app == app_filter:
-            runs.append({"ts": start_ts, "app": last_app, "text": "".join(cur)})
+        _emit()
     runs.reverse()
     return runs[:limit]
 
@@ -949,25 +975,20 @@ def fun_rankings(db, since: Optional[float], run_gap: float,
     with timed("stats.fun_rankings.segment_range"):
         wc, wp, _pc = segment.segment_range(db, since, run_gap, until)
 
-    def _is_idiom(w: str) -> bool:
-        # jieba's 成语 tag, or a 4-character all-Han word (the classic shape).
-        return wp.get(w) == "i" or (len(w) == 4 and all(segment._HAN(c) for c in w))
-
     fav_words = sorted(
         ((w, n) for w, n in wc.items() if len(w) >= 2),
         key=lambda kv: kv[1], reverse=True,
     )[:30]
-    idioms = sorted(
-        ((w, n) for w, n in wc.items() if _is_idiom(w)),
-        key=lambda kv: kv[1], reverse=True,
-    )[:30]
+    # Idioms now live in their own 词库 (lexicon) tab, scanned against the idiom
+    # dictionary. They are still kept out of the 长词 (long-word) list here so the
+    # two views don't overlap.
     long_words = sorted(
-        ((w, n) for w, n in wc.items() if len(w) >= 3 and not _is_idiom(w)),
+        ((w, n) for w, n in wc.items()
+         if len(w) >= 3 and not idioms_mod.is_idiom(w)),
         key=lambda kv: kv[1], reverse=True,
     )[:30]
     return {
         "favorite_words": [{"word": w, "count": n} for w, n in fav_words],
-        "idioms": [{"word": w, "count": n} for w, n in idioms],
         "long_words": [{"word": w, "count": n} for w, n in long_words],
         "hapax": hapax[:60],
         "rare_chars": [{"ch": c, "count": n} for c, n in rare],
@@ -1649,7 +1670,8 @@ def report_words(db, period: str, run_gap: float,
     distinct_words = len(counts)
     bigrams = [{"word": w, "count": c} for w, c in counts if len(w) == 2][:20]
     trigrams = [{"word": w, "count": c} for w, c in counts if len(w) == 3][:20]
-    longwords = [{"word": w, "count": c} for w, c in counts if len(w) >= 4][:20]
+    longwords = [{"word": w, "count": c} for w, c in counts
+                 if len(w) >= 4 and not idioms_mod.is_idiom(w)][:20]
 
     lo_day = d0 if d0 is not None else "0000-01-01"
     new_words, returning_words = [], []

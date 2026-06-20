@@ -334,10 +334,66 @@
   .run .copyrun svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;
     stroke-linecap:round;stroke-linejoin:round}
   .run .copyrun:hover{border-color:var(--accent);color:var(--accent)}
-  .seqctl{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0 12px}
+  .seqctl{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start;margin:10px 0 12px}
   .seqctl select{background:var(--panel2);color:var(--fg);border:1px solid var(--line);
     border-radius:8px;padding:7px 10px;font-size:13px;font-family:inherit;min-height:34px}
-  .seqctl .seqstat{color:var(--muted);font-size:12px;margin-left:auto}
+  .seqctl .seqstat{color:var(--muted);font-size:12px;margin-left:auto;align-self:center;white-space:nowrap}
+  .seqfilters{display:flex;flex-direction:column;gap:8px;flex:1;min-width:260px}
+  .seqfilter-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .seqfilter-label{color:var(--muted);font-size:12px;min-width:42px}
+  .seqapps{display:flex;flex-wrap:wrap;gap:6px}
+  .seqapps-empty{color:var(--muted);font-size:12px}
+  .appchip{background:var(--panel2);color:var(--fg);border:1px solid var(--line);border-radius:999px;
+    padding:4px 11px;font-size:12px;cursor:pointer;font-family:inherit;transition:all .15s}
+  .appchip:hover{border-color:var(--accent)}
+  .appchip.on{background:var(--accent);color:#1a1400;border-color:var(--accent);font-weight:600}
+  #seqKeyword{background:var(--panel2);color:var(--fg);border:1px solid var(--line);
+    border-radius:8px;padding:7px 10px;font-size:13px;font-family:inherit;min-height:34px;flex:1;min-width:160px}
+  /* ---- lexicon (词库) ---- */
+  .lexlist{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+  .lexrow{display:flex;align-items:center;gap:12px;background:var(--panel2);border:1px solid var(--line);
+    border-radius:10px;padding:10px 14px}
+  .lexrow.off{opacity:.6}
+  .lexmeta{flex:1;min-width:0}
+  .lexname{font-weight:600;display:flex;align-items:center;gap:8px}
+  .lextag{font-size:11px;font-weight:500;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:1px 6px}
+  .lexsub{color:var(--muted);font-size:12px;margin-top:2px}
+  .lexlock{font-size:14px;opacity:.6}
+  .lexdel{padding:5px 12px;font-size:12px}
+  .lexeditor{margin-top:14px;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:14px}
+  .lexeditor-head{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+  .lexeditor-head input{flex:1;min-width:200px;background:var(--panel);color:var(--fg);border:1px solid var(--line);
+    border-radius:8px;padding:8px 11px;font-size:13px;font-family:inherit}
+  .lexeditor textarea{width:100%;box-sizing:border-box;background:var(--panel);color:var(--fg);
+    border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:13px;font-family:inherit;resize:vertical}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .segbtn{background:var(--panel);color:var(--muted);border:none;padding:7px 14px;font-size:12px;cursor:pointer;font-family:inherit}
+  .segbtn.active{background:var(--accent);color:#1a1400;font-weight:600}
+  .lexmsg{margin-top:10px;font-size:12px;color:var(--muted)}
+  .lexstats{display:flex;flex-direction:column;gap:18px}
+  .lexstat h3{margin:0 0 6px;font-size:15px}
+  .lexstat-body{display:flex;gap:16px;flex-wrap:wrap;align-items:center}
+  .lexchartwrap{width:300px;max-width:100%;height:220px;position:relative}
+  .lexstat-info{flex:1;min-width:200px;color:var(--muted);font-size:13px;line-height:1.6}
+  .lexreport{display:flex;flex-direction:column;gap:8px}
+  .lexrep-lead{font-size:14px;line-height:1.7;margin-bottom:6px}
+  .lexrep-row{display:flex;align-items:center;gap:10px;font-size:13px;flex-wrap:wrap}
+  .lexrep-name{min-width:64px;font-weight:600}
+  .lexrep-bar{flex:1;min-width:80px;height:8px;background:var(--panel2);border-radius:999px;overflow:hidden}
+  .lexrep-bar i{display:block;height:100%;background:var(--accent);border-radius:999px}
+  .lexrep-num{min-width:56px;text-align:right;color:var(--muted)}
+  .lexrep-top{color:var(--muted);min-width:120px}
+  .lk{cursor:pointer;border-bottom:1px dashed var(--muted)}
+  .lk:hover{color:var(--accent);border-color:var(--accent)}
+  /* ---- settings · data management blocks ---- */
+  .data-block{padding:14px 0;border-top:1px solid var(--line)}
+  .data-block:first-of-type{border-top:none;padding-top:10px}
+  .data-block-title{font-weight:600;font-size:14px;margin-bottom:8px}
+  .data-note{color:var(--muted);font-size:12px;margin-bottom:8px;word-break:break-all}
+  .data-note code{font-size:12px}
+  .data-hint{color:var(--muted);font-size:12px;line-height:1.6;margin-top:2px}
+  .okmsg{color:var(--accent)!important}
+  .errmsg{color:#e5534b!important}
   .btnrow{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center}
   .btn{background:var(--panel2);color:var(--fg);border:1px solid var(--line);
     padding:7px 14px;border-radius:8px;cursor:pointer;font-size:13px;text-decoration:none;display:inline-block;
@@ -489,6 +545,9 @@
   .posother{font-size:12px;color:var(--muted);margin-left:10px;cursor:pointer;user-select:none;white-space:nowrap}
   .posother input{vertical-align:-1px;margin-right:3px;cursor:pointer}
   #relocMsg{font-size:12px;color:var(--muted);margin-top:8px}
+  #dataPackMsg{font-size:12px;color:var(--muted);margin-top:8px}
+  #dataPackMsg.okmsg{color:var(--accent)}
+  #dataPackMsg.errmsg{color:#e5534b}
   .switch input{width:18px;height:18px;accent-color:var(--accent)}
   .saved{color:var(--up);font-size:13px;margin-left:12px}
   #updMsg{font-size:13px;color:var(--muted);margin-top:10px;white-space:pre-wrap;line-height:1.6}
@@ -557,6 +616,7 @@
       <button data-v="sequence"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></svg></span>序列</button>
       <button data-v="search"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg></span>搜索</button>
       <button data-v="fun"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 11h12a4 4 0 0 1 4 4v1a3 3 0 0 1-5.2 2.05L15 16H9l-1.8 2.05A3 3 0 0 1 2 16v-1a4 4 0 0 1 4-4z"/><path d="M8 14h.01"/><path d="M11 14h.01"/><path d="M16 14h.01"/><path d="M18 16h.01"/><path d="M9 11V8"/><path d="M15 11V8"/></svg></span>趣味</button>
+      <button data-v="lexicon"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M19 17H6a2 2 0 0 0-2 2"/><path d="M9 7h6"/><path d="M9 11h4"/></svg></span>词库</button>
       <button data-v="settings"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.05.05a2 2 0 1 1-2.83 2.83l-.05-.05a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.07A1.7 1.7 0 0 0 8.97 19.4a1.7 1.7 0 0 0-1.88.34l-.05.05a2 2 0 1 1-2.83-2.83l.05-.05A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.07A1.7 1.7 0 0 0 4.6 8.97a1.7 1.7 0 0 0-.34-1.88l-.05-.05a2 2 0 1 1 2.83-2.83l.05.05A1.7 1.7 0 0 0 8.97 4.6 1.7 1.7 0 0 0 10 3.07V3a2 2 0 1 1 4 0v.07a1.7 1.7 0 0 0 1.03 1.53 1.7 1.7 0 0 0 1.88-.34l.05-.05a2 2 0 1 1 2.83 2.83l-.05.05a1.7 1.7 0 0 0-.34 1.88 1.7 1.7 0 0 0 1.56 1.03H21a2 2 0 1 1 0 4h-.07A1.7 1.7 0 0 0 19.4 15z"/></svg></span>设置</button>
     </nav>
     <div class="sidebar-foot">
@@ -723,6 +783,11 @@
     </div>
 
     <div class="panel">
+      <h2>词库使用<i class="info" id="lexRepInfo">i</i></h2>
+      <div id="lexReport" class="lexreport"><div class="empty">统计中…</div></div>
+    </div>
+
+    <div class="panel">
       <h2>完整报告</h2>
       <div class="hint" id="repGenHint">点击下方按钮，深入分析这段时间的新词、回归词、高频双字 / 三字词、长词榜、词性与主题。首次分析可能需要几秒。</div>
       <div class="btnrow" style="margin-top:12px">
@@ -743,12 +808,20 @@
         <a class="btn" id="exp-json">导出 JSON</a>
       </div>
       <div class="seqctl">
-        <select id="seqApp"><option value="">全部应用</option></select>
-        <label class="datefield single"><span class="date-label">跳转日期</span><input type="date" id="seqDay"></label>
-        <button class="btn" id="seqJump">跳到日期</button>
-        <button class="btn" id="seqReset">重置</button>
+        <div class="seqfilters">
+          <div class="seqfilter-row">
+            <span class="seqfilter-label">应用</span>
+            <div class="seqapps" id="seqApps"></div>
+          </div>
+          <div class="seqfilter-row">
+            <span class="seqfilter-label">关键词</span>
+            <input type="text" id="seqKeyword" placeholder="只看含这个字/词的段落…" autocomplete="off">
+            <button class="btn" id="seqReset" title="恢复显示全部应用并清除关键词">重置筛选</button>
+          </div>
+        </div>
         <span class="seqstat" id="seqStat"></span>
       </div>
+      <div class="hint" id="seqHint">时间范围由顶部统一选择（含「跳到某一天」请用顶部自定义日期）。这里只挑应用和关键词：不勾选应用＝全部应用。</div>
       <div class="seq" id="seq"></div>
     </div>
   </section>
@@ -761,7 +834,6 @@
       <div id="achievements"></div>
     </div>
     <div class="grid">
-      <div class="panel"><h2>成语<i class="info" id="idiomInfo">i</i></h2><div class="chips" id="idioms"></div></div>
       <div class="panel"><h2>长词 <span>3 字以上</span></h2><div class="chips" id="longWords"></div></div>
       <div class="panel"><h2>最爱词</h2><div class="chips" id="favWords"></div></div>
       <div class="panel"><h2>生僻字<i class="info" id="rareInfo">i</i></h2><div class="chips" id="rareChars"></div></div>
@@ -789,6 +861,41 @@
       </div>
       <div class="hint">在当前时间范围内统计你输入过这个字/词的次数、首次与最近时间、各程序与每日分布。</div>
       <div id="searchResult" class="empty">输入关键字后回车或点「查询」。</div>
+    </div>
+  </section>
+
+  <!-- ======================= LEXICON (词库) ======================= -->
+  <section class="view" id="view-lexicon">
+    <div class="panel">
+      <h2>词库<i class="info" id="lexInfo">i</i></h2>
+      <div class="lexlist" id="lexList"></div>
+      <div class="btnrow" style="margin-top:14px">
+        <button class="btn primary" id="lexNewBtn">＋ 新建词库</button>
+        <button class="btn" id="lexUploadBtn">⬆ 上传词库文件</button>
+        <input type="file" id="lexUploadFile" accept=".txt,.csv,.dic" style="display:none">
+      </div>
+      <div id="lexEditor" class="lexeditor" style="display:none">
+        <div class="lexeditor-head">
+          <input type="text" id="lexName" placeholder="词库名称，如「常用四字词」" maxlength="40">
+          <div class="seg">
+            <button class="segbtn active" data-mode="paste">粘贴文本</button>
+            <button class="segbtn" data-mode="items">逐条输入</button>
+          </div>
+        </div>
+        <textarea id="lexBody" rows="6" placeholder="用空格、逗号或换行分隔多个词，例如：&#10;海阔天空 脚踏实地 行云流水"></textarea>
+        <div class="hint" id="lexBodyHint">用空格 / 逗号 / 换行分隔，每个片段算一个词。</div>
+        <div class="btnrow">
+          <button class="btn primary" id="lexSaveBtn">保存词库</button>
+          <button class="btn" id="lexCancelBtn">取消</button>
+          <span id="lexEditMsg"></span>
+        </div>
+      </div>
+      <div id="lexMsg" class="lexmsg"></div>
+    </div>
+
+    <div class="panel">
+      <h2>词库占比 <span>当前时间范围</span><i class="info" id="lexShareInfo">i</i></h2>
+      <div id="lexStats" class="lexstats"></div>
     </div>
   </section>
 
@@ -894,28 +1001,53 @@
     </div>
 
     <div class="panel">
+      <h2>词库</h2>
+      <div class="hint">管理用于「占比统计」的词库：内置成语库，以及你自己上传或新建的词库。词库统计是额外的观察层，不影响看板的字数与词频。</div>
+      <div class="btnrow" style="margin-top:10px"><button class="btn primary" id="gotoLexBtn">管理我的词库 →</button></div>
+    </div>
+
+    <div class="panel">
       <h2>数据管理</h2>
       <div id="dataSummary" class="empty"></div>
-      <div class="form" style="margin-top:12px">
-        <label>当前数据库</label><div><code id="dbPathShow">—</code></div>
-        <label>更改保存位置</label>
-        <span class="relrow"><input type="text" id="c-data_dir" placeholder="数据文件夹路径">
-        <button class="btn" id="pickDirBtn">选择文件夹…</button>
-        <button class="btn" id="relocBtn">移动并应用</button></span>
+
+      <div class="data-block">
+        <div class="data-block-title">保存位置</div>
+        <div class="data-note">当前数据库：<code id="dbPathShow">—</code></div>
+        <div class="relrow">
+          <input type="text" id="c-data_dir" placeholder="新的数据文件夹路径">
+          <button class="btn" id="pickDirBtn">选择文件夹…</button>
+          <button class="btn" id="relocBtn">移动并应用</button>
+        </div>
+        <div class="data-hint">把全部数据（数据库、配置、捕获组件）移到新文件夹，需重启生效；重启后自动清理旧位置。</div>
+        <div id="relocBar" class="progwrap" style="display:none"><div class="progbar"><i id="relocProg"></i></div><div class="proglabel" id="relocProgLabel"></div></div>
+        <div id="relocMsg"></div>
       </div>
-      <div class="hint">会把<b>全部数据</b>（数据库、配置、捕获组件等）移动到新文件夹，<b>需要重启 DuckType 生效</b>。重启后会自动清理旧位置。</div>
-      <div id="relocBar" class="progwrap" style="display:none"><div class="progbar"><i id="relocProg"></i></div><div class="proglabel" id="relocProgLabel"></div></div>
-      <div id="relocMsg"></div>
-      <div class="btnrow" style="margin-top:10px">
-        <span class="custom"><span class="custom-title">删除区间</span>
-          <span class="date-range" aria-label="删除日期范围">
-            <label class="datefield"><span class="date-label">开始日期</span><input type="date" id="del-start"></label>
-            <span class="date-arrow">至</span>
-            <label class="datefield"><span class="date-label">结束日期</span><input type="date" id="del-end"></label>
+
+      <div class="data-block">
+        <div class="data-block-title">备份与迁移</div>
+        <div class="btnrow" style="margin-bottom:6px">
+          <button class="btn" id="dataExport">导出全部数据…</button>
+          <button class="btn" id="dataImport">导入数据…</button>
+          <input type="file" id="dataImportFile" accept=".duckpack,.zip" style="display:none">
+        </div>
+        <div class="data-hint">导出会把全部数据打包成一个 <code>.duckpack</code> 文件，用于备份或换电脑；导入会用该文件<b>覆盖当前全部数据</b>，建议不打字时操作、之后重启一次。</div>
+        <div id="dataPackMsg"></div>
+      </div>
+
+      <div class="data-block">
+        <div class="data-block-title">删除数据</div>
+        <div class="btnrow" style="margin-bottom:6px">
+          <span class="custom"><span class="custom-title">按区间</span>
+            <span class="date-range" aria-label="删除日期范围">
+              <label class="datefield"><span class="date-label">开始日期</span><input type="date" id="del-start"></label>
+              <span class="date-arrow">至</span>
+              <label class="datefield"><span class="date-label">结束日期</span><input type="date" id="del-end"></label>
+            </span>
           </span>
-        </span>
-        <button class="btn danger" id="delRange">删除该区间</button>
-        <button class="btn danger" id="clearAll">清空全部数据</button>
+          <button class="btn danger" id="delRange">删除该区间</button>
+          <button class="btn danger" id="clearAll">清空全部数据</button>
+        </div>
+        <div class="data-hint">删除不可恢复，操作前建议先导出一份备份。</div>
       </div>
     </div>
   </section>
@@ -1032,6 +1164,24 @@ function isNative(){ return !!(window.pywebview && window.pywebview.api); }
 function nApi(){ return window.pywebview.api; }
 function _post(b){ return {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b)}; }
 function _j(r){ return r.json(); }
+// Browser/dev download that never navigates the SPA away (a plain window.open to
+// a streamed attachment can blank the page). Fetches as a blob and clicks an
+// off-DOM link instead. Native builds use the OS save dialog via the bridge.
+async function browserDownload(url){
+  try{
+    const res = await fetch(url);
+    if(!res.ok) return {ok:false, error:"HTTP "+res.status};
+    const blob = await res.blob();
+    const cd = res.headers.get("Content-Disposition") || "";
+    const m = /filename="?([^"]+)"?/.exec(cd);
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = m ? m[1] : "ducktype_backup.duckpack";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
+    return {ok:true};
+  }catch(e){ return {ok:false, error:String(e)}; }
+}
 function rangeParams(extra){
   const p = Object.assign({}, extra||{});
   p.range = range;
@@ -1076,6 +1226,14 @@ const DT = {
   data_relocate: (dir)=> isNative()? nApi().data_relocate(dir) : fetch("/api/data/relocate",_post({dir})).then(_j),
   data_relocate_progress: ()=> isNative()? nApi().data_relocate_progress() : fetch("/api/data/relocate/progress").then(_j),
   data_clear: ()=> isNative()? nApi().data_clear() : fetch("/api/data/clear",{method:"POST"}).then(_j),
+  data_export: ()=> isNative()? nApi().data_export() : browserDownload("/api/data/export"),
+  data_import: (file)=> isNative()? nApi().data_import() : (()=>{ const fd=new FormData(); fd.append("file", file); return fetch("/api/data/import",{method:"POST",body:fd}).then(_j); })(),
+  lexicon_list: ()=> isNative()? nApi().lexicon_list() : fetch("/api/lexicon/list").then(_j),
+  lexicon_create: (b)=> isNative()? nApi().lexicon_create(b.name, b.text, b.words) : fetch("/api/lexicon/create",_post(b)).then(_j),
+  lexicon_update: (b)=> isNative()? nApi().lexicon_update(b.id, b.name, b.enabled) : fetch("/api/lexicon/update",_post(b)).then(_j),
+  lexicon_delete: (id)=> isNative()? nApi().lexicon_delete(id) : fetch("/api/lexicon/delete",_post({id})).then(_j),
+  lexicon_import: (file)=> isNative()? nApi().lexicon_import_file() : (()=>{ const fd=new FormData(); fd.append("file", file); return fetch("/api/lexicon/import",{method:"POST",body:fd}).then(_j); })(),
+  lexicon_stats: (id)=> apiGet("lexicon_stats", rangeParams({id})),
   demo_status: ()=> isNative()? nApi().demo_status() : fetch("/api/demo/status").then(_j),
   demo_set: (on)=> isNative()? nApi().demo_set(on) : fetch("/api/demo",_post({on})).then(_j),
   data_delete: (start,end)=> isNative()? nApi().data_delete(start,end) : fetch("/api/data/delete",_post({start,end})).then(_j),
@@ -1143,7 +1301,9 @@ function setTip(id, html){
 setTip("posInfo", "<b>词性标签</b>来自本机分词结果：<br>n 名词 · v 动词 · a 形容词 · d 副词 · m 数词 · q 量词 · r 代词 · p 介词 · c 连词 · t 时间词 · f 方位词 · i 成语 · nr 人名 · ns 地名 · nt 机构。<br>点击扇区，可以查看该词性下的高频词。<br><b>助词「u」</b>会继续细分为 uj「的」、ul「了」、ug「过」、uv「地」、uz「着」。");
 setTip("topicInfo", "这里会从当前时间范围内提取更有代表性的关键词。字号越大，说明这个词在这段时间越突出；点击词语可查看相关输入记录。");
 setTip("reportInfo", "报告卡片在本机生成，可保存为 PNG。统计只包含正常上屏的输入内容，大段粘贴会被自动忽略。");
-setTip("idiomInfo", "这里展示被识别为成语的词，以及部分符合成语形态的四字中文词。");
+setTip("lexInfo", "词库＝一份词语清单。DuckType 在你的上屏序列里逐段最长匹配这些词，统计它们的出现占比。<br>内置「成语」约 3 万条（以四字为主，被认成成语的词不会出现在趣味页的「长词」里）；「关注词」「生僻字」由你的关注词与数据自动生成，三者都不可删除、可停用。<br>你也可以上传现成词库文件，或粘贴 / 逐条新建自己的词库。<br>词库统计是额外的观察层，<b>不影响看板的字数与词频</b>。");
+setTip("lexShareInfo", "按已启用的词库分别展示：这段时间里，词库中各个词语的出现占比。点击饼图扇区可跳到「搜索」查看该词的详细分布。");
+setTip("lexRepInfo", "这段时间里各词库被你写到的总次数排行，以及每个词库里出现最多的那个词。点词可跳到搜索看详情。");
 setTip("rareInfo", "这里展示你输入过但不常见的汉字。常见语气词、姓氏、地名和外来字已经做了过滤。");
 setTip("trackInfo", "关注词按你输入的原文逐字精确匹配，不依赖分词，所以人名、缩写、项目代号也能数准。统计跟随顶部时间范围；点卡片可查看详细的时段、程序和上下文分布。");
 
@@ -1167,8 +1327,9 @@ document.getElementById("tabs").addEventListener("click", e=>{
   document.getElementById("rangebar").style.display = (v==="settings"||v==="report") ? "none" : "flex";
   scrollToTop(false);
   if(v==="settings") loadSettings();
-  else if(v==="sequence") loadSequence();
+  else if(v==="sequence"){ seqResetFilters(); loadSequence(); }  // entering the view restores all apps + keyword
   else if(v==="fun") loadFun();
+  else if(v==="lexicon") loadLexicon();
   else if(v==="report") loadReportCurrent();
   else if(v==="search"){ loadTracked(); document.getElementById("searchInput").focus(); }
 });
@@ -1193,12 +1354,20 @@ document.getElementById("ranges").addEventListener("click", e=>{
   document.querySelectorAll("#ranges button").forEach(b=>b.classList.toggle("active", b===e.target));
   refreshActive();
 });
+// Switch the shared range to a custom window and reflect it in the top bar.
+// Used by the date-range "应用日期" button and the sequence "跳到某一天" picker.
+function setCustomRange(s, en){
+  range = "custom"; custom = {start:s, end:en};
+  document.querySelectorAll("#ranges button").forEach(b=>b.classList.remove("active"));
+  const ds = document.getElementById("d-start"), de = document.getElementById("d-end");
+  if(ds) ds.value = s || ""; if(de) de.value = en || "";
+  syncDateFields();
+  refreshActive();
+}
 document.getElementById("d-apply").addEventListener("click", ()=>{
   const s = document.getElementById("d-start").value, en = document.getElementById("d-end").value;
   if(!s && !en) return;
-  range = "custom"; custom = {start:s, end:en};
-  document.querySelectorAll("#ranges button").forEach(b=>b.classList.remove("active"));
-  refreshActive();
+  setCustomRange(s, en);
 });
 document.getElementById("refreshBtn").addEventListener("click", ()=>{ refreshActive(); checkHealth(); });
 function refreshActive(){
@@ -1206,6 +1375,7 @@ function refreshActive(){
   if(v==="board") refreshBoard();
   else if(v==="sequence") loadSequence();
   else if(v==="fun") loadFun();
+  else if(v==="lexicon") loadLexicon();
   else if(v==="report") loadReportCurrent();
   else if(v==="search"){ loadTracked(); if(document.getElementById("searchInput").value.trim()) doSearch(); }
 }
@@ -1892,6 +2062,7 @@ async function loadReport(params){
   document.getElementById("reportNarrative").textContent = fast.narrative || "";
   renderReportInsights(fast.insights || []);
   renderReportRows(fast);
+  loadLexiconReport(params);
   if(!isCustom){
     DT.card_png(period).then(src=>{
       if(seq !== reportReqSeq) return;
@@ -1899,6 +2070,25 @@ async function loadReport(params){
       document.getElementById("cardImg").style.opacity = "1";
     }).catch(e=>{ if(seq===reportReqSeq) document.getElementById("cardImg").style.opacity = "1"; });
   }
+}
+async function loadLexiconReport(params){
+  const host = document.getElementById("lexReport");
+  host.innerHTML = '<div class="empty">统计中…</div>';
+  let r; try{ r = await apiGet("lexicon_report", params); }
+  catch(e){ host.innerHTML = '<div class="empty">读取失败。</div>'; return; }
+  const lx = (r && r.lexicons) || [];
+  if(!lx.length){ host.innerHTML = '<div class="empty">这段时间还没有匹配到任何词库里的词。</div>'; return; }
+  const top = lx[0];
+  const lead = `这段时间用得最多的词库是「<b>${escapeHtml(top.name)}</b>」（共 ${top.total} 次），`+
+    `其中最常出现的是 <b class="lk" data-w="${escapeAttr(top.top_word)}">${escapeHtml(top.top_word)}</b>（${top.top_count} 次）。`;
+  const rows = lx.map(it=>`<div class="lexrep-row">
+      <span class="lexrep-name">${escapeHtml(it.name)}</span>
+      <span class="lexrep-bar"><i style="width:${pct(it.total, top.total)}%"></i></span>
+      <span class="lexrep-num">${it.total} 次</span>
+      <span class="lexrep-top">最多 <b class="lk" data-w="${escapeAttr(it.top_word)}">${escapeHtml(it.top_word)}</b>·${it.top_count}</span>
+    </div>`).join("");
+  host.innerHTML = `<div class="lexrep-lead">${lead}</div>${rows}`;
+  host.querySelectorAll(".lk").forEach(el=>el.addEventListener("click", ()=>gotoSearch(el.dataset.w)));
 }
 
 // ---- on-demand full (word-level) report ----
@@ -1980,28 +2170,36 @@ function renderRichReport(r){
 }
 
 // ---- sequence ----
-let seqFilterApp = "", seqFilterDay = "";
+// The sequence follows the shared top range like every other view -- all
+// date/day picking lives in the top bar. The only local controls are which
+// app(s) to show (multi-select chips; none selected = all) and a keyword that
+// keeps only runs containing it. "重置筛选" clears both.
+let seqFilterApps = new Set();
+let seqKeyword = "";
+function seqResetFilters(){
+  seqFilterApps = new Set();
+  seqKeyword = "";
+  const kw = document.getElementById("seqKeyword"); if(kw) kw.value = "";
+}
 function sequenceParams(extra){
   const p = rangeParams(extra || {});
-  if(seqFilterApp) p.app = seqFilterApp;
-  if(seqFilterDay) p.day = seqFilterDay;
+  if(seqFilterApps.size) p.apps = Array.from(seqFilterApps).join(",");
+  if(seqKeyword) p.q = seqKeyword;
   return p;
 }
 async function loadSequenceApps(){
-  const p = rangeParams();
-  if(seqFilterDay) p.day = seqFilterDay;
-  const apps = await apiGet("sequence_apps", p);
-  const sel = document.getElementById("seqApp");
-  const current = seqFilterApp;
-  sel.innerHTML = '<option value="">全部应用</option>' + (apps||[]).map(a=>{
-    const label = (a.app || "(unknown)") + " · " + a.count;
-    return `<option value="${escapeAttr(a.app||"")}">${escapeHtml(label)}</option>`;
+  const apps = await apiGet("sequence_apps", rangeParams());
+  const wrap = document.getElementById("seqApps");
+  const present = new Set((apps||[]).map(a=>a.app||""));
+  // drop any selected app that no longer appears in this range
+  seqFilterApps = new Set(Array.from(seqFilterApps).filter(a=>present.has(a)));
+  if(!apps || !apps.length){ wrap.innerHTML = '<span class="seqapps-empty">暂无应用</span>'; return; }
+  wrap.innerHTML = apps.map(a=>{
+    const name = a.app || "";
+    const on = seqFilterApps.has(name);
+    const label = (name || "(unknown)") + " · " + a.count;
+    return `<button class="appchip${on?" on":""}" data-app="${escapeAttr(name)}">${escapeHtml(label)}</button>`;
   }).join("");
-  sel.value = current;
-  if(current && sel.value !== current){
-    seqFilterApp = "";
-    sel.value = "";
-  }
 }
 async function loadSequence(){
   const params = sequenceParams({limit:300});
@@ -2010,13 +2208,12 @@ async function loadSequence(){
     loadSequenceApps().catch(()=>{})
   ]);
   const el = document.getElementById("seq");
-  document.getElementById("seqDay").value = seqFilterDay;
-  syncDateFields();
+  const filters = [];
+  if(seqFilterApps.size) filters.push(seqFilterApps.size + " 个应用");
+  if(seqKeyword) filters.push("「" + seqKeyword + "」");
   document.getElementById("seqStat").textContent =
-    (seqFilterDay ? seqFilterDay + " · " : "") +
-    (seqFilterApp ? seqFilterApp + " · " : "") +
-    `${runs.length} 段`;
-  if(!runs.length){ el.innerHTML = "<div class='empty'>暂无序列数据（需要钩子已就绪且有上屏汉字）。</div>"; }
+    (filters.length ? filters.join(" · ") + " · " : "") + `${runs.length} 段`;
+  if(!runs.length){ el.innerHTML = "<div class='empty'>没有符合筛选条件的序列（不勾选应用＝全部，留空关键词＝不过滤）。</div>"; }
   else el.innerHTML = runs.map((r, i)=>{
     const t = r.ts ? new Date(r.ts*1000).toLocaleString() : "";
     return `<div class="run"><div class="meta"><span>${t}</span><span>${escapeHtml(r.app||"")}</span>`+
@@ -2030,19 +2227,21 @@ async function loadSequence(){
     a.onclick = (e)=>{ e.preventDefault(); DT.export_sequence(f, sequenceParams()); };
   });
 }
-document.getElementById("seqApp").addEventListener("change", e=>{
-  seqFilterApp = e.target.value;
+document.getElementById("seqApps").addEventListener("click", e=>{
+  const btn = e.target.closest(".appchip");
+  if(!btn) return;
+  const name = btn.dataset.app || "";
+  if(seqFilterApps.has(name)) seqFilterApps.delete(name); else seqFilterApps.add(name);
+  btn.classList.toggle("on");
   loadSequence();
 });
-document.getElementById("seqJump").addEventListener("click", ()=>{
-  seqFilterDay = document.getElementById("seqDay").value;
-  if(!seqFilterDay){ alert("请选择要跳转的日期。"); return; }
-  loadSequence();
+document.getElementById("seqKeyword").addEventListener("input", e=>{
+  seqKeyword = e.target.value.trim();
+  clearTimeout(window.__seqKwTimer);
+  window.__seqKwTimer = setTimeout(loadSequence, 300);
 });
 document.getElementById("seqReset").addEventListener("click", ()=>{
-  seqFilterApp = ""; seqFilterDay = "";
-  document.getElementById("seqDay").value = "";
-  syncDateFields();
+  seqResetFilters();
   loadSequence();
 });
 document.getElementById("seq").addEventListener("click", async e=>{
@@ -2069,12 +2268,161 @@ async function loadFun(){
   const [g, f] = await Promise.all([getJSON("/api/gamify"), getJSON("/api/fun")]);
   renderGamify(g);
   const wc = w=>`<span class="chip">${escapeHtml(w.word)}<b>${w.count}</b></span>`;
-  document.getElementById("idioms").innerHTML = chips(f.idioms, wc);
   document.getElementById("longWords").innerHTML = chips(f.long_words, wc);
   document.getElementById("favWords").innerHTML = chips(f.favorite_words, wc);
   document.getElementById("rareChars").innerHTML = chips(f.rare_chars, c=>`<span class="chip">${escapeHtml(c.ch)}<b>${c.count}</b></span>`);
   document.getElementById("hapax").innerHTML = chips(f.hapax, c=>`<span class="chip">${escapeHtml(c)}</span>`);
 }
+
+// ---- lexicon (词库) ----
+let lexEditMode = "paste";
+const lexCharts = {};
+function lexMsg(text, ok){
+  const el = document.getElementById("lexMsg");
+  el.textContent = text || "";
+  el.className = "lexmsg" + (ok===false ? " errmsg" : (ok===true ? " okmsg" : ""));
+}
+function lexDestroyCharts(){
+  Object.values(lexCharts).forEach(c=>{ try{ c.destroy(); }catch(e){} });
+  for(const k in lexCharts) delete lexCharts[k];
+}
+async function loadLexicon(){
+  await loadLexiconList();
+  await loadLexiconStats();
+}
+async function loadLexiconList(){
+  const res = await DT.lexicon_list();
+  const items = (res && res.items) || [];
+  window.__lexItems = items;
+  const el = document.getElementById("lexList");
+  el.innerHTML = items.map(it=>{
+    const cnt = (it.count||0).toLocaleString();
+    const right = it.builtin
+      ? '<span class="lexlock" title="内置词库不可删除">🔒</span>'
+      : `<button class="btn lexdel" data-id="${escapeAttr(it.id)}">删除</button>`;
+    return `<div class="lexrow${it.enabled?"":" off"}">
+      <span class="switch"><input type="checkbox" class="lexen" data-id="${escapeAttr(it.id)}" ${it.enabled?"checked":""}></span>
+      <div class="lexmeta"><div class="lexname">${escapeHtml(it.name)}${it.builtin?'<span class="lextag">内置</span>':""}</div>
+        <div class="lexsub">${cnt} 个词</div></div>
+      ${right}</div>`;
+  }).join("");
+}
+async function loadLexiconStats(){
+  const items = (window.__lexItems) || [];
+  const enabled = items.filter(it=>it.enabled);
+  const host = document.getElementById("lexStats");
+  lexDestroyCharts();
+  if(!enabled.length){
+    host.innerHTML = '<div class="empty">没有启用的词库。勾选上面任意词库，这里就会显示它的词语占比。</div>';
+    return;
+  }
+  host.innerHTML = enabled.map(it=>`<div class="lexstat">
+      <h3>${escapeHtml(it.name)}</h3>
+      <div class="lexstat-body">
+        <div class="lexchartwrap"><canvas id="lexchart_${escapeAttr(it.id)}"></canvas></div>
+        <div class="lexstat-info" id="lexinfo_${escapeAttr(it.id)}">统计中…</div>
+      </div></div>`).join("");
+  for(const it of enabled){ await loadOneLexStat(it).catch(()=>{}); }
+}
+async function loadOneLexStat(it){
+  const r = await DT.lexicon_stats(it.id);
+  const cv = document.getElementById("lexchart_"+it.id);
+  const info = document.getElementById("lexinfo_"+it.id);
+  if(!cv) return;
+  const words = (r && r.words) || [];
+  if(!r || !r.total || !words.length){
+    if(info) info.innerHTML = `这段时间没有匹配到「${escapeHtml(it.name)}」里的词。换个时间范围试试。`;
+    return;
+  }
+  const named = words.reduce((s,w)=>s+w.count, 0);
+  const slices = words.map(w=>({label:`${w.word} · ${w.count}次 · ${pct(w.count, r.total)}%`, count:w.count, word:w.word}));
+  const other = r.total - named;
+  if(other > 0) slices.push({label:`其他 · ${other}次 · ${pct(other, r.total)}%`, count:other, word:null});
+  lexCharts[it.id] = new Chart(cv, {
+    type:"doughnut",
+    data:{labels:slices.map(x=>x.label), datasets:[donutDataset(slices.map(x=>x.count), slices.length)]},
+    options:{
+      onClick:(_e, els)=>{ if(els.length && slices[els[0].index].word) gotoSearch(slices[els[0].index].word); },
+      onHover:(e, els)=>{ e.native.target.style.cursor = (els.length && slices[els[0].index].word) ? "pointer" : "default"; },
+      plugins:{legend:{position:"right",labels:{boxWidth:12,padding:8,font:{size:11}}},tooltip:posTooltip(r.total)},
+      cutout:"58%"}
+  });
+  if(info) info.innerHTML = `这段时间共匹配 <b>${r.total}</b> 次，覆盖 <b>${r.distinct}</b> 个不同的词（词库共 ${(r.size||0).toLocaleString()} 词）。点扇区可跳到搜索看详情。`;
+}
+// editor
+function lexShowEditor(show){
+  document.getElementById("lexEditor").style.display = show ? "block" : "none";
+  if(show){
+    document.getElementById("lexName").value = "";
+    document.getElementById("lexBody").value = "";
+    document.getElementById("lexEditMsg").textContent = "";
+    lexSetMode("paste");
+    document.getElementById("lexName").focus();
+  }
+}
+function lexSetMode(mode){
+  lexEditMode = mode;
+  document.querySelectorAll("#lexEditor .segbtn").forEach(b=>b.classList.toggle("active", b.dataset.mode===mode));
+  const body = document.getElementById("lexBody");
+  const hint = document.getElementById("lexBodyHint");
+  if(mode==="items"){
+    body.placeholder = "每行一个词，例如：\n海阔天空\n脚踏实地";
+    hint.textContent = "每行算一个词（适合逐条录入，词里可含空格）。";
+  } else {
+    body.placeholder = "用空格、逗号或换行分隔多个词，例如：\n海阔天空 脚踏实地 行云流水";
+    hint.textContent = "用空格 / 逗号 / 换行分隔，每个片段算一个词。";
+  }
+}
+document.getElementById("lexNewBtn").addEventListener("click", ()=> lexShowEditor(true));
+document.getElementById("lexCancelBtn").addEventListener("click", ()=> lexShowEditor(false));
+document.querySelectorAll("#lexEditor .segbtn").forEach(b=>{
+  b.addEventListener("click", ()=> lexSetMode(b.dataset.mode));
+});
+document.getElementById("lexSaveBtn").addEventListener("click", async ()=>{
+  const name = document.getElementById("lexName").value.trim();
+  const body = document.getElementById("lexBody").value;
+  if(!body.trim()){ document.getElementById("lexEditMsg").textContent = "请先填入词语。"; return; }
+  const payload = lexEditMode==="items" ? {name, words: body} : {name, text: body};
+  document.getElementById("lexEditMsg").textContent = "保存中…";
+  let r; try{ r = await DT.lexicon_create(payload); }catch(e){ r = {ok:false, error:"保存失败"}; }
+  if(r && r.ok){ lexShowEditor(false); lexMsg("词库已保存。", true); await loadLexicon(); }
+  else document.getElementById("lexEditMsg").textContent = "保存失败：" + ((r&&r.error)||"未知错误");
+});
+document.getElementById("lexUploadBtn").addEventListener("click", ()=>{
+  if(isNative()) runLexImport(null);
+  else document.getElementById("lexUploadFile").click();
+});
+document.getElementById("lexUploadFile").addEventListener("change", e=>{
+  const file = e.target.files && e.target.files[0];
+  if(file) runLexImport(file);
+  e.target.value = "";
+});
+async function runLexImport(file){
+  lexMsg("正在导入词库…");
+  let r; try{ r = await DT.lexicon_import(file); }catch(e){ r = {ok:false, error:"导入失败"}; }
+  if(r && r.cancelled){ lexMsg(""); return; }
+  if(r && r.ok){ lexMsg(`已导入词库（${(r.count||0).toLocaleString()} 个词）。`, true); await loadLexicon(); }
+  else lexMsg("导入失败：" + ((r&&r.error)||"未知错误"), false);
+}
+document.getElementById("lexList").addEventListener("click", async e=>{
+  const del = e.target.closest(".lexdel");
+  if(del){
+    if(!confirm("删除这个词库？该操作不可恢复（不影响你的统计数据）。")) return;
+    let r; try{ r = await DT.lexicon_delete(del.dataset.id); }catch(err){ r = {ok:false, error:"删除失败"}; }
+    if(r && r.ok){ lexMsg("词库已删除。", true); await loadLexicon(); }
+    else lexMsg("删除失败：" + ((r&&r.error)||"未知错误"), false);
+  }
+});
+document.getElementById("lexList").addEventListener("change", async e=>{
+  const cb = e.target.closest(".lexen");
+  if(!cb) return;
+  try{ await DT.lexicon_update({id: cb.dataset.id, enabled: cb.checked}); }catch(err){}
+  // reflect enable/disable in the pies without a full list refetch
+  const item = (window.__lexItems||[]).find(x=>x.id===cb.dataset.id);
+  if(item) item.enabled = cb.checked;
+  cb.closest(".lexrow").classList.toggle("off", !cb.checked);
+  await loadLexiconStats();
+});
 
 // ---- health banner + rotating ticker ----
 // Pool = code-generated data facts (from /api/ticker) + rotating phrases.
@@ -2419,6 +2767,49 @@ document.getElementById("delRange").addEventListener("click", async ()=>{
   const r = await DT.data_delete(s, e);
   alert(`已删除 ${r.deleted} 个汉字。`); loadDataSummary();
 });
+function dataPackMsg(text, ok){
+  const el = document.getElementById("dataPackMsg");
+  el.textContent = text;
+  el.className = ok===false ? "errmsg" : (ok===true ? "okmsg" : "");
+}
+document.getElementById("dataExport").addEventListener("click", async ()=>{
+  dataPackMsg("正在打包…");
+  let r; try{ r = await DT.data_export(); }catch(e){ r = {ok:false, error:"导出失败"}; }
+  if(r && r.cancelled) dataPackMsg("");
+  else if(r && r.ok){
+    dataPackMsg(r.path ? ("已导出到 " + r.path) : "已开始下载备份文件。", true);
+    // Export is read-only and never touches the live data; refresh the summary so
+    // the page visibly reflects that everything is still here.
+    loadDataSummary();
+  }
+  else dataPackMsg("导出失败：" + ((r&&r.error)||"未知错误"), false);
+});
+document.getElementById("gotoLexBtn").addEventListener("click", ()=>{
+  document.querySelector('#tabs button[data-v="lexicon"]').click();
+});
+// Native: the bridge opens its own file dialog. Browser: trigger the hidden input.
+document.getElementById("dataImport").addEventListener("click", ()=>{
+  if(isNative()) runImport(null);
+  else document.getElementById("dataImportFile").click();
+});
+document.getElementById("dataImportFile").addEventListener("change", e=>{
+  const file = e.target.files && e.target.files[0];
+  if(file) runImport(file);
+  e.target.value = "";
+});
+async function runImport(file){
+  if(!confirm("导入会用所选备份覆盖当前全部数据，且不可恢复。确定继续？")) return;
+  dataPackMsg("正在导入…");
+  let r; try{ r = await DT.data_import(file); }catch(e){ r = {ok:false, error:"导入失败"}; }
+  if(r && r.cancelled){ dataPackMsg(""); return; }
+  if(r && r.ok){
+    dataPackMsg(`已导入 ${r.char_rows} 个汉字。建议重启 DuckType 以完全生效。`, true);
+    boardLoaded = false; demoOn = false; applyDemoUI();
+    loadDataSummary(); refreshActive(); checkHealth();
+  } else {
+    dataPackMsg("导入失败：" + ((r&&r.error)||"未知错误"), false);
+  }
+}
 
 // ---- updates ----
 function setUpdateSteps(active, done){
