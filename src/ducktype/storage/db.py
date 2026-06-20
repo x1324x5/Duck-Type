@@ -105,6 +105,20 @@ CREATE TABLE IF NOT EXISTS achievements (
     unlocked_ts REAL
 );
 
+-- Per-day rollup of the core character metrics (C1). Only *closed* local days
+-- are stored; the current day and any partial range edges are computed live and
+-- merged. active_sec / sessions are per-day-independent (a session that spans
+-- midnight is split), peak60 = busiest 60s window within that day.
+CREATE TABLE IF NOT EXISTS daily_metrics (
+    day        TEXT PRIMARY KEY,
+    chars      INTEGER NOT NULL DEFAULT 0,
+    backspace  INTEGER NOT NULL DEFAULT 0,
+    delete_n   INTEGER NOT NULL DEFAULT 0,
+    active_sec REAL    NOT NULL DEFAULT 0,
+    sessions   INTEGER NOT NULL DEFAULT 0,
+    peak60     INTEGER NOT NULL DEFAULT 0
+);
+
 CREATE TABLE IF NOT EXISTS meta (
     key   TEXT PRIMARY KEY,
     value TEXT
@@ -357,10 +371,13 @@ class Database:
         con.execute("DELETE FROM word_freq_daily")
         con.execute("DELETE FROM pos_freq_daily")
         con.execute("DELETE FROM pos_word_freq_daily")
+        con.execute("DELETE FROM daily_metrics")
         con.execute(
             "INSERT INTO meta(key, value) VALUES ('word_cursor','0') "
             "ON CONFLICT(key) DO UPDATE SET value='0'"
         )
+        # Drop the daily-metrics watermark so closed days rematerialize.
+        con.execute("DELETE FROM meta WHERE key='metrics_done_through'")
 
     def clear_all(self) -> int:
         """Delete every captured event. Returns the number of char rows removed."""

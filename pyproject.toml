@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ducktype"
-version = "0.2.4"
+version = "0.2.7"
 description = "码字鸭 · 后台统计输入法上屏汉字的字频、词频与序列 (Windows)"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -32,4 +32,4 @@ package-dir = { "" = "src" }
 where = ["src"]
 
 [tool.setuptools.package-data]
-ducktype = ["dashboard/static/*", "dashboard/static/ducks/*", "native/*.dll", "assets/*"]
+ducktype = ["dashboard/static/*", "dashboard/static/css/*", "dashboard/static/js/*", "dashboard/static/img/*", "dashboard/static/img/mini/*", "dashboard/static/ducks/*", "native/*.dll", "assets/*"]

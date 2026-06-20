@@ -35,7 +35,7 @@ log = logging.getLogger("ducktype")
 # Read endpoints whose result depends only on the data revision (safe to cache).
 # Excludes time-window queries, live status/progress, and config-driven reads
 # (``tracked`` depends on Config.tracked_terms, which a write does not bump).
-_NO_CACHE = {"timeseries", "tracked"}
+_NO_CACHE = {"timeseries", "tracked", "mini_stats"}
 
 READ_ENDPOINTS = (
     "overview",
@@ -66,6 +66,10 @@ READ_ENDPOINTS = (
     "sequence_apps",
     "lexicon_stats",
     "lexicon_report",
+    "lexicon_words",
+    "mini_stats",
+    "richness",
+    "contrib",
 )
 _READ_ENDPOINTS = frozenset(READ_ENDPOINTS)
 _STALE_CACHE_TTL = {
@@ -106,6 +110,9 @@ class Api:
         # word/POS/topic panels (cheap: just records the desired set; jieba is
         # touched lazily on the first segmentation).
         segment.set_user_terms(self._config.tracked_terms)
+        # 生僻字 classification is the complement of the common-character filter;
+        # feed the user's "extra common" list into that filter (see stats).
+        stats.set_user_common(self._config.common_chars_extra)
 
     def _set_window(self, window) -> None:
         self._window = window
@@ -213,6 +220,17 @@ class Api:
     def _r_daily(self, p):
         since, until = self._bounds(p)
         return [{"date": d, "count": c} for d, c in stats.daily(self._db, since, until)]
+
+    def _r_richness(self, p):
+        since, until = self._bounds(p)
+        return stats.richness_trend(self._db, since, until)
+
+    def _r_contrib(self, p):
+        try:
+            days = max(31, min(730, int(p.get("days", 364))))
+        except (TypeError, ValueError):
+            days = 364
+        return stats.contrib_calendar(self._db, days)
 
     def _r_timeseries(self, p):
         hours = p.get("hours")
@@ -341,6 +359,34 @@ class Api:
             "size": matcher.size, "total": sum(counts.values()),
             "distinct": len(counts),
             "words": [{"word": w, "count": c} for w, c in items[:n]],
+        }
+
+    def _r_lexicon_words(self, p):
+        """Paginated, searchable word list of one lexicon (for the 查看/编辑
+        modal). Read-only browse; user lexicons are edited via lexicon_edit_words."""
+        store = self._lexicon_store()
+        lex_id = (p.get("id") or "").strip()
+        meta = store.meta(lex_id)
+        if meta is None:
+            return {"id": lex_id, "found": False, "words": [], "total": 0,
+                    "size": 0, "editable": False}
+        q = (p.get("q") or "").strip()
+        words = store.words(lex_id)
+        if q:
+            words = [w for w in words if q in w]
+        total = len(words)
+        try:
+            offset = max(0, int(p.get("offset", 0)))
+            limit = max(1, min(500, int(p.get("limit", 100))))
+        except (TypeError, ValueError):
+            offset, limit = 0, 100
+        return {
+            "id": lex_id, "found": True, "name": meta["name"],
+            "builtin": meta["builtin"], "derived": meta.get("derived", False),
+            "editable": store.is_editable(lex_id),
+            "size": meta.get("count", total), "total": total,
+            "offset": offset, "limit": limit,
+            "words": words[offset:offset + limit],
         }
 
     def _r_lexicon_report(self, p):
@@ -493,6 +539,14 @@ class Api:
                 self._db.revision += 1
             except Exception:
                 pass
+        if "common_chars_extra" in updates:
+            # Recompute the 生僻字 filter and bump the revision so the 生僻字
+            # panel / 常用字 lexicon reflect the new exclusions immediately.
+            stats.set_user_common(self._config.common_chars_extra)
+            try:
+                self._db.revision += 1
+            except Exception:
+                pass
         return {"ok": True, "restart_required": restart}
 
     # ---- data management -------------------------------------------------
@@ -636,14 +690,28 @@ class Api:
             store.register_provider(
                 "tracked", "关注词", lambda: list(self._config.tracked_terms))
             store.register_provider("rare", "生僻字", self._rare_chars)
+            # The built-in 常用字 filter table, viewable in the 查看/编辑 modal.
+            # Default OFF: it is a reference/filter, not something to count by
+            # default (it would otherwise match almost every committed character).
+            store.register_provider(
+                "common", "常用字", self._common_chars, default_enabled=False)
             self._lexicons = store
         return self._lexicons
 
     def _rare_chars(self):
         """All-time uncommon single characters present in the active data set --
-        the word source for the derived 生僻字 lexicon."""
+        the word source for the derived 生僻字 lexicon. Follows the common-char
+        filter (built-in table + supplement + user's extra-common list)."""
         counts = stats.top_chars(self._db, None, 5_000_000, None)
         return [c for c, _n in counts if stats._is_uncommon(c)]
+
+    def _common_chars(self):
+        """The common-character filter table (built-in 3,500 常用字 + modern
+        supplement + the user's extra-common list), sorted for stable display."""
+        from ..analysis.common_chars import COMMON_CHARS
+        merged = (set(COMMON_CHARS) | set(stats._COMMON_SUPPLEMENT)
+                  | set(self._config.common_chars_extra))
+        return sorted(merged)
 
     def lexicon_list(self):
         return {"items": self._lexicon_store().list()}
@@ -670,6 +738,37 @@ class Api:
         try:
             self._lexicon_store().delete(id or "")
             return {"ok": True}
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc)}
+
+    def lexicon_edit_words(self, id=None, add=None, remove=None):
+        """Add and/or remove words on a *user* lexicon from the 查看/编辑 modal.
+        ``add`` may be a list or pasted/newline text; ``remove`` is a list of
+        exact words. Returns {ok, count}. Bumps the data revision so the share
+        pie and the modal's own re-fetch see the change immediately."""
+        from ..analysis import lexicon as lx
+        store = self._lexicon_store()
+        lex_id = (id or "").strip()
+        try:
+            if not store.is_editable(lex_id):
+                raise ValueError("内置词库不可编辑。")
+            current = list(store.words(lex_id))
+            to_remove = set(remove or [])
+            if to_remove:
+                current = [w for w in current if w not in to_remove]
+            if add is not None:
+                added = lx.parse_items(add) if not isinstance(add, str) else lx.parse_words(add)
+                seen = set(current)
+                for w in added:
+                    if w not in seen:
+                        seen.add(w)
+                        current.append(w)
+            count = store.set_words(lex_id, current)
+            try:
+                self._db.revision += 1
+            except Exception:
+                pass
+            return {"ok": True, "count": count}
         except ValueError as exc:
             return {"ok": False, "error": str(exc)}
 
@@ -812,17 +911,15 @@ class Api:
         return {"ok": True}
 
     def window_toggle_maximize(self):
-        """Toggle the frameless native window between normal and maximized."""
+        """Toggle the frameless native window between normal and maximized.
+
+        Uses the work-area resize in ``desktop`` (pywebview's frameless
+        maximize/restore is unreliable on the WebView2 backend)."""
         try:
-            if self._window:
-                if self._window_maximized:
-                    self._window.restore()
-                    self._window_maximized = False
-                else:
-                    self._window.maximize()
-                    self._window_maximized = True
+            from .. import desktop
+            self._window_maximized = desktop.toggle_maximize()
         except Exception:
-            pass
+            log.exception("window_toggle_maximize failed")
         return {"ok": True, "maximized": self._window_maximized}
 
     def window_hide(self):
@@ -834,3 +931,38 @@ class Api:
         except Exception:
             pass
         return {"ok": True}
+
+    # ---- mini counter (floating always-on-top window, item 4) -----------
+    def _r_mini_stats(self, p):
+        return stats.mini_stats(self._db, self._config.session_gap_seconds,
+                                self._config.daily_goal)
+
+    def open_mini(self):
+        """Hide the main window and open the always-on-top mini counter."""
+        try:
+            from .. import desktop
+            self._window_maximized = False
+            desktop.show_mini()
+            return {"ok": True}
+        except Exception as exc:
+            log.exception("open_mini failed")
+            return {"ok": False, "error": str(exc)}
+
+    def mini_resize(self, w, h):
+        """Resize the mini window (driven by the in-page corner grip)."""
+        try:
+            from .. import desktop
+            return desktop.resize_mini(w, h)
+        except Exception as exc:
+            log.exception("mini_resize failed")
+            return {"ok": False, "error": str(exc)}
+
+    def close_mini(self):
+        """Close the mini counter and bring the dashboard back."""
+        try:
+            from .. import desktop
+            desktop.close_mini()
+            return {"ok": True}
+        except Exception as exc:
+            log.exception("close_mini failed")
+            return {"ok": False, "error": str(exc)}

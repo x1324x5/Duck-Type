@@ -320,6 +320,15 @@ def test_gamify_streak_and_goal(db, insert_chars):
     assert any(a["id"] == "streak3" and a["unlocked"] for a in g["achievements"])
 
 
+def test_mini_stats_goal_progress_caps_at_9999_percent(db, insert_chars):
+    today = datetime.now().replace(hour=1, minute=0, second=0, microsecond=0)
+    rows = [(today.timestamp() + i * 0.001, "鸭", None) for i in range(10050)]
+    insert_chars(db, rows)
+    m = stats.mini_stats(db, daily_goal=1)
+    assert m["today_chars"] == 10050
+    assert m["goal_pct"] == 99.99
+
+
 def test_gamify_extra_character_achievements(db, insert_chars, now):
     rare = "龘靐齉麤爨饕餮魑魅魍魉"
     rows = [(now + i * 0.01, "鸭", None) for i in range(100)]

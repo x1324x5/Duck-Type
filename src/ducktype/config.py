@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 import threading
 from dataclasses import asdict, dataclass, field
 from typing import List
@@ -65,6 +66,15 @@ class Config:
     theme_mode: str = "system"  # system / light / dark
     ticker_refresh_seconds: int = 60
 
+    # 生僻字 detection: characters the user considers common and wants excluded
+    # from the "uncommon" classification, on top of the built-in 3,500 常用字
+    # table + modern supplement. Single Han characters, de-duped in entry order.
+    common_chars_extra: List[str] = field(default_factory=list)
+
+    # 词库 share pie: when the user hides a slice (clicks a legend entry), should
+    # the remaining slices' percentages be recomputed against the visible total?
+    lexicon_recompute_on_exclude: bool = True
+
     # startup
     autostart: bool = False
 
@@ -74,6 +84,7 @@ class Config:
         self.blacklist_apps = _normalise_blacklist(self.blacklist_apps)
         self.tracked_terms = _normalise_terms(self.tracked_terms)
         self.tracked_groups = _reconcile_groups(self.tracked_groups, self.tracked_terms)
+        self.common_chars_extra = _normalise_chars(self.common_chars_extra)
         if self.theme_mode not in ("system", "light", "dark"):
             self.theme_mode = "system"
         self.ticker_refresh_seconds = _bounded_int(
@@ -112,6 +123,7 @@ class Config:
         "run_gap_seconds", "session_gap_seconds", "retention_days",
         "daily_goal", "dashboard_port", "open_dashboard_on_start", "autostart",
         "theme_mode", "ticker_refresh_seconds", "tracked_terms", "tracked_groups",
+        "common_chars_extra", "lexicon_recompute_on_exclude",
     )
     # Changing these takes effect only after a restart.
     RESTART_REQUIRED = ("dashboard_port",)
@@ -147,6 +159,8 @@ class Config:
                     value = _normalise_terms(value)
                 elif key == "tracked_groups":
                     value = _normalise_group_list(value)
+                elif key == "common_chars_extra":
+                    value = _normalise_chars(value)
                 else:
                     value = _normalise_blacklist(value)
             elif isinstance(old, str):
@@ -201,6 +215,32 @@ def _normalise_terms(value) -> List[str]:
             seen.add(term)
             out.append(term)
         if len(out) >= 100:
+            break
+    return out
+
+
+def _normalise_chars(value) -> List[str]:
+    """User-supplied 'extra common' characters: accept a list or free text
+    (split on whitespace/punctuation), keep only single non-space characters,
+    de-dupe in entry order. Capped at 2000 so the membership set stays small."""
+    if isinstance(value, str):
+        raw = re.split(r"[\s,，、;；/|]+", value)
+    else:
+        try:
+            raw = list(value)
+        except TypeError:
+            raw = []
+    out: List[str] = []
+    seen = set()
+    for x in raw:
+        s = str(x).strip()
+        for ch in s:                       # tolerate multi-char tokens by char
+            if ch and not ch.isspace() and ch not in seen:
+                seen.add(ch)
+                out.append(ch)
+            if len(out) >= 2000:
+                break
+        if len(out) >= 2000:
             break
     return out
 

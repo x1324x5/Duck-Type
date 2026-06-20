@@ -187,11 +187,12 @@ class LexiconStore:
         # dynamic. This is how the 关注词 / 生僻字 systems "plug into" 词库.
         self._providers: Dict[str, tuple] = {}
 
-    def register_provider(self, lex_id: str, name: str, fn) -> None:
-        self._providers[lex_id] = (name, fn)
+    def register_provider(self, lex_id: str, name: str, fn,
+                          default_enabled: bool = True) -> None:
+        self._providers[lex_id] = (name, fn, default_enabled)
 
     def _provider_words(self, lex_id: str):
-        name, fn = self._providers[lex_id]
+        name, fn, _en = self._providers[lex_id]
         try:
             return list(fn() or [])
         except Exception:
@@ -221,10 +222,10 @@ class LexiconStore:
         # Make sure each registered derived lexicon has a metadata entry (so its
         # enabled state persists), inserted after idiom but before user lexicons.
         pos = 1
-        for pid, (pname, _fn) in self._providers.items():
+        for pid, (pname, _fn, _en) in self._providers.items():
             if not any(it.get("id") == pid for it in items):
                 items.insert(pos, {"id": pid, "name": pname, "builtin": True,
-                                   "enabled": True, "derived": True})
+                                   "enabled": bool(_en), "derived": True})
             pos += 1
         return {"format": 1, "items": items}
 
@@ -283,6 +284,23 @@ class LexiconStore:
                 return m
         return None
 
+    def is_editable(self, lex_id: str) -> bool:
+        """Only user-created lexicons can be edited (built-in / derived are read-only)."""
+        return lex_id != IDIOM_ID and lex_id not in self._providers
+
+    def words(self, lex_id: str) -> List[str]:
+        """The full ordered word list for any lexicon (for the 查看/编辑 modal).
+        Derived lexicons come from their live provider; the idiom lexicon is
+        flattened from its length-bucketed frozensets; user lexicons from disk."""
+        if lex_id in self._providers:
+            return [str(w) for w in self._provider_words(lex_id)]
+        if lex_id == IDIOM_ID:
+            out: List[str] = []
+            for length in sorted(idioms.BY_LEN):
+                out.extend(sorted(idioms.BY_LEN[length]))
+            return out
+        return self._read_words(lex_id)
+
     def _new_id(self) -> str:
         base = "u_" + format(int(time.time() * 1000), "x")
         lex_id = base
@@ -324,6 +342,22 @@ class LexiconStore:
                 self._save_index(idx)
                 return True
         return False
+
+    def set_words(self, lex_id: str, words) -> int:
+        """Overwrite a *user* lexicon's word list (the 查看/编辑 modal). Built-in
+        and derived lexicons are read-only. Returns the resulting word count."""
+        if lex_id == IDIOM_ID or lex_id in self._providers:
+            raise ValueError("内置词库不可编辑。")
+        if not any(it["id"] == lex_id for it in self._load_index()["items"]):
+            raise ValueError("找不到这个词库。")
+        words = _dedupe_cap(words)
+        os.makedirs(self.dir, exist_ok=True)
+        tmp = self._words_path(lex_id) + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write("\n".join(words))
+        os.replace(tmp, self._words_path(lex_id))
+        self._matchers.pop(lex_id, None)
+        return len(words)
 
     def delete(self, lex_id: str) -> None:
         if lex_id == IDIOM_ID or lex_id in self._providers:

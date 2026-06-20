@@ -1,0 +1,97 @@
+  /* ---- lexicon (词库) ---- */
+  .lexlist{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+  .lexrow{display:flex;align-items:center;gap:12px;background:var(--panel2);border:1px solid var(--line);
+    border-radius:10px;padding:10px 14px}
+  .lexrow.off{opacity:.6}
+  .lexmeta{flex:1;min-width:0}
+  .lexname{font-weight:600;display:flex;align-items:center;gap:8px}
+  .lextag{font-size:11px;font-weight:500;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:1px 6px}
+  .lexsub{color:var(--muted);font-size:12px;margin-top:2px}
+  .lexlock{font-size:14px;opacity:.6}
+  .lexdel{padding:5px 12px;font-size:12px}
+  .lexeditor{margin-top:14px;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:14px}
+  .lexeditor-head{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+  .lexeditor-head input{flex:1;min-width:200px;background:var(--panel);color:var(--fg);border:1px solid var(--line);
+    border-radius:8px;padding:8px 11px;font-size:13px;font-family:inherit}
+  .lexeditor textarea{width:100%;box-sizing:border-box;background:var(--panel);color:var(--fg);
+    border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:13px;font-family:inherit;resize:vertical}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .segbtn{background:var(--panel);color:var(--muted);border:none;padding:7px 14px;font-size:12px;cursor:pointer;font-family:inherit}
+  .segbtn.active{background:var(--accent);color:#1a1400;font-weight:600}
+  .lexmsg{margin-top:10px;font-size:12px;color:var(--muted)}
+  .lexstats{display:flex;flex-direction:column;gap:16px}
+  /* each lexicon gets its own card so the analyses read as separate blocks */
+  .lexstat{background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+  .lexstat-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+  .lexstat-head h3{margin:0;font-size:15px;flex:1;min-width:120px}
+  .lexstat-ctl{display:inline-flex;align-items:center;gap:12px}
+  .lexstat-ctl[hidden]{display:none}
+  .lexstat-ctl .rankctl{display:inline-flex;align-items:center;gap:7px}
+  .lexstat-ctl .lexN{width:84px}
+  .lexstat-ctl .lexNv{min-width:18px;text-align:center;font-size:12px;color:var(--muted)}
+  .lexother{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);cursor:pointer}
+  .lexstat-body{display:flex;gap:18px;flex-wrap:wrap;align-items:center}
+  .lexchartwrap{width:212px;max-width:100%;height:200px;position:relative;flex:none}
+  /* aligned legend: swatch | word(ellipsis) | count | percent */
+  .lexlegend{flex:1;min-width:200px;display:flex;flex-direction:column;gap:2px;
+    max-height:208px;overflow-y:auto;padding-right:2px}
+  .ll-row{display:grid;grid-template-columns:12px minmax(0,1fr) auto auto;align-items:center;
+    gap:9px;padding:4px 7px;border-radius:7px;font-size:13px;cursor:pointer}
+  .ll-row:hover{background:rgba(127,127,127,.10)}
+  .ll-row.off{opacity:.5}
+  .ll-row.off .ll-word{text-decoration:line-through}
+  .ll-swatch{width:12px;height:12px;border-radius:3px;flex:none}
+  .ll-word{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ll-cnt{color:var(--muted);font-size:12px;white-space:nowrap}
+  .ll-pct{color:var(--fg);font-size:12px;font-variant-numeric:tabular-nums;
+    text-align:right;min-width:52px;white-space:nowrap}
+  .lexstat-info{color:var(--muted);font-size:12.5px;line-height:1.6;margin-top:10px}
+  /* compact state when a lexicon matched nothing in this range */
+  .lexstat.empty-stat{padding:12px 16px}
+  .lexempty{color:var(--muted);font-size:13px;padding:2px 0}
+  .lexreport{display:flex;flex-direction:column;gap:8px}
+  .lexrep-lead{font-size:14px;line-height:1.7;margin-bottom:6px}
+  .lexrep-row{display:flex;align-items:center;gap:10px;font-size:13px;flex-wrap:wrap}
+  .lexrep-name{min-width:64px;font-weight:600}
+  .lexrep-bar{flex:1;min-width:80px;height:8px;background:var(--panel2);border-radius:999px;overflow:hidden}
+  .lexrep-bar i{display:block;height:100%;background:var(--accent);border-radius:999px}
+  .lexrep-num{min-width:56px;text-align:right;color:var(--muted)}
+  .lexrep-top{color:var(--muted);min-width:120px}
+  .lk{cursor:pointer;border-bottom:1px dashed var(--muted)}
+  .lk:hover{color:var(--accent);border-color:var(--accent)}
+
+  /* ---- lexicon view/edit modal ---- */
+  .lexview{padding:5px 10px;font-size:12px}
+  .modal-overlay{position:fixed;inset:0;z-index:120;display:flex;align-items:center;justify-content:center;
+    padding:24px;background:rgba(8,11,15,.62);backdrop-filter:blur(3px);animation:modalfade .16s ease}
+  html[data-theme="light"] .modal-overlay{background:rgba(40,55,77,.34)}
+  .modal-overlay[hidden]{display:none}
+  @keyframes modalfade{from{opacity:0}to{opacity:1}}
+  .modal-card{width:min(560px,100%);max-height:min(82vh,720px);display:flex;flex-direction:column;
+    background:var(--panel);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);
+    padding:18px 20px;animation:modalpop .18s ease}
+  @keyframes modalpop{from{transform:translateY(10px) scale(.98);opacity:.4}to{transform:none;opacity:1}}
+  .modal-head{display:flex;align-items:center;gap:10px;margin-bottom:4px}
+  .modal-head h3{margin:0;font-size:16px;font-weight:700;flex:1;min-width:0;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .modal-sub{color:var(--muted);font-size:12px;margin-bottom:10px}
+  .modal-search{width:100%;background:var(--panel2);color:var(--fg);border:1px solid var(--line);
+    border-radius:8px;padding:8px 11px;font-size:13px;font-family:inherit;margin-bottom:10px}
+  .modal-words{flex:1;overflow-y:auto;display:flex;flex-wrap:wrap;gap:7px;align-content:flex-start;
+    min-height:120px;padding:2px;border:1px solid var(--line);border-radius:10px;background:rgba(0,0,0,.06)}
+  html[data-theme="light"] .modal-words{background:rgba(0,0,0,.025)}
+  .modal-words .empty{width:100%;text-align:center}
+  .mw{display:inline-flex;align-items:center;gap:5px;background:var(--panel2);border:1px solid var(--line);
+    border-radius:8px;padding:4px 9px;font-size:13px;max-width:100%}
+  .mw .x{border:0;background:transparent;color:var(--muted);cursor:pointer;font-size:14px;line-height:1;
+    padding:0 1px;border-radius:5px}
+  .mw .x:hover{color:#fff;background:var(--down)}
+  .modal-pager{display:flex;align-items:center;justify-content:center;gap:12px;margin-top:10px;
+    color:var(--muted);font-size:12px;min-height:18px}
+  .modal-pager button{background:var(--panel2);color:var(--fg);border:1px solid var(--line);
+    border-radius:7px;padding:3px 11px;cursor:pointer;font-size:13px;font-family:inherit}
+  .modal-pager button:disabled{opacity:.45;cursor:not-allowed}
+  .modal-edit,.modal-extra{margin-top:12px;border-top:1px solid var(--line);padding-top:12px}
+  .modal-edit textarea,.modal-extra textarea{width:100%;box-sizing:border-box;background:var(--panel2);
+    color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:8px 11px;font-size:13px;
+    font-family:inherit;resize:vertical;margin-bottom:8px}

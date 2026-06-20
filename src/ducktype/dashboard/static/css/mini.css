@@ -1,0 +1,87 @@
+  /* ---- mini counter (floating always-on-top window / inline #mini) ---- */
+  /* No separate titlebar bar (it looked like the window was split): the gauge
+     area itself is the drag region and a small close button floats over it. */
+  #miniView{position:fixed;inset:0;z-index:200;display:none;flex-direction:column;
+    background:
+      radial-gradient(620px 420px at 82% -160px, var(--grad1) 0%, transparent 55%),
+      radial-gradient(520px 360px at -12% 118%, var(--grad2) 0%, transparent 50%),
+      var(--bg);
+    color:var(--fg);user-select:none;padding:5px 11px 9px;
+    --mini-goal-fill:linear-gradient(90deg,var(--accent),var(--accent2))}
+  body.mini-mode .titlebar,body.mini-mode .app,body.mini-mode .backtop{display:none!important}
+  body.mini-mode #miniView{display:flex}
+  body.mini-mode{overflow:hidden}
+  .mini-close{position:absolute;top:6px;right:8px;z-index:5;width:24px;height:24px;
+    border:none;border-radius:7px;background:transparent;color:var(--muted);
+    font-size:14px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center}
+  .mini-close:hover{background:var(--down);color:#fff}
+  .mini-gauge{position:relative;padding:2px 4px 0;text-align:center;-webkit-app-region:drag}
+  .mini-gauge svg.gaugesvg{width:100%;max-width:122px;height:auto;display:block;margin:0 auto;overflow:visible}
+  .mini-arc-bg{fill:none;stroke:var(--track);stroke-width:13;stroke-linecap:round}
+  .mini-arc{fill:none;stroke:url(#miniArcGrad);stroke-width:13;stroke-linecap:round;opacity:.30}
+  .mini-needle{stroke:var(--accent);stroke-width:4;stroke-linecap:round;
+    transform-box:view-box;transform-origin:100px 88px;transform:rotate(0deg);
+    transition:transform .45s cubic-bezier(.22,1,.36,1)}
+  .mini-hub{fill:var(--accent);stroke:var(--ring-inner);stroke-width:2}
+  .mini-speed{margin-top:-7px;position:relative;z-index:2}
+  .mini-speed b{font-size:22px;font-weight:800;letter-spacing:0;line-height:1;color:var(--fg)}
+  .mini-speed small{color:var(--muted);font-size:10.5px;margin-left:3px;letter-spacing:.3px}
+  /* recent-speed sparkline */
+  .mini-spark{margin:2px 2px 0;height:22px}
+  .mini-spark svg{width:100%;height:22px;display:block;overflow:visible}
+  .mini-spark .spk-line{fill:none;stroke:var(--accent2);stroke-width:2;
+    stroke-linejoin:round;stroke-linecap:round}
+  .mini-spark .spk-fill{fill:var(--accent2);opacity:.12}
+  .mini-stats{display:flex;gap:7px;padding:4px 0 0}
+  .mini-stat{flex:1;min-width:0;background:color-mix(in srgb,var(--panel) 86%,transparent);
+    border:1px solid color-mix(in srgb,var(--line) 86%,transparent);border-radius:8px;
+    padding:5px 7px;text-align:left;box-shadow:var(--card-shadow);
+    display:grid;grid-template-columns:auto 1fr;grid-template-areas:"dot label" "value value";
+    column-gap:5px;row-gap:2px;align-items:center}
+  .mini-stat-dot{grid-area:dot;width:6px;height:6px;border-radius:50%;
+    box-shadow:0 0 0 3px color-mix(in srgb,var(--mini-dot) 18%,transparent);
+    background:var(--mini-dot)}
+  .mini-stat-session{--mini-dot:#4aa3ff}
+  .mini-stat-today{--mini-dot:#36c782}
+  .mini-stat b{grid-area:value;display:block;font-size:16px;font-weight:760;letter-spacing:0;
+    line-height:1.15;font-variant-numeric:tabular-nums}
+  .mini-stat small{grid-area:label;color:var(--muted);font-size:9.5px;line-height:1;white-space:nowrap}
+  .mini-goal{display:flex;align-items:center;gap:8px;padding:6px 12px 0 1px}
+  .mini-goalbar{flex:1;height:6px;border-radius:999px;background:var(--track);overflow:hidden;
+    box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--line) 42%,transparent)}
+  .mini-goalbar i{display:block;height:100%;width:0;border-radius:999px;
+    background:var(--mini-goal-fill);transition:width .4s ease,background .4s ease}
+  .mini-goal.over-1{--mini-goal-fill:linear-gradient(90deg,#31c48d,#2fb7d7)}
+  .mini-goal.over-2{--mini-goal-fill:linear-gradient(90deg,#2fb7d7,#5f9dff)}
+  .mini-goal.over-5{--mini-goal-fill:linear-gradient(90deg,#5f9dff,#f2b84b)}
+  .mini-goal span{color:var(--muted);font-size:10px;white-space:nowrap}
+
+  /* Bottom-right drag-resize grip (no native border on frameless windows). */
+  .mini-resize{position:absolute;right:0;bottom:0;width:18px;height:18px;z-index:6;
+    cursor:nwse-resize;-webkit-app-region:no-drag;touch-action:none;
+    background:
+      linear-gradient(135deg,transparent 0 52%,var(--muted) 52% 60%,transparent 60% 70%,var(--muted) 70% 78%,transparent 78%);
+    opacity:.45}
+  .mini-resize:hover{opacity:.9}
+
+  /* The mini window is resizable; the gauge + sparkline scale with width (SVGs are
+     width:100%). The full layout fits down to ~200px tall (≈2/3 of the old size);
+     below that, shed the least essential rows in order — 今日字数 first, then the
+     sparkline, then the goal bar — always keeping the speed gauge and 本次会话. */
+  @media (max-height:199px){ body.mini-mode #miniStatToday{display:none} }   /* drop 今日字数 first */
+  @media (max-height:197px){ body.mini-mode .mini-spark{display:none} }      /* then the sparkline */
+  @media (max-height:173px){ body.mini-mode .mini-goal{display:none} }       /* then the goal bar */
+  @media (max-height:166px){
+    body.mini-mode #miniView{padding-top:3px}
+    body.mini-mode .mini-gauge svg.gaugesvg{max-width:112px}
+    body.mini-mode .mini-speed{margin-top:-6px}
+  }
+  /* speed gauge + 本次会话 always remain */
+
+  /* ---- mini-counter sidebar launch button (large transparent art + label) ---- */
+  .minibtn{height:auto;flex-direction:column;gap:6px;padding:10px 8px 9px;
+    border-radius:12px;background:var(--panel2)}
+  .minibtn:hover{background:var(--accent);border-color:var(--accent);color:var(--ink)}
+  .minibtn .minibtn-img{width:100%;max-width:108px;height:62px;object-fit:contain;
+    display:block;transition:opacity .6s ease;filter:drop-shadow(0 3px 8px rgba(0,0,0,.18))}
+  .minibtn .minibtn-label{font-size:12px;font-weight:600;letter-spacing:.3px}

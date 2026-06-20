@@ -145,6 +145,12 @@ def create_app(db, config, status_fn=None, on_quit=None) -> Flask:
         b = request.get_json(force=True, silent=True) or {}
         return jsonify(api.lexicon_delete(id=b.get("id")))
 
+    @app.route("/api/lexicon/edit_words", methods=["POST"])
+    def api_lexicon_edit_words():
+        b = request.get_json(force=True, silent=True) or {}
+        return jsonify(api.lexicon_edit_words(
+            id=b.get("id"), add=b.get("add"), remove=b.get("remove")))
+
     @app.route("/api/lexicon/import", methods=["POST"])
     def api_lexicon_import():
         f = request.files.get("file")

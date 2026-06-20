@@ -8,6 +8,7 @@ different bounds over the same functions.
 """
 from __future__ import annotations
 
+import math
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
@@ -53,16 +54,10 @@ def top_chars(db, since: Optional[float], n: int = 50,
 
 
 def daily(db, since: Optional[float], until: Optional[float] = None) -> List[Tuple[str, int]]:
-    w, p = _where(since, until)
-    con = db.connect()
-    try:
-        return con.execute(
-            f"SELECT date(ts,'unixepoch','localtime') d, COUNT(*) c "
-            f"FROM char_events{w} GROUP BY d ORDER BY d",
-            p,
-        ).fetchall()
-    finally:
-        con.close()
+    # Served from the daily_metrics rollup (closed days) + a live count for the
+    # open day / partial edges. See analysis.metrics (C1).
+    from . import metrics
+    return metrics.daily_series(db, since, until)
 
 
 def heatmap(db, since: Optional[float], until: Optional[float] = None) -> List[List[int]]:
@@ -83,6 +78,62 @@ def heatmap(db, since: Optional[float], until: Optional[float] = None) -> List[L
         if dow is not None and hr is not None:
             grid[int(dow)][int(hr)] = c
     return grid
+
+
+def richness_trend(db, since: Optional[float],
+                   until: Optional[float] = None) -> List[Dict]:
+    """Per-day vocabulary richness: distinct characters / total characters.
+
+    A higher ratio means more varied writing that day; a low ratio means heavy
+    repetition. Days with no input are simply absent (the chart skips gaps)."""
+    w, p = _where(since, until)
+    con = db.connect()
+    try:
+        rows = con.execute(
+            f"SELECT date(ts,'unixepoch','localtime') d, COUNT(*) total, "
+            f"COUNT(DISTINCT ch) distinct_ FROM char_events{w} GROUP BY d ORDER BY d",
+            p,
+        ).fetchall()
+    finally:
+        con.close()
+    return [{"date": d, "total": t, "distinct": dd,
+             "ratio": round(dd / t, 4) if t else 0.0} for d, t, dd in rows]
+
+
+def contrib_calendar(db, days: int = 364) -> Dict:
+    """GitHub-style contribution calendar: per-day character counts over roughly
+    the trailing year, aligned to whole weeks (columns start on Sunday). This is
+    intentionally independent of the dashboard's selected range -- it always
+    shows the last ~52 weeks so the yearly rhythm is visible at a glance."""
+    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    start = today - timedelta(days=days)
+    start -= timedelta(days=int(start.strftime("%w")))   # back up to Sunday
+    w, p = _where(start.timestamp(), None)
+    con = db.connect()
+    try:
+        rows = con.execute(
+            f"SELECT date(ts,'unixepoch','localtime') d, COUNT(*) c "
+            f"FROM char_events{w} GROUP BY d", p,
+        ).fetchall()
+    finally:
+        con.close()
+    counts = {d: c for d, c in rows}
+    cells: List[Dict] = []
+    cur = start
+    while cur <= today:
+        ds = cur.strftime("%Y-%m-%d")
+        cells.append({"date": ds, "count": counts.get(ds, 0)})
+        cur += timedelta(days=1)
+    vals = [c["count"] for c in cells if c["count"] > 0]
+    return {
+        "start": start.strftime("%Y-%m-%d"),
+        "end": today.strftime("%Y-%m-%d"),
+        "cells": cells,
+        "weeks": (len(cells) + 6) // 7,
+        "max": max(vals) if vals else 0,
+        "total": sum(c["count"] for c in cells),
+        "active_days": len(vals),
+    }
 
 
 def timeseries(db, since: Optional[float], until: Optional[float] = None,
@@ -305,52 +356,18 @@ def efficiency(db, since: Optional[float], session_gap: float = 60.0,
       real time window cannot explode the way an instantaneous rate does when
       many characters land on the same timestamp.
     """
-    # Commit-only timing means a multi-char word lands at one timestamp; charge
-    # each character at least this long so a tight burst can't divide by ~0.
-    MIN_SEC_PER_CHAR = 0.12          # -> apparent speed capped near 500 cpm
-    w, p = _where(since, until)
-    con = db.connect()
-    try:
-        ts_rows = con.execute(
-            f"SELECT ts FROM char_events{w} ORDER BY ts", p
-        ).fetchall()
-    finally:
-        con.close()
-    ts_list = [r[0] for r in ts_rows]
-    if not ts_list:
-        return {"cpm": 0.0, "active_minutes": 0.0, "sessions": 0, "peak_cpm": 0.0}
-
-    # Walk the characters, accumulating each session's floored active span.
-    sessions = 1
-    active_seconds = 0.0
-    seg_start = ts_list[0]
-    seg_count = 1
-    prev = ts_list[0]
-    for t in ts_list[1:]:
-        if t - prev > session_gap:                       # session boundary
-            active_seconds += max(prev - seg_start, seg_count * MIN_SEC_PER_CHAR)
-            sessions += 1
-            seg_start, seg_count = t, 1
-        else:
-            seg_count += 1
-        prev = t
-    active_seconds += max(prev - seg_start, seg_count * MIN_SEC_PER_CHAR)
-    active_minutes = active_seconds / 60.0
-    cpm = (len(ts_list) / active_minutes) if active_minutes > 0 else 0.0
-
-    peak_count = 0
-    left = 0
-    for right in range(len(ts_list)):
-        while ts_list[right] - ts_list[left] > peak_window:
-            left += 1
-        peak_count = max(peak_count, right - left + 1)
-    peak_cpm = max(peak_count * (60.0 / peak_window), cpm)
-
+    # Served from the daily_metrics rollup (closed days summed) + a live compute
+    # for the open day / partial edges, instead of scanning every timestamp in
+    # the range. Sessions are per-day-independent and peak is the busiest 60s
+    # window within a day (see analysis.metrics / CHANGELOG). cpm/active_minutes
+    # use the same per-session floored-span logic as before.
+    from . import metrics
+    agg = metrics.aggregate(db, since, until, session_gap)
     return {
-        "cpm": round(cpm, 1),
-        "active_minutes": round(active_minutes, 1),
-        "sessions": sessions,
-        "peak_cpm": round(peak_cpm, 1),
+        "cpm": agg["cpm"],
+        "active_minutes": agg["active_minutes"],
+        "sessions": agg["sessions"],
+        "peak_cpm": agg["peak_cpm"],
     }
 
 
@@ -953,13 +970,28 @@ _COMMON_SUPPLEMENT = frozenset(
 )
 
 
+# Characters the user has marked as common (config.common_chars_extra). Injected
+# by the dashboard via set_user_common(); empty by default so the pure-logic
+# tests stay deterministic. This is the user-tunable half of the "生僻字 = 常用字
+# 表的补集" rule -- the built-in table is the filter, this is the personal escape
+# hatch for names/jargon the user does not consider 生僻.
+_USER_COMMON: frozenset = frozenset()
+
+
+def set_user_common(chars) -> None:
+    """Replace the user's extra-common character set used by _is_uncommon."""
+    global _USER_COMMON
+    _USER_COMMON = frozenset(c for c in (chars or []) if c)
+
+
 def _is_uncommon(ch: str) -> bool:
     """A typed character counts as 生僻/uncommon when it is a Han ideograph that
-    is *not* among the 3,500 standard 常用字. This is an intrinsic measure -- it
-    never looks at how often the user typed it -- and is far looser than the old
-    "only CJK extension blocks" rule (which virtually nobody ever triggers) while
-    still excluding every everyday character."""
-    return segment._HAN(ch) and ch not in COMMON_CHARS and ch not in _COMMON_SUPPLEMENT
+    is *not* in the common-character filter: the 3,500 standard 常用字 table, the
+    modern supplement, or the user's own "extra common" list. The classification
+    is the complement of that filter -- it never looks at how often the user
+    typed the character, only at whether the character is intrinsically common."""
+    return (segment._HAN(ch) and ch not in COMMON_CHARS
+            and ch not in _COMMON_SUPPLEMENT and ch not in _USER_COMMON)
 
 
 def fun_rankings(db, since: Optional[float], run_gap: float,
@@ -1882,6 +1914,62 @@ def ticker(db, run_gap: float, session_gap: float, daily_goal: int) -> Dict:
 
 
 # ---- one-shot overview ----------------------------------------------------
+def mini_stats(db, session_gap: float = 60.0, daily_goal: int = 500) -> Dict:
+    """Live numbers for the floating mini counter (item 4). Cheap, polled ~1s.
+
+    - speed_cpm: a time-decayed instantaneous typing rate (chars/min). Each
+      recent commit contributes exp(-Δt/TAU); the sum ÷ TAU estimates the
+      current rate, so the value is *continuous* (no coarse 6-cpm steps), reacts
+      quickly, and decays smoothly to 0 on idle. Requires >=2 chars in a short
+      window, so a single isolated keystroke reads as 0 (one char has no rate).
+    - session_chars: characters in the current continuous session (walking back
+      from the latest commit while gaps stay within session_gap).
+    - today_chars / goal_pct: progress toward the daily goal."""
+    now = datetime.now().timestamp()
+    midnight = datetime.now().replace(
+        hour=0, minute=0, second=0, microsecond=0).timestamp()
+    con = db.connect()
+    try:
+        today = con.execute(
+            "SELECT COUNT(*) FROM char_events WHERE ts >= ?", (midnight,)
+        ).fetchone()[0]
+        rows = con.execute(
+            "SELECT ts FROM char_events ORDER BY ts DESC LIMIT 5000"
+        ).fetchall()
+    finally:
+        con.close()
+    # decay-weighted current rate (see docstring)
+    TAU = 6.0            # seconds; decay constant
+    GUARD_WIN = 12.0     # need >=2 chars within this window to register any speed
+    recent = 0
+    weighted = 0.0
+    for (ts,) in rows:
+        dt = now - ts
+        if dt > 40.0:        # rows are DESC -> everything older follows; stop
+            break
+        if dt <= GUARD_WIN:
+            recent += 1
+        weighted += math.exp(-dt / TAU)
+    speed_cpm = round(min(weighted / TAU * 60.0, 600.0), 1) if recent >= 2 else 0.0
+    session_chars = 0
+    if rows and (now - rows[0][0]) <= session_gap:
+        session_chars = 1
+        prev = rows[0][0]
+        for (ts,) in rows[1:]:
+            if prev - ts > session_gap:
+                break
+            session_chars += 1
+            prev = ts
+    goal_pct = (today / daily_goal) if daily_goal else 0.0
+    return {
+        "speed_cpm": speed_cpm,
+        "session_chars": session_chars,
+        "today_chars": today,
+        "daily_goal": daily_goal,
+        "goal_pct": round(min(goal_pct, 99.99), 4),
+    }
+
+
 def overview(db, since: Optional[float], run_gap: float, session_gap: float,
              until: Optional[float] = None) -> Dict:
     e = edits(db, since, until, session_gap)
