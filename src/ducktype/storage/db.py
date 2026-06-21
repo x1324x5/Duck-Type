@@ -130,6 +130,16 @@ CREATE TABLE IF NOT EXISTS quote_views (
     first_ts   REAL,
     last_ts    REAL
 );
+
+-- Dashboard usage log: one row each time the user opens the dashboard window or
+-- the floating mini counter. Powers the "使用历史" panel. Purely a UI-activity
+-- record; never affected by typing-data deletion.
+CREATE TABLE IF NOT EXISTS dashboard_sessions (
+    id   INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts   REAL NOT NULL,
+    kind TEXT NOT NULL DEFAULT 'dashboard'
+);
+CREATE INDEX IF NOT EXISTS idx_dash_ts ON dashboard_sessions(ts);
 """
 
 
@@ -340,6 +350,45 @@ class Database:
         finally:
             con.close()
 
+    # ---- dashboard usage log (usage-history panel) ----------------------
+    def record_dashboard_open(self, kind: str = "dashboard") -> None:
+        """Log one opening of the dashboard ('dashboard') or mini counter
+        ('mini'). Low-frequency (a UI action), so written directly. Tolerant of
+        an old database that predates the table."""
+        kind = "mini" if kind == "mini" else "dashboard"
+        con = self.connect()
+        try:
+            con.execute(
+                "INSERT INTO dashboard_sessions(ts, kind) VALUES (?, ?)",
+                (time.time(), kind),
+            )
+            con.commit()
+            self.revision += 1
+        except sqlite3.OperationalError:
+            pass
+        finally:
+            con.close()
+
+    def dashboard_opens(self, since: Optional[float] = None):
+        """Return [(ts, kind), ...] of dashboard/mini opens at or after ``since``
+        (all of them when ``since`` is None), oldest first."""
+        con = self.connect()
+        try:
+            if since is None:
+                rows = con.execute(
+                    "SELECT ts, kind FROM dashboard_sessions ORDER BY ts"
+                ).fetchall()
+            else:
+                rows = con.execute(
+                    "SELECT ts, kind FROM dashboard_sessions WHERE ts>=? ORDER BY ts",
+                    (since,),
+                ).fetchall()
+            return [(float(r[0]), r[1] or "dashboard") for r in rows]
+        except sqlite3.OperationalError:
+            return []
+        finally:
+            con.close()
+
     # ---- achievements (unlock timestamps) -------------------------------
     def record_achievements(self, ids) -> dict:
         """Stamp first-unlock time for any newly-unlocked achievement ids and
@@ -446,6 +495,7 @@ class Database:
         "key_events": "ts, kind, app",
         "achievements": "id, unlocked_ts",
         "quote_views": "quote_hash, count, first_ts, last_ts",
+        "dashboard_sessions": "ts, kind",
         "meta": "key, value",
     }
 

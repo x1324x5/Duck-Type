@@ -24,27 +24,48 @@
   .lexstat{background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:14px 16px}
   .lexstat-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px}
   .lexstat-head h3{margin:0;font-size:15px;flex:1;min-width:120px}
-  .lexstat-ctl{display:inline-flex;align-items:center;gap:12px}
+  /* The rank slider / 显示其他 / download controls are visual noise when you're
+     just reading the pie, so keep them faded out and reveal them only when the
+     pointer is over this lexicon card (or a control has focus). */
+  .lexstat-ctl{display:inline-flex;align-items:center;gap:12px;
+    opacity:0;pointer-events:none;transition:opacity .15s ease}
+  .lexstat:hover .lexstat-ctl,
+  .lexstat-ctl:focus-within{opacity:1;pointer-events:auto}
   .lexstat-ctl[hidden]{display:none}
   .lexstat-ctl .rankctl{display:inline-flex;align-items:center;gap:7px}
   .lexstat-ctl .lexN{width:84px}
   .lexstat-ctl .lexNv{min-width:18px;text-align:center;font-size:12px;color:var(--muted)}
   .lexother{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);cursor:pointer}
-  .lexstat-body{display:flex;gap:18px;flex-wrap:wrap;align-items:center}
-  .lexchartwrap{width:212px;max-width:100%;height:200px;position:relative;flex:none}
-  /* aligned legend: swatch | word(ellipsis) | count | percent */
-  .lexlegend{flex:1;min-width:200px;display:flex;flex-direction:column;gap:2px;
-    max-height:208px;overflow-y:auto;padding-right:2px}
-  .ll-row{display:grid;grid-template-columns:12px minmax(0,1fr) auto auto;align-items:center;
-    gap:9px;padding:4px 7px;border-radius:7px;font-size:13px;cursor:pointer}
+  /* pie + legend form one compact group, centred in the card, so neither hugs an
+     edge with a big void between them (the legend sizes to its content rather
+     than stretching the full panel width). */
+  .lexstat-body{display:flex;gap:32px;flex-wrap:wrap;align-items:center;justify-content:center}
+  .lexchartwrap{width:220px;max-width:100%;height:208px;position:relative;flex:0 0 auto}
+  /* aligned legend: swatch | word(ellipsis) | count | percent. Content-width
+     (not flex:1) with a sensible cap keeps the count/% column tight to the words. */
+  .lexlegend{flex:0 1 auto;min-width:228px;max-width:380px;display:flex;flex-direction:column;gap:2px;
+    max-height:216px;overflow-y:auto;padding-right:2px;
+    /* keep the scrollbar invisible until the card is hovered so it isn't a jarring
+       always-on stripe next to the legend (matches the slider / 显示其他 reveal). */
+    scrollbar-width:thin;scrollbar-color:transparent transparent;transition:scrollbar-color .2s}
+  .lexlegend::-webkit-scrollbar{width:8px}
+  .lexlegend::-webkit-scrollbar-thumb{background:transparent;border-radius:8px;transition:background .2s}
+  .lexstat:hover .lexlegend{scrollbar-color:var(--line) transparent}
+  .lexstat:hover .lexlegend::-webkit-scrollbar-thumb{background:var(--line)}
+  .lexlegend:hover::-webkit-scrollbar-thumb{background:var(--muted)}
+  /* flex row so the word hugs its own width and the count/% sit right next to it
+     (no stretched gap); long words ellipsis; spare space pools on the right. */
+  .ll-row{display:flex;align-items:center;gap:9px;padding:4px 7px;border-radius:7px;
+    font-size:13px;cursor:pointer}
   .ll-row:hover{background:rgba(127,127,127,.10)}
   .ll-row.off{opacity:.5}
   .ll-row.off .ll-word{text-decoration:line-through}
   .ll-swatch{width:12px;height:12px;border-radius:3px;flex:none}
-  .ll-word{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .ll-cnt{color:var(--muted);font-size:12px;white-space:nowrap}
+  .ll-word{min-width:0;max-width:10em;flex:0 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ll-cnt{color:var(--muted);font-size:12px;white-space:nowrap;font-variant-numeric:tabular-nums;
+    text-align:right;min-width:48px;margin-left:auto}
   .ll-pct{color:var(--fg);font-size:12px;font-variant-numeric:tabular-nums;
-    text-align:right;min-width:52px;white-space:nowrap}
+    text-align:right;min-width:46px;white-space:nowrap}
   .lexstat-info{color:var(--muted);font-size:12.5px;line-height:1.6;margin-top:10px}
   /* compact state when a lexicon matched nothing in this range */
   .lexstat.empty-stat{padding:12px 16px}

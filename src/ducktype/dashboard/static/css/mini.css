@@ -55,6 +55,12 @@
   .mini-goal.over-2{--mini-goal-fill:linear-gradient(90deg,#2fb7d7,#5f9dff)}
   .mini-goal.over-5{--mini-goal-fill:linear-gradient(90deg,#5f9dff,#f2b84b)}
   .mini-goal span{color:var(--muted);font-size:10px;white-space:nowrap}
+  /* bottom row: how long the current writing session has run */
+  .mini-foot{display:flex;align-items:baseline;justify-content:center;gap:6px;
+    margin-top:auto;padding:7px 0 1px}
+  .mini-foot-k{color:var(--muted);font-size:10px;letter-spacing:.3px}
+  .mini-foot b{font-size:13px;font-weight:700;color:var(--fg);font-variant-numeric:tabular-nums;
+    letter-spacing:.5px}
 
   /* Bottom-right drag-resize grip (no native border on frameless windows). */
   .mini-resize{position:absolute;right:0;bottom:0;width:18px;height:18px;z-index:6;
@@ -65,18 +71,27 @@
   .mini-resize:hover{opacity:.9}
 
   /* The mini window is resizable; the gauge + sparkline scale with width (SVGs are
-     width:100%). The full layout fits down to ~200px tall (≈2/3 of the old size);
-     below that, shed the least essential rows in order — 今日字数 first, then the
-     sparkline, then the goal bar — always keeping the speed gauge and 本次会话. */
-  @media (max-height:199px){ body.mini-mode #miniStatToday{display:none} }   /* drop 今日字数 first */
-  @media (max-height:197px){ body.mini-mode .mini-spark{display:none} }      /* then the sparkline */
-  @media (max-height:173px){ body.mini-mode .mini-goal{display:none} }       /* then the goal bar */
-  @media (max-height:166px){
+     width:100%). 本次会话 and 今日字数 sit *side by side* in one row, so showing
+     both costs no extra height -- they stay paired at every size (the old rule
+     that hid 今日字数 by height only left a lonely, half-empty box). As the window
+     shrinks we shed the genuinely stacked, decorative rows in order: the clock's
+     date line, then the speed sparkline, then the goal bar, then the clock, and
+     finally the gauge scales down. The speed gauge + both stat tiles always stay. */
+  @media (max-height:224px){ body.mini-mode .mini-clock small{display:none} }   /* drop the date line */
+  @media (max-height:210px){ body.mini-mode .mini-spark{display:none} }         /* then the sparkline */
+  @media (max-height:198px){ body.mini-mode .mini-foot{display:none} }          /* then the session-duration row */
+  @media (max-height:188px){ body.mini-mode .mini-goal{display:none} }          /* then the goal bar */
+  @media (max-height:172px){
+    body.mini-mode .mini-clock{display:none}                                    /* then the clock */
     body.mini-mode #miniView{padding-top:3px}
-    body.mini-mode .mini-gauge svg.gaugesvg{max-width:112px}
-    body.mini-mode .mini-speed{margin-top:-6px}
   }
-  /* speed gauge + 本次会话 always remain */
+  @media (max-height:160px){
+    body.mini-mode .mini-gauge svg.gaugesvg{max-width:112px}                    /* finally shrink the gauge */
+    body.mini-mode .mini-speed{margin-top:-6px}
+    body.mini-mode .mini-stats{gap:5px}
+    body.mini-mode .mini-stat{padding:4px 6px}
+    body.mini-mode .mini-stat b{font-size:15px}
+  }
 
   /* ---- mini-counter sidebar launch button (large transparent art + label) ---- */
   .minibtn{height:auto;flex-direction:column;gap:6px;padding:10px 8px 9px;

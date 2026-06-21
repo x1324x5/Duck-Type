@@ -1,0 +1,178 @@
+/* ===== 0.2.8 additions: board customization, usage history, comparison,
+        hotkeys, mini clock ===== */
+
+/* ---- board customization toolbar + per-panel tools ---- */
+.boardbar{display:flex;align-items:center;gap:12px;margin-bottom:16px;position:relative;flex-wrap:wrap}
+.boardbar-hint{color:var(--muted);font-size:12px}
+.boardbar-actions{display:flex;gap:8px;margin-left:auto}
+.btn.compact, .boardbar .btn{padding:6px 12px;font-size:13px}
+.panel-tools{display:inline-flex;align-items:center;gap:2px;margin-left:8px}
+.bl-btn{width:24px;height:24px;border:1px solid transparent;background:transparent;color:var(--muted);
+  border-radius:6px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0;
+  transition:background .15s,color .15s,border-color .15s}
+.bl-btn:hover{background:var(--panel2);color:var(--fg);border-color:var(--line)}
+.bl-btn svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.bl-btn.bl-drag{cursor:grab}
+.bl-btn.bl-drag svg{fill:currentColor;stroke:none}
+.bl-collapse svg{transition:transform .18s}
+.bl-collapse.on svg{transform:rotate(-90deg)}
+.panel.bl-collapsed{padding-bottom:14px}
+.panel.bl-collapsed > :not(h2){display:none!important}
+.panel.bl-collapsed h2{margin-bottom:0}
+.panel.bl-hidden{display:none!important}
+
+/* ---- pointer-drag sortable (panels + cards) ---- */
+body.sorting{user-select:none;cursor:grabbing}
+.sortable-dragging{z-index:9999;cursor:grabbing;transition:none!important;
+  box-shadow:0 16px 40px rgba(0,0,0,.4)!important;border-color:var(--accent)!important}
+.sortable-ph{border:2px dashed var(--accent);border-radius:var(--radius);box-sizing:border-box;
+  background:color-mix(in srgb,var(--accent) 9%,transparent)}
+.grid > .sortable-ph{margin-bottom:18px}
+.sortable-ph.wide{grid-column:1 / -1}
+
+/* ---- summary card close (corner ×) ---- */
+.card{position:relative}
+.card-corner{position:absolute;top:0;right:0;width:42px;height:42px;padding:6px;
+  display:flex;align-items:flex-start;justify-content:flex-end;pointer-events:none}
+.card-x{pointer-events:auto;width:20px;height:20px;border:none;border-radius:6px;cursor:pointer;
+  background:var(--panel2);color:var(--muted);font-size:15px;line-height:1;padding:0;
+  display:flex;align-items:center;justify-content:center;opacity:0;transform:scale(.7);
+  transition:opacity .15s,transform .15s,background .15s,color .15s}
+.card-corner:hover .card-x{opacity:1;transform:scale(1)}
+.card-x:hover{background:var(--down);color:#fff}
+.card-hidden{display:none!important}
+/* don't lift cards on hover mid-drag (inline FLIP transforms still win over this) */
+body.sorting .card:hover{transform:none}
+/* 面板 manager dropdown */
+.bl-menu{position:absolute;top:34px;right:0;z-index:50;min-width:220px;background:var(--tip-bg);
+  border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);padding:8px}
+.bl-menu-head{font-size:11px;color:var(--muted);padding:4px 8px 6px}
+.bl-menu-row{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;cursor:pointer;font-size:13px}
+.bl-menu-row:hover{background:var(--panel2)}
+.bl-menu-row input{accent-color:var(--accent);cursor:pointer}
+.bl-menu-foot{margin-top:6px;padding-top:8px;border-top:1px solid var(--line);display:flex;justify-content:flex-end}
+
+/* ---- usage history panel ---- */
+.usage-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:10px;margin-bottom:14px}
+.usage-cards .s{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.usage-cards .s b{font-size:20px;font-weight:700;display:block;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.usage-cards .s small{color:var(--muted);font-size:11px}
+.usage-charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+.usage-recent{margin-top:6px}
+.usage-chip{font-size:12px}
+.usage-chip.mini{border-color:var(--accent2)}
+
+/* ---- comparison report ---- */
+.cmp-controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.cmp-side{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.cmp-tag{width:22px;height:22px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;
+  font-weight:700;font-size:12px;color:var(--ink)}
+.cmp-tag.a{background:var(--accent)} .cmp-tag.b{background:var(--accent2)}
+.cmp-kind{background:var(--panel2);color:var(--fg);border:1px solid var(--line);border-radius:8px;
+  padding:7px 10px;font-size:13px;font-family:inherit;min-height:34px;cursor:pointer}
+.cmp-day{background:var(--panel2);color:var(--fg);border:1px solid var(--line);border-radius:8px;
+  padding:6px 10px;font-size:13px;font-family:inherit;color-scheme:inherit}
+.cmp-vs{color:var(--muted);font-size:13px;font-weight:600}
+.cmp-narr{font-size:14px;line-height:1.7;margin-bottom:12px}
+.cmp-grid{border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.cmp-row{display:grid;grid-template-columns:minmax(70px,1fr) 1.2fr 1.2fr 1fr;align-items:center;
+  gap:8px;padding:9px 14px;border-bottom:1px solid var(--line);font-size:13px}
+.cmp-row:last-child{border-bottom:0}
+.cmp-row .cl{color:var(--muted)}
+.cmp-row .ca,.cmp-row .cb{font-weight:600}
+.cmp-head{background:var(--panel2);font-size:12px}
+.cmp-head .ca{color:var(--accent)} .cmp-head .cb{color:var(--accent2)}
+.cmp-head .ca,.cmp-head .cb,.cmp-head .cd{font-weight:600}
+.cmp-d{font-size:12px;font-weight:600}
+.cmp-d.up{color:var(--up)} .cmp-d.down{color:var(--down)} .cmp-d.flat{color:var(--muted)}
+.cmp-movers{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;margin-top:14px}
+.cmp-movers .nw{display:inline-flex;align-items:baseline;gap:4px;background:var(--panel2);border:1px solid var(--line);
+  border-radius:8px;padding:4px 9px;font-size:13px;margin:0 6px 6px 0}
+.cmp-movers .nw b{color:var(--accent)} .cmp-movers .nw.fresh{border-color:var(--accent)}
+
+/* ---- full-report story cards (0.2.8) ---- */
+.repflow{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;margin:6px 0 18px}
+.repcard{background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:16px}
+.repcard-k{font-size:12px;color:var(--muted);margin-bottom:10px}
+.repcard-k span{margin-left:6px;font-size:11px;opacity:.85}
+.repcard.hero{background:linear-gradient(135deg,var(--banner-fun-bg1),var(--banner-fun-bg2));
+  border-color:var(--banner-fun-border);display:flex;flex-direction:column;justify-content:center}
+.hero-num{font-size:44px;font-weight:800;letter-spacing:-1.5px;line-height:1.02;color:var(--fg);
+  font-variant-numeric:tabular-nums}
+.hero-num small{font-size:15px;font-weight:600;color:var(--muted);margin-left:6px;letter-spacing:0}
+.hero-delta{margin-top:7px;font-size:12.5px;color:var(--muted)}
+.hero-units{margin-top:12px;display:flex;flex-wrap:wrap;gap:7px}
+.hero-units .hu{display:inline-flex;align-items:baseline;gap:4px;font-size:13px;color:var(--fg);
+  background:color-mix(in srgb,var(--fg) 7%,transparent);
+  border:1px solid color-mix(in srgb,var(--fg) 14%,transparent);
+  border-radius:999px;padding:4px 11px;font-variant-numeric:tabular-nums;line-height:1.2}
+.hero-units .hu i{font-style:normal;color:var(--muted);font-size:11px}
+.hero-units .hu-empty{font-size:13px;color:var(--muted)}
+.rb{font-size:12px;font-weight:700;margin-left:4px}
+.rb.up{color:var(--up)} .rb.down{color:var(--down)} .rb.flat{color:var(--muted)}
+.repbase{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.repbase .bs{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:9px 11px}
+.repbase .bs small{display:block;color:var(--muted);font-size:11px}
+.repbase .bs b{font-size:18px;font-weight:700;margin-right:6px}
+.repring{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.repring-pie{position:relative;height:160px;flex:1;min-width:150px}
+.repring-stats{display:flex;flex-direction:column;gap:8px;min-width:96px}
+.repring-stats .s b{font-size:19px;font-weight:700;display:block;line-height:1.15}
+.repring-stats .s small{color:var(--muted);font-size:11px}
+.tl{display:flex;flex-direction:column;gap:8px;max-height:230px;overflow:auto}
+.tl-row{display:flex;gap:10px;align-items:flex-start}
+.tl-date{flex:0 0 42px;color:var(--accent);font-size:12px;font-weight:700;padding-top:4px;
+  font-variant-numeric:tabular-nums}
+.tl-words{display:flex;flex-wrap:wrap;gap:5px;flex:1;border-left:2px solid var(--line);padding-left:10px}
+.tl-words .chip{cursor:pointer;font-size:12px} .tl-words .chip:hover{border-color:var(--accent)}
+.tl-more{color:var(--muted);font-size:12px;align-self:center}
+
+/* ---- lexicon report word chips ---- */
+.lexrep-words{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 12px;padding-left:2px}
+.lexrep-words .chip{cursor:pointer}
+.lexrep-words .chip:hover{border-color:var(--accent)}
+
+/* ---- mini-counter global hotkeys (settings) ---- */
+.hotkey-controls{display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+.hotkey-field{display:flex;align-items:center;gap:6px}
+.hk-label{color:var(--muted);font-size:12px;min-width:28px;text-align:right}
+.hotkey-input{background:var(--panel2);color:var(--fg);border:1px solid var(--line);border-radius:8px;
+  padding:6px 10px;font-size:13px;font-family:inherit;min-width:160px;text-align:center;cursor:pointer}
+.hotkey-input:focus{outline:0;border-color:var(--accent);box-shadow:0 0 0 3px rgba(255,206,51,.14)}
+.hk-clear{width:24px;height:24px;border:1px solid var(--line);background:var(--panel2);color:var(--muted);
+  border-radius:7px;cursor:pointer;line-height:1;padding:0}
+.hk-clear:hover{border-color:var(--down);color:var(--down)}
+.hk-msg{font-size:12px;min-height:16px;color:var(--muted)}
+.hk-msg.err{color:var(--down)} .hk-msg.ok{color:var(--up)}
+
+/* ---- mini-counter clock ---- */
+.mini-clock{display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:4px 0 0;line-height:1.1;user-select:none}
+.mini-clock b{font-size:21px;font-weight:700;letter-spacing:.5px;color:var(--fg);font-variant-numeric:tabular-nums}
+.mini-clock small{font-size:10px;color:var(--muted);margin-top:1px}
+/* (mini-counter shrink behaviour lives in mini.css so all the fold rules stay together) */
+body.mini-mode .empty-ico{display:none}
+
+/* shared empty-state icon spacing */
+.empty .empty-ico{margin-right:6px;opacity:.7}
+
+/* ---- sequence view header redesign (0.2.8) ---- */
+.seqcount{margin-left:10px;font-size:12px;color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,transparent);
+  border:1px solid color-mix(in srgb,var(--accent) 30%,transparent);border-radius:999px;
+  padding:1px 10px;font-weight:600;vertical-align:middle;font-variant-numeric:tabular-nums}
+.seqbar{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;margin:12px 0 14px}
+.seqbar .seqfilters{flex:1;min-width:260px;margin:0}
+.seq-exports{display:flex;flex-direction:column;gap:5px;align-items:flex-start}
+.seq-exports-k{color:var(--muted);font-size:11px;letter-spacing:.3px}
+.segexp{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:var(--panel2)}
+.segexp a{padding:7px 13px;font-size:12px;font-weight:600;color:var(--fg);cursor:pointer;
+  border-left:1px solid var(--line);letter-spacing:.4px;transition:background .14s,color .14s;font-variant-numeric:tabular-nums}
+.segexp a:first-child{border-left:0}
+.segexp a:hover{background:var(--accent);color:var(--ink)}
+.btn.ghost{background:transparent}
+/* keyword highlight inside a run */
+.seqhit{background:color-mix(in srgb,var(--accent) 40%,transparent);color:var(--fg);
+  border-radius:3px;padding:0 1px}
+/* incremental "load more" pager */
+.seqpager{display:flex;justify-content:center;padding:6px 0 2px}
+.seqpager .btn{font-size:13px}

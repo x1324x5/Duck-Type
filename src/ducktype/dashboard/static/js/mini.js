@@ -74,18 +74,47 @@ async function miniTick(){
   const gt = document.getElementById("miniGoalText");
   if(gt) gt.textContent = "目标 " + Math.round(goalPct * 100) + "%";
 }
+// Session duration as H:MM:SS (or M:SS under an hour).
+function miniFmtDur(sec){
+  sec = Math.max(0, Math.floor(sec));
+  const h = Math.floor(sec/3600), m = Math.floor((sec%3600)/60), s = sec%60;
+  const p = x=>String(x).padStart(2,"0");
+  return h ? `${h}:${p(m)}:${p(s)}` : `${m}:${p(s)}`;
+}
+// Live wall-clock in the mini window (ticks every second; cheap, no IPC).
+const MINI_WEEK = ["周日","周一","周二","周三","周四","周五","周六"];
+let miniClockTimer = null;
+let miniOpenTs = 0;        // when this 随身鸭 window opened (for 本次时长)
+function miniClockTick(){
+  const t = document.getElementById("miniClockTime");
+  const d = document.getElementById("miniClockDate");
+  // 本次时长 = how long this 随身鸭 has been open (wall-clock since launch), not
+  // the typing-session length — so it always starts at 0:00 on open.
+  const st = document.getElementById("miniSessionTime");
+  if(st && miniOpenTs) st.textContent = miniFmtDur((Date.now() - miniOpenTs) / 1000);
+  if(!t) return;
+  const n = new Date(), p = x=>String(x).padStart(2,"0");
+  t.textContent = p(n.getHours())+":"+p(n.getMinutes());
+  if(d) d.textContent = `${n.getMonth()+1}月${n.getDate()}日 ${MINI_WEEK[n.getDay()]}`;
+}
 function startMini(){
   document.body.classList.add("mini-mode");
   const mv = document.getElementById("miniView"); if(mv) mv.hidden = false;
   miniSmoothCpm = null; miniSamples = [];
+  miniOpenTs = Date.now();          // reset 本次时长 each time the gauge opens
+  const st = document.getElementById("miniSessionTime"); if(st) st.textContent = "0:00";
   miniTick();
   if(miniTimer) clearInterval(miniTimer);
   miniTimer = setInterval(miniTick, 1000);
+  miniClockTick();
+  if(miniClockTimer) clearInterval(miniClockTimer);
+  miniClockTimer = setInterval(miniClockTick, 1000);
 }
 function stopMini(){
   document.body.classList.remove("mini-mode");
   const mv = document.getElementById("miniView"); if(mv) mv.hidden = true;
   if(miniTimer){ clearInterval(miniTimer); miniTimer = null; }
+  if(miniClockTimer){ clearInterval(miniClockTimer); miniClockTimer = null; }
 }
 function enterMini(){
   // Native: spawn the separate on_top window. Browser: render inline via #mini.

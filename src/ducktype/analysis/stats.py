@@ -955,78 +955,16 @@ def tracked_terms(db, terms: List[str], since: Optional[float], run_gap: float,
 
 
 # ---- fun rankings ---------------------------------------------------------
-from .common_chars import COMMON_CHARS
-
-# A small modern/common supplement on top of the 3,500-character reference. The
-# reference table is intentionally conservative; these characters are common in
-# names, modal particles, transliterations, food/internet writing, or everyday
-# proper nouns and should not make the "生僻字" panel feel noisy.
-_COMMON_SUPPLEMENT = frozenset(
-    "哦噢嗯欸诶哎唉呀呃哇喔呗嘛哟啦咯啰"
-    "蔡噻甄邱邵彭蒋韩萧阎廖薛冯覃翟邹贾袁"
-    "咖啡巧克力披萨薯堡酱橙柠檬莓椰"
-    "粤闽沪渝圳澳台港甬蓉穗杭"
-    "梗梳槽怼囧萌酷飒"
+# The 生僻字 classifier and the playful leaderboards now live in analysis.fun
+# (0.2.8 refactor). Re-export the public names so callers/tests keep using
+# ``stats.fun_rankings`` / ``stats._is_uncommon`` etc. unchanged.
+from .common_chars import COMMON_CHARS  # noqa: F401 (kept for back-compat imports)
+from .fun import (  # noqa: E402,F401
+    _COMMON_SUPPLEMENT,
+    _is_uncommon,
+    fun_rankings,
+    set_user_common,
 )
-
-
-# Characters the user has marked as common (config.common_chars_extra). Injected
-# by the dashboard via set_user_common(); empty by default so the pure-logic
-# tests stay deterministic. This is the user-tunable half of the "生僻字 = 常用字
-# 表的补集" rule -- the built-in table is the filter, this is the personal escape
-# hatch for names/jargon the user does not consider 生僻.
-_USER_COMMON: frozenset = frozenset()
-
-
-def set_user_common(chars) -> None:
-    """Replace the user's extra-common character set used by _is_uncommon."""
-    global _USER_COMMON
-    _USER_COMMON = frozenset(c for c in (chars or []) if c)
-
-
-def _is_uncommon(ch: str) -> bool:
-    """A typed character counts as 生僻/uncommon when it is a Han ideograph that
-    is *not* in the common-character filter: the 3,500 standard 常用字 table, the
-    modern supplement, or the user's own "extra common" list. The classification
-    is the complement of that filter -- it never looks at how often the user
-    typed the character, only at whether the character is intrinsically common."""
-    return (segment._HAN(ch) and ch not in COMMON_CHARS
-            and ch not in _COMMON_SUPPLEMENT and ch not in _USER_COMMON)
-
-
-def fun_rankings(db, since: Optional[float], run_gap: float,
-                 until: Optional[float] = None) -> Dict:
-    """Playful leaderboards: favourite long words, idioms, hapax & rare chars."""
-    char_counts = dict(top_chars(db, since, 1_000_000, until))
-    hapax = [c for c, n in char_counts.items() if n == 1]
-    rare = sorted(
-        ((c, n) for c, n in char_counts.items() if _is_uncommon(c)),
-        key=lambda kv: kv[1], reverse=True,
-    )[:30]
-
-    with timed("stats.fun_rankings.segment_range"):
-        wc, wp, _pc = segment.segment_range(db, since, run_gap, until)
-
-    fav_words = sorted(
-        ((w, n) for w, n in wc.items() if len(w) >= 2),
-        key=lambda kv: kv[1], reverse=True,
-    )[:30]
-    # Idioms now live in their own 词库 (lexicon) tab, scanned against the idiom
-    # dictionary. They are still kept out of the 长词 (long-word) list here so the
-    # two views don't overlap.
-    long_words = sorted(
-        ((w, n) for w, n in wc.items()
-         if len(w) >= 3 and not idioms_mod.is_idiom(w)),
-        key=lambda kv: kv[1], reverse=True,
-    )[:30]
-    return {
-        "favorite_words": [{"word": w, "count": n} for w, n in fav_words],
-        "long_words": [{"word": w, "count": n} for w, n in long_words],
-        "hapax": hapax[:60],
-        "rare_chars": [{"ch": c, "count": n} for c, n in rare],
-        "distinct": len(char_counts),
-        "hapax_count": len(hapax),
-    }
 
 
 # ---- streak / goal / achievements ----------------------------------------
@@ -1187,7 +1125,7 @@ def gamify(db, daily_goal: int) -> Dict:
     return {
         "today_chars": today_chars,
         "daily_goal": goal,
-        "goal_pct": min(1.0, round(today_chars / goal, 4)),
+        "goal_pct": round(min(today_chars / goal, 99.99), 4),
         "streak_current": current,
         "streak_best": best,
         "total_chars": total,
@@ -1717,6 +1655,38 @@ def report_words(db, period: str, run_gap: float,
             returning_words.append({"word": w, "count": c})
     new_words = new_words[:24]
     returning_words = returning_words[:24]
+
+    # ---- 0.2.8 report redesign: vocabulary-growth analytics ----
+    # Distinct multi-char words bucketed by length (the 词长构成 ring).
+    length_dist = {"two": 0, "three": 0, "four_plus": 0}
+    for _w, _c in counts:
+        L = len(_w)
+        length_dist["two" if L == 2 else "three" if L == 3 else "four_plus"] += 1
+    # When each *new* word first appeared in the window (a "翻日记" timeline).
+    _tl: Dict[str, list] = {}
+    for nw in new_words:
+        d = earliest.get(nw["word"])
+        if d:
+            _tl.setdefault(d, []).append(nw["word"])
+    new_word_timeline = [{"date": d, "count": len(ws), "words": ws[:10]}
+                         for d, ws in sorted(_tl.items())]
+    # Cumulative distinct words used over the window (the 词汇增长 curve). Only for
+    # bounded windows; "all" is skipped (the running union would be unbounded work).
+    vocab_growth = []
+    if d0 is not None:
+        con2 = db.connect()
+        try:
+            pairs = con2.execute(
+                "SELECT day, word FROM word_freq_daily "
+                "WHERE day>=? AND day<=? AND length(word)>=2 ORDER BY day",
+                (d0, d1 if d1 is not None else "9999-12-31")).fetchall()
+        finally:
+            con2.close()
+        seen, per_day = set(), {}
+        for day, w in pairs:
+            seen.add(w)
+            per_day[day] = len(seen)
+        vocab_growth = [{"date": d, "cumulative": per_day[d]} for d in sorted(per_day)]
     _p(72, "提取主题")
 
     with timed(f"stats.report_words.topics.{period}"):
@@ -1737,6 +1707,9 @@ def report_words(db, period: str, run_gap: float,
         "long_words": longwords,
         "pos": pos,
         "keywords": keywords,
+        "length_dist": length_dist,
+        "new_word_timeline": new_word_timeline,
+        "vocab_growth": vocab_growth,
     }
 
 
@@ -1952,18 +1925,22 @@ def mini_stats(db, session_gap: float = 60.0, daily_goal: int = 500) -> Dict:
         weighted += math.exp(-dt / TAU)
     speed_cpm = round(min(weighted / TAU * 60.0, 600.0), 1) if recent >= 2 else 0.0
     session_chars = 0
+    session_start = None
     if rows and (now - rows[0][0]) <= session_gap:
         session_chars = 1
-        prev = rows[0][0]
+        prev = session_start = rows[0][0]
         for (ts,) in rows[1:]:
             if prev - ts > session_gap:
                 break
             session_chars += 1
-            prev = ts
+            session_start = prev = ts
+    # elapsed since the session's first keystroke (0 when no live session)
+    session_seconds = int(now - session_start) if session_start is not None else 0
     goal_pct = (today / daily_goal) if daily_goal else 0.0
     return {
         "speed_cpm": speed_cpm,
         "session_chars": session_chars,
+        "session_seconds": session_seconds,
         "today_chars": today,
         "daily_goal": daily_goal,
         "goal_pct": round(min(goal_pct, 99.99), 4),

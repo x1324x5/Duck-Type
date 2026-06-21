@@ -30,7 +30,9 @@ pytest -q
 - 原生钩子（`native/ducktype_hook.cpp`）保持极简、零副作用——它会被注入到其它进程，
   任何阻塞或崩溃都会影响用户的其它程序。
 - 窗口类名 / 注册消息名在 C 与 Python 两侧必须一致
-  （当前为 `DuckTypeHostWindowV3` / `DuckType_CommittedChar_V3`）。
+  （当前为 `DuckTypeHostWindowV6` / `DuckType_CommittedChar_V6`）。改捕获逻辑时务必把
+  协议号整体 bump 一档（`native\ducktype_hook.cpp` 与 `capture\char_hook.py` 同步），
+  否则被宿主进程 pin 住的旧钩子 DLL 会与新实例抢着回传、导致升级后重复计数。
 
 ## 提交
 

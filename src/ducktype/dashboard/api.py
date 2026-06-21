@@ -25,7 +25,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from .. import autostart, updater
-from ..analysis import segment, stats
+from ..analysis import reporting, segment, stats
 from ..analysis.report_jobs import ReportJob
 from ..perf import timed
 from .relocate import Relocator
@@ -70,6 +70,8 @@ READ_ENDPOINTS = (
     "mini_stats",
     "richness",
     "contrib",
+    "usage",
+    "report_compare",
 )
 _READ_ENDPOINTS = frozenset(READ_ENDPOINTS)
 _STALE_CACHE_TTL = {
@@ -103,6 +105,7 @@ class Api:
         # objects and can freeze the app during startup.
         self._window = None
         self._window_maximized = False
+        self._hotkeys = None        # HotkeyManager, wired by app.set_hotkeys
         self._cache: dict = {}
         self._cache_rev = -1
         self._lexicons = None       # lazily-built LexiconStore (词库 subsystem)
@@ -116,6 +119,10 @@ class Api:
 
     def _set_window(self, window) -> None:
         self._window = window
+
+    def set_hotkeys(self, manager) -> None:
+        """Wire the global-hotkey manager so config_set can re-register live."""
+        self._hotkeys = manager
 
     # ---- helpers ---------------------------------------------------------
     def _bounds(self, p: dict):
@@ -231,6 +238,23 @@ class Api:
         except (TypeError, ValueError):
             days = 364
         return stats.contrib_calendar(self._db, days)
+
+    def _r_usage(self, p):
+        return reporting.dashboard_usage(self._db, int(p.get("days", 30)))
+
+    def _r_report_compare(self, p):
+        # ``a``/``b`` arrive as dicts over the native bridge, or as JSON strings
+        # over the dev HTTP shim (query params can't carry nested objects).
+        def _spec(v):
+            if isinstance(v, str):
+                try:
+                    return json.loads(v) or {}
+                except ValueError:
+                    return {}
+            return v or {}
+        return reporting.report_compare(
+            self._db, _spec(p.get("a")), _spec(p.get("b")),
+            self._config.run_gap_seconds, self._config.session_gap_seconds)
 
     def _r_timeseries(self, p):
         hours = p.get("hours")
@@ -413,11 +437,13 @@ class Api:
             counts = lexicon.scan_counts(self._db, matcher, since, rg, until)
             if not counts:
                 continue
-            top_word, top_count = max(counts.items(), key=lambda kv: kv[1])
+            ranked = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)
+            top_word, top_count = ranked[0]
             out.append({
                 "id": meta["id"], "name": meta["name"],
                 "total": sum(counts.values()), "distinct": len(counts),
                 "top_word": top_word, "top_count": top_count,
+                "top_words": [{"word": w, "count": c} for w, c in ranked[:8]],
             })
         out.sort(key=lambda r: r["total"], reverse=True)
         return {"lexicons": out}
@@ -547,7 +573,30 @@ class Api:
                 self._db.revision += 1
             except Exception:
                 pass
-        return {"ok": True, "restart_required": restart}
+        # These settings feed cached read endpoints (goal ring, efficiency,
+        # segmentation windows). Bump the revision so the cache invalidates and
+        # the change takes effect at once — no need to wait for the next commit.
+        if any(k in updates for k in
+               ("daily_goal", "run_gap_seconds", "session_gap_seconds", "retention_days")):
+            try:
+                self._db.revision += 1
+            except Exception:
+                pass
+        result = {"ok": True, "restart_required": restart}
+        if "mini_open_hotkey" in updates or "mini_close_hotkey" in updates:
+            # Re-register the global hotkeys immediately. The per-binding result
+            # tells the settings page whether the OS accepted each combo (False =
+            # already held by another app -> a conflict to surface).
+            if self._hotkeys is not None:
+                try:
+                    result["hotkeys"] = self._hotkeys.apply(
+                        self._config.mini_open_hotkey,
+                        self._config.mini_close_hotkey)
+                except Exception:
+                    log.exception("Re-registering hotkeys failed")
+            result["mini_open_hotkey"] = self._config.mini_open_hotkey
+            result["mini_close_hotkey"] = self._config.mini_close_hotkey
+        return result
 
     # ---- data management -------------------------------------------------
     def data_summary(self):
@@ -859,6 +908,49 @@ class Api:
         else:
             return {"ok": False, "error": "unknown format"}
         return self._save_dialog(f"ducktype_sequence_{stamp}.{fmt}", body, binary=True)
+
+    def save_png(self, name="chart.png", dataurl=""):
+        """Save a chart canvas (sent as a data: URL) via the native save dialog.
+
+        The dashboard's ⬇ buttons used an in-page ``<a download>`` click, which
+        WebView2 silently ignores for data: URLs -- so the buttons did nothing in
+        the native window. Decoding here and writing through ``_save_dialog`` gives
+        the same OS save dialog the data export already uses."""
+        import base64
+        try:
+            b64 = dataurl.split(",", 1)[1] if "," in dataurl else dataurl
+            data = base64.b64decode(b64)
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+        if not data:
+            return {"ok": False, "error": "empty image"}
+        return self._save_dialog(name or "ducktype_chart.png", data, binary=True)
+
+    def reveal_path(self, path=""):
+        """Open the OS file browser with ``path`` selected (or its folder open).
+
+        Backs the "下载完成" toast: clicking it reveals the saved file. On Windows
+        ``explorer /select,`` highlights the file; we fall back to opening the
+        containing directory if selection fails."""
+        import os
+        import subprocess
+        try:
+            path = os.path.normpath(str(path or ""))
+            if not path or not os.path.exists(path):
+                folder = os.path.dirname(path)
+                if folder and os.path.isdir(folder):
+                    os.startfile(folder)  # type: ignore[attr-defined]
+                    return {"ok": True}
+                return {"ok": False, "error": "path not found"}
+            if os.name == "nt":
+                # /select highlights the file in a new Explorer window.
+                subprocess.Popen(["explorer", "/select,", path])
+            else:
+                os.startfile(os.path.dirname(path) or path)  # type: ignore[attr-defined]
+            return {"ok": True}
+        except Exception as exc:
+            log.exception("reveal_path failed")
+            return {"ok": False, "error": str(exc)}
 
     def _open_dialog(self, file_types=None):
         """Native open-file dialog (webview). Returns {"path": <chosen or "">}."""

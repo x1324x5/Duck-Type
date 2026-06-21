@@ -83,13 +83,17 @@
     transform:translateY(-1px)}
   .topbtn svg{width:15px;height:15px}
   .content{min-width:0;display:flex;flex-direction:column}
-  .backtop{position:fixed;right:18px;bottom:18px;width:38px;height:38px;border-radius:10px;
+  .backtop{position:fixed;right:26px;bottom:26px;width:38px;height:38px;border-radius:10px;
     border:1px solid var(--line);background:var(--panel2);color:var(--fg);cursor:pointer;
     display:flex;align-items:center;justify-content:center;box-shadow:var(--shadow);z-index:90;
     opacity:0;pointer-events:none;transform:translateY(6px);
     transition:opacity .16s,transform .16s,background .15s,color .15s,border-color .15s}
-  .backtop.show{opacity:1;pointer-events:auto;transform:translateY(0)}
-  .backtop:hover{background:var(--accent);color:var(--ink);border-color:var(--accent)}
+  .backtop.show{opacity:.92;pointer-events:auto;transform:translateY(0)}
+  /* fade to a ghost when the cursor approaches (so it stops covering data) and
+     let clicks fall through; it firms back up only when truly hovered. */
+  .backtop.show.near{opacity:.16;pointer-events:none}
+  .backtop.show.over,.backtop.show:hover{opacity:1;background:var(--accent);color:var(--ink);
+    border-color:var(--accent);pointer-events:auto}
   .backtop svg{width:18px;height:18px}
   @media (max-width:700px){.app{grid-template-columns:1fr}.sidebar{height:auto;max-height:45vh;min-height:0;
       position:sticky;top:44px;border-right:0;border-bottom:1px solid var(--line)}
@@ -138,7 +142,8 @@
   a.ghbtn:hover{background:var(--accent);color:var(--ink);border-color:var(--accent);
     transform:translateY(-1px)}
   #since{color:var(--muted);font-size:12px;margin-left:auto}
-  main{padding:24px;max-width:1280px;width:100%;margin:0 auto;min-width:0}
+  main{padding:24px;max-width:1280px;width:100%;margin:0 auto;min-width:0;
+    display:flex;flex-direction:column;flex:1 0 auto}
   .view{display:none}.view.active{display:block}
   .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(138px,1fr));gap:16px;margin-bottom:24px}
   .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:17px 18px;
@@ -185,11 +190,15 @@
     transition:background .15s,color .15s,border-color .15s,transform .15s}
   .dlbtn:hover{background:var(--panel);border-color:var(--accent);color:var(--accent)}
   #heatmap{width:100%;overflow-x:auto;padding-bottom:2px}
-  table.heat{border-collapse:collapse;width:100%;min-width:560px;font-size:11px}
-  table.heat td{width:3.6%;padding:0}
-  table.heat .cell{height:18px;border-radius:3px;background:var(--cell-empty)}
-  table.heat th{color:var(--muted);font-weight:400;text-align:center;padding:2px}
-  table.heat td.dow{color:var(--muted);width:auto;padding-right:8px;text-align:right;white-space:nowrap}
+  /* CSS grid: a content-sized day-label column + 24 equal hour columns that fill
+     the panel exactly, so the hour labels sit over their columns and there is no
+     dead space on the left (an earlier fixed-table layout left a gap there). */
+  .heatgrid{display:grid;grid-template-columns:max-content repeat(24,minmax(0,1fr));
+    gap:3px;align-items:center;min-width:560px}
+  .heatgrid .hg-hour{color:var(--muted);font-size:11px;text-align:center;padding-bottom:2px}
+  .heatgrid .hg-dow{color:var(--muted);font-size:11px;text-align:right;
+    white-space:nowrap;padding-right:8px}
+  .heatgrid .hg-cell{height:18px;border-radius:3px;background:var(--cell-empty)}
   .topics{display:flex;flex-wrap:wrap;gap:10px;align-items:baseline}
   .topics .t{color:var(--accent);background:var(--panel2);padding:4px 10px;border-radius:20px;
     cursor:pointer;border:1px solid transparent;transition:border-color .15s,transform .15s,background .15s}
@@ -228,9 +237,16 @@
   .subhd{color:var(--fg);font-size:13px;font-weight:600;margin:12px 0 4px}
   .subhd span{color:var(--muted);font-weight:400;font-size:11px;margin-left:4px}
   .empty{color:var(--muted);font-size:13px;padding:8px 0}
-  .foot{color:var(--muted);font-size:12px;text-align:center;margin:30px 0 10px;
-    display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap}
-  .foot img{width:28px;height:28px;object-fit:contain}
+  /* status bar pinned to the bottom of the content column: margin-top:auto fills
+     the slack on tall/maximized windows so the lower area never reads as empty. */
+  .foot{color:var(--muted);font-size:12px;margin:30px 0 0;margin-top:auto;
+    padding:12px 4px 8px;border-top:1px solid var(--line);
+    display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap}
+  .foot img{width:24px;height:24px;object-fit:contain}
+  .foot .foot-sum{color:var(--fg);font-variant-numeric:tabular-nums}
+  .foot .foot-sum b{font-weight:700}
+  .foot .foot-sum:empty{display:none}
+  .foot .foot-note{opacity:.85}
   /* info tooltip */
   .info{display:inline-flex;width:16px;height:16px;border-radius:50%;border:1px solid var(--muted);
     color:var(--muted);font-size:11px;font-style:normal;align-items:center;justify-content:center;
@@ -259,9 +275,11 @@
   .banner code{background:var(--code-bg);padding:1px 6px;border-radius:5px}
   /* goal + streak */
   .goalrow{display:flex;gap:24px;align-items:center;flex-wrap:wrap}
-  .ring{width:120px;height:120px;border-radius:50%;display:flex;align-items:center;justify-content:center;
-    background:conic-gradient(var(--accent) calc(var(--p)*1%), var(--track) 0)}
-  .ring .inner{width:96px;height:96px;border-radius:50%;background:var(--ring-inner);
+  .ring{position:relative;width:120px;height:120px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center}
+  /* gradient fill layers injected by renderGoalRing (one per 100% loop) */
+  .ring .ring-layer{position:absolute;inset:0;border-radius:50%;transition:background .4s ease}
+  .ring .inner{position:relative;z-index:2;width:96px;height:96px;border-radius:50%;background:var(--ring-inner);
     display:flex;flex-direction:column;align-items:center;justify-content:center}
   .ring .inner b{font-size:22px} .ring .inner small{color:var(--muted);font-size:11px}
   .streaks{display:flex;gap:18px;flex-wrap:wrap}
@@ -306,7 +324,12 @@
   .toast .tbody{flex:1;min-width:0}
   .toast .ttag{color:var(--accent);font-size:11px;font-weight:600;letter-spacing:.04em}
   .toast .tname{font-weight:700;font-size:15px;margin:1px 0}
-  .toast .tdsc{color:var(--muted);font-size:12px}
+  .toast .tdsc{color:var(--muted);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .toast.toast-link{cursor:pointer}
+  /* clean-screenshot / presentation mode: hide transient chrome */
+  body.clean-shot #demoBar, body.clean-shot #toastHost{display:none !important}
+  .toast.toast-link:hover{border-color:var(--fg)}
+  .toast.toast-link:hover .tname{color:var(--accent)}
   .toast .tclose{pointer-events:auto;background:none;border:none;color:var(--muted);
     cursor:pointer;font-size:17px;line-height:1;padding:2px 4px;border-radius:6px}
   .toast .tclose:hover{color:var(--fg)}
@@ -314,6 +337,8 @@
   .chips{display:flex;flex-wrap:wrap;gap:8px}
   .chip{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:5px 10px;font-size:13px}
   .chip b{color:var(--accent);margin-left:6px;font-size:12px}
+  .chip.link{cursor:pointer;transition:border-color .15s,transform .15s,background .15s}
+  .chip.link:hover{border-color:var(--accent);transform:translateY(-1px);background:var(--panel)}
   /* sequence */
   .seq{display:flex;flex-direction:column;gap:8px;max-height:600px;overflow:auto}
   .run{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 12px}

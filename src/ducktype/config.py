@@ -5,7 +5,7 @@ import json
 import re
 import threading
 from dataclasses import asdict, dataclass, field
-from typing import List
+from typing import List, Optional
 
 from .paths import config_path
 
@@ -61,8 +61,10 @@ class Config:
     # (desktop.py) with no HTTP server. Kept only for the dev/preview server.
     dashboard_host: str = "127.0.0.1"
     dashboard_port: int = 8765
-    # Now means "show the native window on launch" (vs start hidden in the tray).
-    open_dashboard_on_start: bool = True
+    # "show the native window on launch" (vs start hidden in the tray). Defaults
+    # to False so DuckType starts silently in the tray; the settings page lets the
+    # user opt into auto-opening the dashboard.
+    open_dashboard_on_start: bool = False
     theme_mode: str = "system"  # system / light / dark
     ticker_refresh_seconds: int = 60
 
@@ -75,6 +77,17 @@ class Config:
     # the remaining slices' percentages be recomputed against the visible total?
     lexicon_recompute_on_exclude: bool = True
 
+    # pie/doughnut downloads: when saving any share pie as a PNG, include the
+    # exact percentage next to each legend entry. Off = swatch + label + count
+    # only (cleaner for sharing).
+    pie_download_include_pct: bool = True
+
+    # mini counter global hotkeys (Windows). A spec like "Ctrl+Alt+D"; empty
+    # string disables that binding. open = hide dashboard + show the floating
+    # gauge; close = return to the dashboard. Re-registered live on save.
+    mini_open_hotkey: str = ""
+    mini_close_hotkey: str = ""
+
     # startup
     autostart: bool = False
 
@@ -85,6 +98,8 @@ class Config:
         self.tracked_terms = _normalise_terms(self.tracked_terms)
         self.tracked_groups = _reconcile_groups(self.tracked_groups, self.tracked_terms)
         self.common_chars_extra = _normalise_chars(self.common_chars_extra)
+        self.mini_open_hotkey = _normalise_hotkey(self.mini_open_hotkey)
+        self.mini_close_hotkey = _normalise_hotkey(self.mini_close_hotkey)
         if self.theme_mode not in ("system", "light", "dark"):
             self.theme_mode = "system"
         self.ticker_refresh_seconds = _bounded_int(
@@ -124,6 +139,8 @@ class Config:
         "daily_goal", "dashboard_port", "open_dashboard_on_start", "autostart",
         "theme_mode", "ticker_refresh_seconds", "tracked_terms", "tracked_groups",
         "common_chars_extra", "lexicon_recompute_on_exclude",
+        "pie_download_include_pct",
+        "mini_open_hotkey", "mini_close_hotkey",
     )
     # Changing these takes effect only after a restart.
     RESTART_REQUIRED = ("dashboard_port",)
@@ -165,6 +182,8 @@ class Config:
                     value = _normalise_blacklist(value)
             elif isinstance(old, str):
                 value = str(value)
+            if key in ("mini_open_hotkey", "mini_close_hotkey"):
+                value = _normalise_hotkey(value)
             if key == "theme_mode" and value not in ("system", "light", "dark"):
                 value = "system"
             if key == "ticker_refresh_seconds":
@@ -266,6 +285,61 @@ def _reconcile_groups(groups, terms) -> List[str]:
     if len(groups) < n:
         groups = groups + [""] * (n - len(groups))
     return groups[:n]
+
+
+# Recognised hotkey tokens. Modifiers are order-normalised to Ctrl+Alt+Shift+Win;
+# the main key is a single letter/digit, F-key, or a few named keys. Anything we
+# don't recognise collapses to "" (disabled) so a bad spec can never crash the
+# registrar.
+_HOTKEY_MODS = {
+    "CTRL": "Ctrl", "CONTROL": "Ctrl", "CTL": "Ctrl",
+    "ALT": "Alt",
+    "SHIFT": "Shift",
+    "WIN": "Win", "WINDOWS": "Win", "META": "Win", "SUPER": "Win", "CMD": "Win",
+}
+_MOD_ORDER = ["Ctrl", "Alt", "Shift", "Win"]
+
+
+def _normalise_hotkey(value) -> str:
+    """Canonicalise a hotkey spec like 'alt+ctrl+d' -> 'Ctrl+Alt+D'. Returns ''
+    when empty or unparseable. Requires at least one modifier + a main key (a
+    bare letter would hijack normal typing)."""
+    if not isinstance(value, str):
+        return ""
+    parts = [p.strip() for p in value.replace("-", "+").split("+") if p.strip()]
+    if not parts:
+        return ""
+    mods, main = set(), None
+    for p in parts:
+        up = p.upper()
+        if up in _HOTKEY_MODS:
+            mods.add(_HOTKEY_MODS[up])
+            continue
+        key = _normalise_hotkey_main(up)
+        if key is None:
+            return ""        # unknown token -> reject whole spec
+        if main is not None:
+            return ""        # two non-modifier keys -> invalid
+        main = key
+    if main is None or not mods:
+        return ""
+    ordered = [m for m in _MOD_ORDER if m in mods]
+    return "+".join(ordered + [main])
+
+
+def _normalise_hotkey_main(up: str) -> Optional[str]:
+    if len(up) == 1 and (up.isalnum()):
+        return up
+    if up.startswith("F") and up[1:].isdigit() and 1 <= int(up[1:]) <= 24:
+        return up
+    named = {"SPACE": "Space", "ENTER": "Enter", "RETURN": "Enter",
+             "ESC": "Esc", "ESCAPE": "Esc", "TAB": "Tab",
+             "INSERT": "Insert", "INS": "Insert", "DELETE": "Delete",
+             "DEL": "Delete", "HOME": "Home", "END": "End",
+             "PAGEUP": "PageUp", "PAGEDOWN": "PageDown",
+             "UP": "Up", "DOWN": "Down", "LEFT": "Left", "RIGHT": "Right",
+             "BACKQUOTE": "`", "GRAVE": "`"}
+    return named.get(up)
 
 
 def _bounded_int(value, default: int, lower: int, upper: int) -> int:

@@ -316,7 +316,7 @@ def test_gamify_streak_and_goal(db, insert_chars):
     g = stats.gamify(db, daily_goal=4)
     assert g["streak_current"] == 3
     assert g["today_chars"] == 5
-    assert g["goal_pct"] == 1.0  # 5/4 capped at 1.0
+    assert g["goal_pct"] == 1.25  # 5/4, now uncapped up to 9999% for the ring
     assert any(a["id"] == "streak3" and a["unlocked"] for a in g["achievements"])
 
 

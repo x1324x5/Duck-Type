@@ -21,38 +21,100 @@ _mini = None
 _api = None
 _quitting = False
 _maximized = False
+_pending_maximize = False   # defer the first maximize when started hidden (silent start)
 _DEFAULT_W, _DEFAULT_H = 1180, 820
 # Mini counter window: starts compact (the full layout fits ~2/3 of the old size)
 # and can be drag-resized via the in-page corner grip (frameless windows have no
 # native resize border, so the frontend drives resize_mini()).
-_MINI_DEFAULT_W, _MINI_DEFAULT_H = 196, 214
+_MINI_DEFAULT_W, _MINI_DEFAULT_H = 196, 246
 _MINI_MIN_W, _MINI_MIN_H = 150, 154
-_MINI_MAX_W, _MINI_MAX_H = 360, 460
+_MINI_MAX_W, _MINI_MAX_H = 360, 480
+
+
+def _main_hwnd():
+    """HWND of the dashboard window, by its (unique) title, falling back to the
+    foreground window. WinForms sets ``Form.Text`` to the title even when the
+    window is frameless, so ``FindWindowW`` matches it reliably regardless of
+    which monitor it sits on."""
+    import ctypes
+    try:
+        hwnd = ctypes.windll.user32.FindWindowW(None, "码字鸭 · DuckType")
+        if hwnd:
+            return hwnd
+    except Exception:
+        pass
+    try:
+        return ctypes.windll.user32.GetForegroundWindow()
+    except Exception:
+        return 0
 
 
 def _work_area():
-    """Primary monitor work area (screen minus taskbar), in physical pixels.
+    """Work area (screen minus taskbar) of the monitor the dashboard is *currently
+    on*, in *logical* pixels.
 
-    pywebview's frameless ``maximize()`` is unreliable on the WebView2/WinForms
-    backend (a borderless form maximizes over the taskbar, or not at all), so we
-    size the window to the work area ourselves for a predictable "maximized"."""
+    Two things the old code got wrong on a multi-monitor / high-DPI setup:
+      1. ``SystemParametersInfoW(SPI_GETWORKAREA)`` only ever reports the *primary*
+         monitor — so "maximize" filled the laptop screen even when the window
+         had been dragged to the external display. We instead query the monitor
+         under the window via ``MonitorFromWindow`` + ``GetMonitorInfoW``.
+      2. ``move``/``resize`` take *logical* (CSS) pixels but the monitor rect is
+         *physical*; we divide by that monitor's DPI so it fills any screen at
+         any scaling.
+
+    pywebview's frameless ``maximize()`` is itself unreliable on the WebView2/
+    WinForms backend, which is why we size to the work area ourselves."""
     import ctypes
     from ctypes import wintypes
-    rect = wintypes.RECT()
-    # SPI_GETWORKAREA = 0x0030
-    ctypes.windll.user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(rect), 0)
-    return rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top
+
+    class _MONITORINFO(ctypes.Structure):
+        _fields_ = [("cbSize", wintypes.DWORD), ("rcMonitor", wintypes.RECT),
+                    ("rcWork", wintypes.RECT), ("dwFlags", wintypes.DWORD)]
+
+    user32 = ctypes.windll.user32
+    hwnd = _main_hwnd()
+    rect = None
+    scale = 1.0
+    try:
+        if hwnd:
+            # MONITOR_DEFAULTTONEAREST = 2
+            mon = user32.MonitorFromWindow(hwnd, 2)
+            info = _MONITORINFO()
+            info.cbSize = ctypes.sizeof(_MONITORINFO)
+            if mon and user32.GetMonitorInfoW(mon, ctypes.byref(info)):
+                rect = info.rcWork
+            dpi = user32.GetDpiForWindow(hwnd)
+            if dpi:
+                scale = dpi / 96.0
+    except Exception:
+        rect = None
+    if rect is None:
+        # Fallback: primary monitor work area (SPI_GETWORKAREA = 0x0030).
+        rect = wintypes.RECT()
+        user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(rect), 0)
+        try:
+            scale = (user32.GetDpiForSystem() or 96) / 96.0
+        except Exception:
+            scale = 1.0
+    scale = scale or 1.0
+    left = int(rect.left / scale)
+    top = int(rect.top / scale)
+    w = int((rect.right - rect.left) / scale)
+    h = int((rect.bottom - rect.top) / scale)
+    return left, top, w, h
 
 
 def maximize_main() -> bool:
-    """Fill the work area (our deterministic maximize). Safe to call repeatedly."""
+    """Fill the whole work area of the window's current monitor (our deterministic
+    maximize). Adapts to any screen size, DPI and multi-monitor layout; safe to
+    call repeatedly."""
     global _maximized
     if _window is None:
         return False
     try:
         left, top, w, h = _work_area()
-        _window.move(left, top)
         _window.resize(w, h)
+        _window.move(left, top)
         _maximized = True
     except Exception:
         log.exception("maximize_main failed")
@@ -82,6 +144,16 @@ def toggle_maximize() -> bool:
     else:
         maximize_main()
     return _maximized
+
+
+def _record_open(kind: str) -> None:
+    """Log one dashboard/mini opening for the usage-history panel. Best-effort:
+    never let a logging hiccup interfere with showing the window."""
+    try:
+        if _api is not None and getattr(_api, "_db", None) is not None:
+            _api._db.record_dashboard_open(kind)
+    except Exception:
+        log.debug("record_dashboard_open failed", exc_info=True)
 
 
 def _index_html() -> Path:
@@ -124,12 +196,25 @@ def run_window(api, hidden: bool = False) -> None:
     _window.events.closing += _on_closing
     # Open maximized: do it once the window is realized (the create-time
     # `maximized` flag is ignored for frameless WebView2 windows).
+    #
+    # When starting hidden (silent tray start) we must NOT touch the window's
+    # geometry: the `shown` event still fires while WebView2 initialises, and
+    # resizing/moving it then forces the still-empty window visible as a black
+    # flash (the bug where a silent start popped a black dashboard). Instead we
+    # defer the maximize to the first real open from the tray/hotkey.
+    global _pending_maximize
+    _pending_maximize = True
     def _maximize_on_show():
-        maximize_main()
-    try:
-        _window.events.shown += _maximize_on_show
-    except Exception:
-        pass
+        global _pending_maximize
+        if _pending_maximize:
+            maximize_main()
+            _pending_maximize = False
+        _record_open("dashboard")
+    if not hidden:
+        try:
+            _window.events.shown += _maximize_on_show
+        except Exception:
+            pass
     log.info("Native window loading %s", index)
     webview.start()                  # blocks; returns when the window is destroyed
 
@@ -146,15 +231,28 @@ def _on_closing():
     return False
 
 
-def show_window() -> None:
-    """Bring the window back from the tray (safe from any thread)."""
+def _restore_main_window() -> None:
+    """Show + restore the dashboard window (no usage logging). Used internally
+    when returning from the mini counter so it isn't counted as a fresh open."""
+    global _pending_maximize
     if _window is None:
         return
     try:
         _window.show()
         _window.restore()
+        # If we started hidden, the launch-time maximize was deferred so it
+        # wouldn't flash an empty window; apply it now on the first real open.
+        if _pending_maximize:
+            maximize_main()
+            _pending_maximize = False
     except Exception:
         pass
+
+
+def show_window() -> None:
+    """Bring the window back from the tray/hotkey (safe from any thread)."""
+    _record_open("dashboard")
+    _restore_main_window()
 
 
 def show_mini() -> None:
@@ -164,6 +262,7 @@ def show_mini() -> None:
     only the gauge view. Safe to call repeatedly (re-shows an existing mini)."""
     global _mini
     import webview
+    _record_open("mini")
     if _window is not None:
         try:
             _window.hide()
@@ -216,7 +315,7 @@ def _on_mini_closing():
     global _mini
     _mini = None
     try:
-        show_window()
+        _restore_main_window()
     except Exception:
         pass
     return True
@@ -232,7 +331,7 @@ def close_mini() -> None:
             m.destroy()
         except Exception:
             pass
-    show_window()
+    _restore_main_window()
 
 
 def quit_window() -> None:

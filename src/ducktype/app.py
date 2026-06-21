@@ -33,6 +33,7 @@ class App:
         self._key_hook = None
         self._tray = None
         self._purge_timer: threading.Timer | None = None
+        self._hotkeys = None
 
     # ---- status (for the dashboard health banner) -----------------------
     def get_status(self) -> dict:
@@ -139,10 +140,25 @@ class App:
         from . import desktop
         self._tray = TrayApp(self)
         self._tray.run_detached()
+        self._start_hotkeys(desktop)
         # blocks until quit_window(); start hidden only if the user opted out of
         # showing the window on launch.
         desktop.run_window(self.api, hidden=not self.config.open_dashboard_on_start)
         self.shutdown()
+
+    def _start_hotkeys(self, desktop) -> None:
+        """Register the mini-counter global hotkeys and let the Api re-apply them
+        when the user edits the bindings in settings."""
+        try:
+            from .hotkeys import HotkeyManager
+            self._hotkeys = HotkeyManager(
+                on_open=desktop.show_mini, on_close=desktop.close_mini)
+            self._hotkeys.start()
+            self._hotkeys.apply(self.config.mini_open_hotkey,
+                                self.config.mini_close_hotkey)
+            self.api.set_hotkeys(self._hotkeys)
+        except Exception:
+            log.exception("Failed to set up mini-counter hotkeys")
 
     def request_quit(self) -> None:
         """Quit (callable from any thread, e.g. tray menu or the update flow):
@@ -156,6 +172,11 @@ class App:
         log.info("Shutting down ...")
         if self._purge_timer is not None:
             self._purge_timer.cancel()
+        if self._hotkeys is not None:
+            try:
+                self._hotkeys.stop()
+            except Exception:
+                pass
         for obj in (self._char_hook, self._key_hook, self._tracker):
             try:
                 if obj is not None:

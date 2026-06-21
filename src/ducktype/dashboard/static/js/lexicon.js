@@ -52,7 +52,7 @@ async function loadLexiconStats(){
       <div class="lexstat-head">
         <h3>${escapeHtml(it.name)}</h3>
         <span class="lexstat-ctl" id="lexctl_${a}" hidden>
-          <span class="rankctl"><input type="range" class="lexN" data-id="${a}" min="5" max="30" step="1" value="${LEX_TOP_DEFAULT}"><b class="lexNv">${LEX_TOP_DEFAULT}</b></span>
+          <span class="rankctl"><input type="range" class="lexN" data-id="${a}" min="5" max="100" step="1" value="${LEX_TOP_DEFAULT}"><b class="lexNv">${LEX_TOP_DEFAULT}</b></span>
           <label class="lexother"><input type="checkbox" class="lexOther" data-id="${a}" checked> 显示其他</label>
           <button class="dlbtn" data-dl="lexchart_${a}" data-name="lex_${a}" title="保存为图片">⬇</button>
         </span>
@@ -68,7 +68,7 @@ async function loadLexiconStats(){
 }
 const LEX_TOP_DEFAULT = 10;
 async function loadOneLexStat(it){
-  const r = await DT.lexicon_stats(it.id, 50);
+  const r = await DT.lexicon_stats(it.id, 200);
   const stat = document.getElementById("lexstat_"+it.id);
   const body = document.getElementById("lexbody_"+it.id);
   const ctl = document.getElementById("lexctl_"+it.id);

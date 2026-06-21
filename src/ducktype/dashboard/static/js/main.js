@@ -136,6 +136,8 @@ function firstLoad(){
   DT.demo_status().then(r=>{ demoOn = !!(r && r.on); applyDemoUI(); }).catch(()=>{});
   refreshBoard();
   checkHealth();
+  // honour a #view=<name> deep link once the board has booted
+  try{ if(typeof selectViewByHash === "function") setTimeout(selectViewByHash, 60); }catch(e){}
 }
 function bootWhenReady(){
   // The native mini-counter window loads index.html#mini; mini.js renders the

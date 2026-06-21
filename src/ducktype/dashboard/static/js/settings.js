@@ -1,4 +1,4 @@
-const CFG_BOOL = ["paused","exclude_password_fields","autostart","open_dashboard_on_start","lexicon_recompute_on_exclude"];
+const CFG_BOOL = ["paused","exclude_password_fields","autostart","open_dashboard_on_start","lexicon_recompute_on_exclude","pie_download_include_pct"];
 const CFG_NUM = ["daily_goal","retention_days","run_gap_seconds","session_gap_seconds","dashboard_port","ticker_refresh_seconds"];
 async function loadSettings(){
   const c = await DT.config_get();
@@ -7,8 +7,57 @@ async function loadSettings(){
   setThemeMode(c.theme_mode || "system", true);
   tickerRefreshSeconds = Math.max(10, Number(c.ticker_refresh_seconds || 60));
   document.getElementById("c-blacklist_apps").value = (c.blacklist_apps||[]).join("\n");
+  document.getElementById("hk-open").value = c.mini_open_hotkey || "";
+  document.getElementById("hk-close").value = c.mini_close_hotkey || "";
+  hkMsgClear();
   loadDataSummary();
 }
+
+// ---- mini-counter global hotkey capture ----
+function hkMainKey(e){
+  const c = e.code || "";
+  if(/^Key[A-Z]$/.test(c)) return c.slice(3);
+  if(/^Digit[0-9]$/.test(c)) return c.slice(5);
+  if(/^F([1-9]|1[0-9]|2[0-4])$/.test(c)) return c;
+  const map = {Space:"Space",Enter:"Enter",NumpadEnter:"Enter",Escape:"Esc",Tab:"Tab",
+    Backquote:"`",ArrowUp:"Up",ArrowDown:"Down",ArrowLeft:"Left",ArrowRight:"Right",
+    Insert:"Insert",Delete:"Delete",Home:"Home",End:"End",PageUp:"PageUp",PageDown:"PageDown"};
+  return map[c] || null;
+}
+function hkFromEvent(e){
+  const mods = [];
+  if(e.ctrlKey) mods.push("Ctrl");
+  if(e.altKey) mods.push("Alt");
+  if(e.shiftKey) mods.push("Shift");
+  if(e.metaKey) mods.push("Win");
+  const main = hkMainKey(e);
+  if(!main || !mods.length) return null;
+  return [...mods, main].join("+");
+}
+function hkMsg(t, ok){ const el=document.getElementById("hkMsg"); if(!el) return;
+  el.textContent = t || ""; el.className = "hk-msg" + (ok===false?" err":(ok===true?" ok":"")); }
+function hkMsgClear(){ hkMsg("", null); }
+function hkValidate(){
+  const o = document.getElementById("hk-open").value, c = document.getElementById("hk-close").value;
+  if(o && c && o===c){ hkMsg("打开和关闭不能是同一个组合键。", false); return false; }
+  hkMsgClear(); return true;
+}
+["hk-open","hk-close"].forEach(id=>{
+  const inp = document.getElementById(id);
+  if(!inp) return;
+  inp.addEventListener("keydown", e=>{
+    e.preventDefault();
+    if(e.key === "Escape"){ inp.value=""; hkValidate(); scheduleAutoSave(); return; }
+    if(["Control","Alt","Shift","Meta"].includes(e.key)) return;   // wait for the main key
+    const spec = hkFromEvent(e);
+    if(spec){ inp.value = spec; if(hkValidate()) scheduleAutoSave(); }
+    else hkMsg("请同时按住 Ctrl / Alt / Shift / Win，再加一个键。", false);
+  });
+  inp.addEventListener("focus", ()=> hkMsg("按下想用的组合键…（Esc 清除）", null));
+});
+document.querySelectorAll(".hk-clear").forEach(b=> b.addEventListener("click", ()=>{
+  const inp = document.getElementById(b.dataset.clear); if(inp){ inp.value=""; hkValidate(); scheduleAutoSave(); }
+}));
 async function loadDataSummary(){
   const s = await DT.data_summary();
   const fmt = ts => ts ? new Date(ts*1000).toLocaleDateString() : "—";
@@ -198,20 +247,69 @@ async function doSearch(){
 }
 document.getElementById("searchBtn").addEventListener("click", doSearch);
 document.getElementById("searchInput").addEventListener("keydown", e=>{ if(e.key==="Enter") doSearch(); });
-document.getElementById("cfgSave").addEventListener("click", async ()=>{
+// Persist all settings in one shot. Called automatically whenever a control
+// changes (so the user never has to hunt for a save button), and also by the
+// explicit 保存设置 button. Returns the backend result (or null if blocked by
+// a hotkey-validation error).
+let __cfgSaving = false;
+async function saveSettings(){
+  if(!hkValidate()) return null;
   const body = {};
   CFG_BOOL.forEach(k=>body[k]=document.getElementById("c-"+k).checked);
   CFG_NUM.forEach(k=>body[k]=Number(document.getElementById("c-"+k).value));
   body.theme_mode = themeMode;
   body.blacklist_apps = document.getElementById("c-blacklist_apps").value.split("\n").map(s=>s.trim()).filter(Boolean);
-  const res = await DT.config_set(body);
+  body.mini_open_hotkey = document.getElementById("hk-open").value;
+  body.mini_close_hotkey = document.getElementById("hk-close").value;
+  __cfgSaving = true;
+  let res;
+  try{ res = await DT.config_set(body); }
+  finally{ __cfgSaving = false; }
   window.__lexRecompute = body.lexicon_recompute_on_exclude !== false;
+  window.__pieIncludePct = body.pie_download_include_pct !== false;
   tickerRefreshSeconds = Math.max(10, Number(body.ticker_refresh_seconds || 60));
   resetTickerTimer();
+  // Reflect the canonicalised hotkeys + surface any OS conflict reported by the
+  // live re-registration (false = the combo is already held by another app).
+  if(res.mini_open_hotkey !== undefined) document.getElementById("hk-open").value = res.mini_open_hotkey;
+  if(res.mini_close_hotkey !== undefined) document.getElementById("hk-close").value = res.mini_close_hotkey;
+  if(res.hotkeys){
+    const bad = [];
+    if(res.hotkeys.open === false) bad.push("打开");
+    if(res.hotkeys.close === false) bad.push("关闭");
+    if(bad.length) hkMsg(`「${bad.join("、")}」热键已被其它程序占用，未能生效，请换一个组合。`, false);
+    else if(document.getElementById("hk-open").value || document.getElementById("hk-close").value) hkMsg("热键已生效。", true);
+    else hkMsgClear();
+  }
   const saved = document.getElementById("cfgSaved");
   saved.textContent = res.restart_required ? "已保存（部分改动需重启）✓" : "已保存 ✓";
   saved.style.display = "inline"; setTimeout(()=>saved.style.display="none", 3000);
-});
+  // The goal ring / efficiency reads depend on daily_goal & gap settings; refresh
+  // them now so a changed daily goal takes effect immediately, not after a delay.
+  if(typeof loadGamify === "function"){ try{ loadGamify(); }catch(e){} }
+  return res;
+}
+let __cfgSaveTimer = null;
+function scheduleAutoSave(){ clearTimeout(__cfgSaveTimer); __cfgSaveTimer = setTimeout(saveSettings, 450); }
+document.getElementById("cfgSave").addEventListener("click", saveSettings);
+// ---- auto-save: write on every change, no need to scroll to a save button ----
+const __cfgForm = document.getElementById("cfgForm");
+if(__cfgForm){
+  // checkboxes / number inputs commit on change (blur/enter); save right away
+  __cfgForm.addEventListener("change", e=>{
+    if(e.target.closest(".hotkey-input")) return;   // hotkeys persist via their own handler
+    saveSettings();
+  });
+  // live-typed numbers / blacklist text: debounce so it saves shortly after the
+  // last keystroke (so e.g. typing a new daily goal writes without leaving the field)
+  __cfgForm.addEventListener("input", e=>{
+    if(e.target.matches('input[type="number"], textarea')) scheduleAutoSave();
+  });
+}
+// theme segmented buttons live in the form but change via click (core.js sets
+// themeMode first); persist after that runs.
+const __themeSeg = document.getElementById("themeMode");
+if(__themeSeg) __themeSeg.addEventListener("click", e=>{ if(e.target.dataset.themeMode) scheduleAutoSave(); });
 document.getElementById("clearAll").addEventListener("click", async ()=>{
   if(!confirm("确定清空全部已记录数据？此操作不可恢复。")) return;
   const r = await DT.data_clear();
