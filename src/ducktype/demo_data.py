@@ -18,10 +18,16 @@ from .storage import Database
 # Plausible host applications for a Chinese writer's day.
 _APPS = ["WeChat.exe", "Code.exe", "WINWORD.EXE", "Obsidian.exe", "msedge.exe", "Notepad.exe"]
 
+# The 关注词 (tracked terms) shown in demo mode. These appear verbatim in the
+# corpus below, so the 词库 page's 关注词 pie and the 关注词 search page both have
+# data even though the user hasn't configured any real tracked terms.
+DEMO_TRACKED_TERMS = ["码字鸭", "晨光计划", "张小满"]
+
 # Short fragments sampled into "runs". Deliberately reuse common words (今天 /
-# 我们 / 项目 / 记录…) so the frequency panels look alive, and sprinkle in a name
+# 我们 / 项目 / 记录…) so the frequency panels look alive, sprinkle in a name
 # (张小满) and project codenames (码字鸭 / 晨光计划) so 关注词 and 主题 have
-# something to show.
+# something to show, and weave in a handful of real 成语 (画龙点睛 / 水到渠成 …)
+# so the 词库 page's 成语 pie matches the built-in idiom dictionary.
 _CORPUS = [
     "今天的进度比预期顺利",
     "我们把这个想法记录下来",
@@ -53,6 +59,16 @@ _CORPUS = [
     "把今天的结论先记在文档开头",
     "这次的修改比上次干净很多",
     "傍晚的思路往往更发散一些",
+    "好的结尾常常需要画龙点睛的一笔",
+    "准备得足够充分自然水到渠成",
+    "这段开场白我反复字斟句酌",
+    "趁着思路顺畅一气呵成写完初稿",
+    "解释得太多反而画蛇添足",
+    "把每一处细节都精益求精",
+    "学东西要循序渐进急不得",
+    "灵感都是日积月累攒出来的",
+    "晨光计划的总结也要字斟句酌",
+    "码字鸭的报告让进步日积月累看得见",
 ]
 
 # Hour-of-day weights: light overnight, busy morning and evening.

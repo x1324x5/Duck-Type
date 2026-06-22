@@ -291,12 +291,22 @@ class Api:
         return stats.search(self._db, p.get("q", ""), since,
                             self._config.run_gap_seconds, until)
 
+    def _tracked_terms(self):
+        """The 关注词 word set. In demo mode the user's real tracked terms would
+        never match the throwaway sample corpus, so substitute the demo terms
+        (which do appear in it) -- this is what gives the 关注词 pie + search page
+        data while 演示模式 is on."""
+        if self._demo:
+            from .. import demo_data
+            return list(demo_data.DEMO_TRACKED_TERMS)
+        return list(self._config.tracked_terms)
+
     def _r_tracked(self, p):
         since, until = self._bounds(p)
         terms = p.get("terms")
         groups = None
         if terms is None:
-            terms = list(self._config.tracked_terms)
+            terms = self._tracked_terms()
             groups = list(self._config.tracked_groups)
         elif isinstance(terms, str):
             terms = [t.strip() for t in terms.replace("\n", ",").split(",") if t.strip()]
@@ -758,7 +768,7 @@ class Api:
             # Plug the 关注词 / 生僻字 systems into 词库 as derived built-in
             # lexicons so they get the same share pie + click-to-search.
             store.register_provider(
-                "tracked", "关注词", lambda: list(self._config.tracked_terms))
+                "tracked", "关注词", self._tracked_terms)
             store.register_provider("rare", "生僻字", self._rare_chars)
             # The built-in 常用字 filter table, viewable in the 查看/编辑 modal.
             # Default OFF: it is a reference/filter, not something to count by
