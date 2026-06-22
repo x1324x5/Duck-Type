@@ -25,7 +25,7 @@ def main() -> int:
         browser = p.chromium.launch()
         ctx = browser.new_context(
             viewport={"width": 1366, "height": 900},
-            device_scale_factor=1,  # match the existing 1366-wide screenshots
+            device_scale_factor=2,  # 2x so text stays crisp when zoomed
         )
         page = ctx.new_page()
 
