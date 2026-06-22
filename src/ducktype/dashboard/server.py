@@ -226,6 +226,17 @@ def create_app(db, config, status_fn=None, on_quit=None) -> Flask:
                         headers={"Content-Disposition":
                                  f'attachment; filename="ducktype_sequence_{stamp}.{fmt}"'})
 
+    # ---- report markdown export (browser variant streams the file) -----
+    @app.route("/api/export/report.md")
+    def api_export_report_md():
+        period = request.args.get("period", "week")
+        md = api._build_report_md(period, request.args.get("start"),
+                                  request.args.get("end"))
+        stamp = datetime.now().strftime("%Y%m%d")
+        return Response(md, mimetype="text/markdown",
+                        headers={"Content-Disposition":
+                                 f'attachment; filename="ducktype_report_{period}_{stamp}.md"'})
+
     # ---- generic read passthrough (overview/top_chars/board/...) -------
     @app.route("/api/<endpoint>")
     def api_read(endpoint):

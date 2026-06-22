@@ -1,9 +1,12 @@
-const CFG_BOOL = ["paused","exclude_password_fields","autostart","open_dashboard_on_start","lexicon_recompute_on_exclude","pie_download_include_pct"];
-const CFG_NUM = ["daily_goal","retention_days","run_gap_seconds","session_gap_seconds","dashboard_port","ticker_refresh_seconds"];
+const CFG_BOOL = ["paused","exclude_password_fields","autostart","open_dashboard_on_start","lexicon_recompute_on_exclude","pie_download_include_pct","notify_enabled"];
+const CFG_NUM = ["daily_goal","weekly_goal","monthly_goal","retention_days","run_gap_seconds","session_gap_seconds","dashboard_port","ticker_refresh_seconds"];
 async function loadSettings(){
   const c = await DT.config_get();
   CFG_BOOL.forEach(k=>document.getElementById("c-"+k).checked = !!c[k]);
   CFG_NUM.forEach(k=>document.getElementById("c-"+k).value = c[k]);
+  // surface the *real* registry state next to the autostart toggle so the user
+  // can confirm it actually took effect (the config flag vs. what's registered)
+  updateAutostartNote(c);
   setThemeMode(c.theme_mode || "system", true);
   tickerRefreshSeconds = Math.max(10, Number(c.ticker_refresh_seconds || 60));
   document.getElementById("c-blacklist_apps").value = (c.blacklist_apps||[]).join("\n");
@@ -11,6 +14,19 @@ async function loadSettings(){
   document.getElementById("hk-close").value = c.mini_close_hotkey || "";
   hkMsgClear();
   loadDataSummary();
+}
+function updateAutostartNote(c){
+  const item = document.getElementById("c-autostart");
+  if(!item) return;
+  const desc = item.closest(".setting-item").querySelector(".setting-desc");
+  if(!desc) return;
+  const base = "登录 Windows 后自动启动 DuckType。";
+  if(c.autostart && c.autostart_effective===false)
+    desc.innerHTML = base + ' <b style="color:var(--warn,#e0a000)">⚠ 已开启，但注册表中未检测到，将在下次启动自动修复。</b>';
+  else if(c.autostart && c.autostart_effective)
+    desc.innerHTML = base + ' <span style="color:var(--ok,#36d399)">✓ 已在系统注册，重启后会自动运行。</span>';
+  else
+    desc.innerHTML = base;
 }
 
 // ---- mini-counter global hotkey capture ----
@@ -287,6 +303,8 @@ async function saveSettings(){
   // The goal ring / efficiency reads depend on daily_goal & gap settings; refresh
   // them now so a changed daily goal takes effect immediately, not after a delay.
   if(typeof loadGamify === "function"){ try{ loadGamify(); }catch(e){} }
+  // refresh the autostart "actually registered?" note after a save
+  try{ DT.config_get().then(updateAutostartNote).catch(()=>{}); }catch(e){}
   return res;
 }
 let __cfgSaveTimer = null;

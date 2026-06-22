@@ -45,6 +45,16 @@ class Config:
 
     # gamification: per-day character goal used by the goal ring / streak.
     daily_goal: int = 500
+    # weekly / monthly character goals for the extra progress rings. 0 means
+    # "derive from daily_goal" (daily*7 for the week, daily*days-in-month for the
+    # month) so a user who only sets a daily goal still gets sensible rings.
+    weekly_goal: int = 0
+    monthly_goal: int = 0
+
+    # notifications: fire a Windows tray balloon when a milestone is reached
+    # (achievement unlocked / daily goal met / cumulative milestone crossed).
+    # Off = stay completely silent in the tray.
+    notify_enabled: bool = True
 
     # tracked terms: user-picked characters/words/names that jieba would not
     # segment on its own (e.g. personal names, project codenames). The dashboard
@@ -136,7 +146,8 @@ class Config:
     EDITABLE = (
         "paused", "exclude_password_fields", "blacklist_apps",
         "run_gap_seconds", "session_gap_seconds", "retention_days",
-        "daily_goal", "dashboard_port", "open_dashboard_on_start", "autostart",
+        "daily_goal", "weekly_goal", "monthly_goal", "notify_enabled",
+        "dashboard_port", "open_dashboard_on_start", "autostart",
         "theme_mode", "ticker_refresh_seconds", "tracked_terms", "tracked_groups",
         "common_chars_extra", "lexicon_recompute_on_exclude",
         "pie_download_include_pct",

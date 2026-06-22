@@ -61,6 +61,13 @@ class TrayApp:
         # the app shuts down. App.request_quit drives that; just stop the icon.
         self.app.request_quit()
 
+    def notify(self, title: str, message: str) -> None:
+        """Show a Windows tray balloon (used for milestone notifications)."""
+        try:
+            self._icon.notify(message, title)
+        except Exception:
+            pass
+
     def stop_icon(self) -> None:
         """Remove the tray icon (does not shut the app down)."""
         try:

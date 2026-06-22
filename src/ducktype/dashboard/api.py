@@ -72,6 +72,8 @@ READ_ENDPOINTS = (
     "contrib",
     "usage",
     "report_compare",
+    "records",
+    "day",
 )
 _READ_ENDPOINTS = frozenset(READ_ENDPOINTS)
 _STALE_CACHE_TTL = {
@@ -331,7 +333,19 @@ class Api:
         return stats.fun_rankings(self._db, since, self._config.run_gap_seconds, until)
 
     def _r_gamify(self, p):
-        return stats.gamify(self._db, self._config.daily_goal)
+        return stats.gamify(self._db, self._config.daily_goal,
+                            self._config.weekly_goal, self._config.monthly_goal)
+
+    def _r_records(self, p):
+        return reporting.records(self._db, self._config.run_gap_seconds,
+                                 self._config.session_gap_seconds)
+
+    def _r_day(self, p):
+        day = (p.get("day") or "").strip()
+        if not day:
+            day = datetime.now().strftime("%Y-%m-%d")
+        return reporting.day_detail(self._db, day, self._config.run_gap_seconds,
+                                    self._config.session_gap_seconds)
 
     def _r_ticker(self, p):
         return stats.ticker(self._db, self._config.run_gap_seconds,
@@ -546,6 +560,12 @@ class Api:
         data = {k: v for k, v in asdict(self._config).items() if not k.startswith("_")}
         data["editable"] = list(self._config.EDITABLE)
         data["restart_required"] = list(self._config.RESTART_REQUIRED)
+        # The *actual* registry Run-key state, so the settings page can confirm
+        # autostart really took effect (vs just the saved preference).
+        try:
+            data["autostart_effective"] = autostart.is_enabled()
+        except Exception:
+            data["autostart_effective"] = data.get("autostart", False)
         return data
 
     def config_set(self, updates: Optional[dict] = None):
@@ -577,7 +597,8 @@ class Api:
         # segmentation windows). Bump the revision so the cache invalidates and
         # the change takes effect at once — no need to wait for the next commit.
         if any(k in updates for k in
-               ("daily_goal", "run_gap_seconds", "session_gap_seconds", "retention_days")):
+               ("daily_goal", "weekly_goal", "monthly_goal",
+                "run_gap_seconds", "session_gap_seconds", "retention_days")):
             try:
                 self._db.revision += 1
             except Exception:
@@ -908,6 +929,66 @@ class Api:
         else:
             return {"ok": False, "error": "unknown format"}
         return self._save_dialog(f"ducktype_sequence_{stamp}.{fmt}", body, binary=True)
+
+    def export_report_md(self, period="week", start=None, end=None):
+        """Export the current report as a Markdown file (for pasting into a blog,
+        Notion, weekly notes, etc.) via the native save dialog."""
+        try:
+            md = self._build_report_md(period, start, end)
+        except Exception as exc:
+            log.exception("build report markdown failed")
+            return {"ok": False, "error": str(exc)}
+        stamp = datetime.now().strftime("%Y%m%d")
+        return self._save_dialog(f"ducktype_report_{period}_{stamp}.md",
+                                 md.encode("utf-8"), binary=True)
+
+    def _build_report_md(self, period, start, end) -> str:
+        rg, sg = self._config.run_gap_seconds, self._config.session_gap_seconds
+        fast = stats.report_fast(self._db, period, rg, sg, start, end)
+        if period == "custom":
+            since, until = stats.resolve_range("custom", start, end)
+        else:
+            since, until, _ps, _pe, _lbl = stats.report_bounds(period)
+        top_chars = stats.top_chars(self._db, since, 15, until)
+        top_words = stats.top_words(self._db, since, 15, rg, until)
+        L = ["# DuckType · " + (fast.get("label") or "码字报告"), ""]
+        if fast.get("narrative"):
+            L += ["> " + fast["narrative"], ""]
+        L += ["## 概览", ""]
+        rows = [("上屏汉字", f"{fast.get('chars', 0):,} 字")]
+        if fast.get("distinct_chars"):
+            rows.append(("不同汉字", f"{fast['distinct_chars']:,} 个"))
+        if fast.get("delta_pct") is not None:
+            d = fast["delta_pct"]
+            rows.append(("较上一周期", f"{'+' if d >= 0 else ''}{d}%"))
+        if fast.get("active_days"):
+            rows.append(("活跃天数", f"{fast['active_days']} 天"))
+        pw = fast.get("peak_window")
+        if pw:
+            rows.append(("高产时段", f"{pw[2]} {pw[0]:02d}:00–{pw[1]:02d}:00"))
+        if fast.get("top_app"):
+            rows.append(("主力应用", f"{fast['top_app']} · {fast.get('top_app_share', 0)}%"))
+        if fast.get("best_day"):
+            rows.append(("最高产日", f"{fast['best_day']} · {fast.get('best_day_count', 0)} 字"))
+        if fast.get("longest_session_min"):
+            rows.append(("最长连续输入", f"{fast['longest_session_min']} 分钟"))
+        L += ["| 指标 | 数值 |", "| --- | --- |"]
+        L += [f"| {k} | {v} |" for k, v in rows]
+        L.append("")
+        insights = fast.get("insights") or []
+        if insights:
+            L += ["## 行为洞察", ""]
+            for it in insights:
+                L.append(f"- **{it.get('title', '洞察')}**：{it.get('body', '')}")
+            L.append("")
+        if top_words:
+            L += ["## 高频词", ""]
+            L += [f"{i + 1}. {w} （{c}）" for i, (w, c) in enumerate(top_words)]
+            L.append("")
+        if top_chars:
+            L += ["## 高频字", "", "".join(c for c, _k in top_chars), ""]
+        L += ["---", "", "由 DuckType · 码字鸭 生成 · 仅统计输入法真正上屏的中文汉字。"]
+        return "\n".join(L)
 
     def save_png(self, name="chart.png", dataurl=""):
         """Save a chart canvas (sent as a data: URL) via the native save dialog.

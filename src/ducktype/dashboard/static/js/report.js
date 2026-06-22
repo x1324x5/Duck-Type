@@ -77,6 +77,9 @@ async function loadReport(params){
     const cardDlLong = document.getElementById("cardDlLong");
     cardDlLong.removeAttribute("href");
     cardDlLong.onclick = (e)=>{ e.preventDefault(); DT.save_card(period, "long").then(notifyDownload).catch(()=>{}); };
+    const cardMd = document.getElementById("cardDlMd");
+    if(cardMd) cardMd.onclick = (e)=>{ e.preventDefault();
+      DT.export_report_md(period, params.start, params.end).then(notifyDownload).catch(()=>{}); };
   }
   let fast;
   try{ fast = await apiGet("report_fast", params); }

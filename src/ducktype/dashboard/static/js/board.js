@@ -41,13 +41,17 @@ document.getElementById("tabs").addEventListener("click", e=>{
   const v = tab && tab.dataset.v; if(!v) return;
   document.querySelectorAll("#tabs button").forEach(b=>b.classList.toggle("active", b.dataset.v===v));
   document.querySelectorAll(".view").forEach(s=>s.classList.toggle("active", s.id==="view-"+v));
-  document.getElementById("rangebar").style.display = (v==="settings"||v==="report") ? "none" : "flex";
+  // 回顾(day) / 记录(records) / 设置 / 报告 have their own controls -> hide the shared range bar
+  document.getElementById("rangebar").style.display =
+    (v==="settings"||v==="report"||v==="day"||v==="records") ? "none" : "flex";
   scrollToTop(false);
   if(v==="settings") loadSettings();
   else if(v==="sequence"){ seqResetFilters(); loadSequence(); }  // entering the view restores all apps + keyword
   else if(v==="fun") loadFun();
   else if(v==="lexicon") loadLexicon();
   else if(v==="report") loadReportCurrent();
+  else if(v==="day"){ if(typeof loadDayView==="function") loadDayView(); }
+  else if(v==="records"){ if(typeof loadRecords==="function") loadRecords(); }
   else if(v==="search"){ loadTracked(); document.getElementById("searchInput").focus(); }
 });
 // Deep-link a view via #view=<name> (e.g. #view=report) so a tab can open directly
@@ -112,6 +116,8 @@ function refreshActive(){
   else if(v==="fun") loadFun();
   else if(v==="lexicon") loadLexicon();
   else if(v==="report") loadReportCurrent();
+  else if(v==="day"){ if(typeof loadDayView==="function") loadDayView(); }
+  else if(v==="records"){ if(typeof loadRecords==="function") loadRecords(); }
   else if(v==="search"){ loadTracked(); if(document.getElementById("searchInput").value.trim()) doSearch(); }
 }
 
@@ -420,8 +426,8 @@ function _loopGrad(i){
 // Render the goal ring as a directional gradient that fills clockwise, then
 // refills in the next hue past 100% (supports up to 9999%). loops = whole goals
 // met; the partial arc of the current loop sits on top with a bright leading head.
-function renderGoalRing(pct){
-  const ring = document.getElementById("goalRing");
+function renderGoalRing(pct, ringId){
+  const ring = document.getElementById(ringId || "goalRing");
   if(!ring) return;
   pct = Math.max(0, Math.min(99.99, pct || 0));
   const loops = Math.floor(pct), frac = pct - loops;
@@ -452,8 +458,19 @@ function renderGoalRing(pct){
 }
 function renderGamify(g){
   window.__gamify = g;
-  renderGoalRing(g.goal_pct);
+  renderGoalRing(g.goal_pct, "goalRing");
   document.getElementById("goalPct").textContent = (g.goal_pct*100).toFixed(0) + "%";
+  const cap = (id, cur, goal)=>{ const e=document.getElementById(id);
+    if(e) e.textContent = (cur||0).toLocaleString() + " / " + (goal||0).toLocaleString() + " 字"; };
+  cap("goalCap", g.today_chars, g.daily_goal);
+  if(g.week_goal_pct!==undefined){
+    renderGoalRing(g.week_goal_pct, "weekRing");
+    document.getElementById("weekPct").textContent = (g.week_goal_pct*100).toFixed(0) + "%";
+    cap("weekCap", g.week_chars, g.weekly_goal);
+    renderGoalRing(g.month_goal_pct, "monthRing");
+    document.getElementById("monthPct").textContent = (g.month_goal_pct*100).toFixed(0) + "%";
+    cap("monthCap", g.month_chars, g.monthly_goal);
+  }
   document.getElementById("streakCur").textContent = g.streak_current;
   document.getElementById("streakBest").textContent = g.streak_best;
   document.getElementById("gTotal").textContent = (g.total_chars||0).toLocaleString();
@@ -462,7 +479,26 @@ function renderGamify(g){
   if(top){ top.style.display = ""; top.textContent = "已解锁 " + g.unlocked + " / " + g.achievements.length; }
   maybeToast(g.achievements);
   renderAchievements(g.achievements);
+  maybeShowGuide(g.total_chars||0);
 }
+// First-run onboarding card: shown only when there is essentially no real data
+// yet (and the user hasn't dismissed it, and we're not in demo mode).
+function maybeShowGuide(total){
+  const el = document.getElementById("boardGuide");
+  if(!el) return;
+  let dismissed = false;
+  try{ dismissed = localStorage.getItem("dt-guide-dismissed")==="1"; }catch(e){}
+  el.hidden = !(total < 50 && !demoOn && !dismissed);
+}
+(function wireGuide(){
+  const close = document.getElementById("guideClose");
+  if(close) close.addEventListener("click", ()=>{
+    try{ localStorage.setItem("dt-guide-dismissed","1"); }catch(e){}
+    const el = document.getElementById("boardGuide"); if(el) el.hidden = true;
+  });
+  const demo = document.getElementById("guideDemo");
+  if(demo) demo.addEventListener("click", e=>{ e.preventDefault(); setDemo(true); });
+})();
 function achDate(ts){
   if(!ts) return "";
   const d = new Date(ts*1000);

@@ -11,6 +11,7 @@
 <link rel="stylesheet" href="css/settings.css" />
 <link rel="stylesheet" href="css/mini.css" />
 <link rel="stylesheet" href="css/v028.css" />
+<link rel="stylesheet" href="css/v029.css" />
 </head>
 <body>
 <div class="titlebar">
@@ -45,10 +46,12 @@
   <aside class="sidebar">
     <nav class="tabs" id="tabs">
       <button data-v="board" class="active"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5"/><path d="M4 19h16"/><path d="M8 16v-5"/><path d="M13 16V8"/><path d="M18 16v-3"/></svg></span>看板</button>
+      <button data-v="day"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18"/><path d="M8 2v4"/><path d="M16 2v4"/><path d="M12 13v4"/><path d="M9.5 15h5"/></svg></span>回顾</button>
       <button data-v="report"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v5h5"/><path d="M9 13h6"/><path d="M9 17h6"/></svg></span>报告</button>
       <button data-v="sequence"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></svg></span>序列</button>
       <button data-v="search"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg></span>搜索</button>
       <button data-v="fun"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 11h12a4 4 0 0 1 4 4v1a3 3 0 0 1-5.2 2.05L15 16H9l-1.8 2.05A3 3 0 0 1 2 16v-1a4 4 0 0 1 4-4z"/><path d="M8 14h.01"/><path d="M11 14h.01"/><path d="M16 14h.01"/><path d="M18 16h.01"/><path d="M9 11V8"/><path d="M15 11V8"/></svg></span>趣味</button>
+      <button data-v="records"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 21h8"/><path d="M12 17v4"/><path d="M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M7 5H4v2a3 3 0 0 0 3 3"/><path d="M17 5h3v2a3 3 0 0 1-3 3"/></svg></span>记录</button>
       <button data-v="lexicon"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M19 17H6a2 2 0 0 0-2 2"/><path d="M9 7h6"/><path d="M9 11h4"/></svg></span>词库</button>
       <button data-v="settings"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.05.05a2 2 0 1 1-2.83 2.83l-.05-.05a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.07A1.7 1.7 0 0 0 8.97 19.4a1.7 1.7 0 0 0-1.88.34l-.05.05a2 2 0 1 1-2.83-2.83l.05-.05A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.07A1.7 1.7 0 0 0 4.6 8.97a1.7 1.7 0 0 0-.34-1.88l-.05-.05a2 2 0 1 1 2.83-2.83l.05.05A1.7 1.7 0 0 0 8.97 4.6 1.7 1.7 0 0 0 10 3.07V3a2 2 0 1 1 4 0v.07a1.7 1.7 0 0 0 1.03 1.53 1.7 1.7 0 0 0 1.88-.34l.05-.05a2 2 0 1 1 2.83 2.83l-.05.05a1.7 1.7 0 0 0-.34 1.88 1.7 1.7 0 0 0 1.56 1.03H21a2 2 0 1 1 0 4h-.07A1.7 1.7 0 0 0 19.4 15z"/></svg></span>设置</button>
     </nav>
@@ -101,6 +104,20 @@
 
   <!-- ======================= BOARD ======================= -->
   <section class="view active" id="view-board">
+    <div class="guidecard" id="boardGuide" hidden>
+      <img class="guide-duck" src="duck.png" alt="" onerror="this.style.display='none'">
+      <div class="guide-body">
+        <h3>欢迎用码字鸭 🦆</h3>
+        <p>这里还很空——因为它只统计你通过<b>输入法真正上屏的中文汉字</b>，拼音、英文、数字都不算。安静写一会儿，下面的曲线、词频和热力图就会长出来。</p>
+        <ul class="guide-steps">
+          <li><span>1</span>让小鸭留在托盘里，正常用中文打字就行。</li>
+          <li><span>2</span>想随时瞄一眼速度？点左下角「随身鸭」开个悬浮小窗。</li>
+          <li><span>3</span>想先看看长什么样？<a href="#" id="guideDemo">加载一份演示数据</a> 预览全部功能。</li>
+          <li><span>4</span>在「设置」里可设每日 / 每周 / 每月目标、开机自启与里程碑通知。</li>
+        </ul>
+      </div>
+      <button class="guide-close" id="guideClose" title="不再显示" aria-label="关闭">✕</button>
+    </div>
     <div class="boardbar" id="boardBar">
       <span class="boardbar-hint">看板 · 可折叠、拖动排序、隐藏面板</span>
       <div class="boardbar-actions">
@@ -113,9 +130,22 @@
 
     <div class="grid">
       <div class="panel wide">
-        <h2>今日目标与连续打卡</h2>
+        <h2>目标与连续打卡 <span>日 / 周 / 月进度</span></h2>
         <div class="goalrow">
-          <div class="ring" id="goalRing" style="--p:0"><div class="inner"><b id="goalPct">0%</b><small>今日目标</small></div></div>
+          <div class="goalrings">
+            <div class="ringbox">
+              <div class="ring" id="goalRing" style="--p:0"><div class="inner"><b id="goalPct">0%</b><small>今日</small></div></div>
+              <div class="ringcap" id="goalCap">0 / 0 字</div>
+            </div>
+            <div class="ringbox">
+              <div class="ring" id="weekRing" style="--p:0"><div class="inner"><b id="weekPct">0%</b><small>本周</small></div></div>
+              <div class="ringcap" id="weekCap">0 / 0 字</div>
+            </div>
+            <div class="ringbox">
+              <div class="ring" id="monthRing" style="--p:0"><div class="inner"><b id="monthPct">0%</b><small>本月</small></div></div>
+              <div class="ringcap" id="monthCap">0 / 0 字</div>
+            </div>
+          </div>
           <div class="streaks">
             <div class="s"><b id="streakCur">0</b><small>当前连续天数</small></div>
             <div class="s"><b id="streakBest">0</b><small>历史最长</small></div>
@@ -212,6 +242,25 @@
     </div>
   </section>
 
+  <!-- ======================= DAY VIEW (回顾) ======================= -->
+  <section class="view" id="view-day">
+    <div class="panel dayhead">
+      <div class="dayhead-top">
+        <div>
+          <h2 class="dayhead-title">单日回顾<i class="info" id="dayInfo">i</i></h2>
+          <div class="dayhead-sub">挑一天，看看那天写了什么、写得怎么样。</div>
+        </div>
+        <div class="daynav">
+          <button class="btn" id="dayPrev" title="前一天">←</button>
+          <input type="date" id="dayPick">
+          <button class="btn" id="dayNext" title="后一天">→</button>
+          <button class="btn primary" id="dayToday">今天</button>
+        </div>
+      </div>
+    </div>
+    <div id="dayBody"></div>
+  </section>
+
   <!-- ======================= REPORT ======================= -->
   <section class="view" id="view-report">
     <div class="panel">
@@ -234,7 +283,7 @@
       <div class="reportwrap">
         <div class="cardprev">
           <img id="cardImg" alt="report card">
-          <div class="btnrow" style="margin-top:12px"><a class="btn primary" id="cardDl" download>⬇ 保存方形卡片</a><a class="btn" id="cardDlLong" download>⬇ 保存长图</a></div>
+          <div class="btnrow" style="margin-top:12px"><a class="btn primary" id="cardDl" download>⬇ 保存方形卡片</a><a class="btn" id="cardDlLong" download>⬇ 保存长图</a><button class="btn" id="cardDlMd">⬇ 导出 Markdown</button></div>
         </div>
         <div class="reportside" id="reportRows"></div>
       </div>
@@ -330,6 +379,15 @@
     </div>
   </section>
 
+  <!-- ======================= RECORDS (记录珍藏) ======================= -->
+  <section class="view" id="view-records">
+    <div class="panel recintro">
+      <h2>记录珍藏<i class="info" id="recInfo">i</i></h2>
+      <div class="recintro-sub">这是你与码字鸭一路写下的高光时刻——所有数字都来自你真正上屏的汉字。</div>
+    </div>
+    <div id="recBody"><div class="chart-skel">正在翻看你的珍藏…</div></div>
+  </section>
+
   <!-- ======================= SEARCH ======================= -->
   <section class="view" id="view-search">
     <div class="panel" id="queryPanel">
@@ -399,6 +457,18 @@
             <div class="setting-item">
               <div><div class="setting-title">每日目标</div><div class="setting-desc">用于看板圆环和每日达成进度。</div></div>
               <div class="setting-control"><input type="number" id="c-daily_goal" min="1"></div>
+            </div>
+            <div class="setting-item">
+              <div><div class="setting-title">每周目标</div><div class="setting-desc">看板「本周」进度环。填 0 表示自动按每日目标 ×7 估算。</div></div>
+              <div class="setting-control"><input type="number" id="c-weekly_goal" min="0"></div>
+            </div>
+            <div class="setting-item">
+              <div><div class="setting-title">每月目标</div><div class="setting-desc">看板「本月」进度环。填 0 表示自动按每日目标 × 当月天数估算。</div></div>
+              <div class="setting-control"><input type="number" id="c-monthly_goal" min="0"></div>
+            </div>
+            <div class="setting-item">
+              <div><div class="setting-title">里程碑通知</div><div class="setting-desc">达成成就、今日 / 本周 / 本月目标时，在系统托盘弹出一条提醒。关闭则完全静默。仅 Windows 有效。</div></div>
+              <div class="setting-control"><span class="switch"><input type="checkbox" id="c-notify_enabled"></span></div>
             </div>
             <div class="setting-item">
               <div><div class="setting-title">暂停统计</div><div class="setting-desc">临时停止记录新的上屏汉字。</div></div>
@@ -656,6 +726,8 @@
 <script src="js/board.js"></script>
 <script src="js/boardlayout.js"></script>
 <script src="js/report.js"></script>
+<script src="js/day.js"></script>
+<script src="js/records.js"></script>
 <script src="js/sequence.js"></script>
 <script src="js/lexicon.js"></script>
 <script src="js/ticker.js"></script>

@@ -184,6 +184,8 @@ const DT = {
   close_mini: ()=> isNative()? nApi().close_mini() : Promise.resolve({ok:true}),
   mini_resize: (w,h)=> isNative()? nApi().mini_resize(w,h) : Promise.resolve({ok:true}),
   reveal_path: (path)=> isNative()? nApi().reveal_path(path) : Promise.resolve({ok:false}),
+  export_report_md: (period,start,end)=> isNative()? nApi().export_report_md(period,start||null,end||null)
+    : browserDownload("/api/export/report.md?period="+encodeURIComponent(period)+(start?("&start="+start):"")+(end?("&end="+end):"")),
 };
 function makeBar(id, labels, data, color){
   if(charts[id]) charts[id].destroy();
@@ -271,5 +273,7 @@ setTip("rareInfo", "这里展示你输入过但不常见的汉字。常见语气
 setTip("trackInfo", "关注词按你输入的原文逐字精确匹配，不依赖分词，所以人名、缩写、项目代号也能数准。统计跟随顶部时间范围；点卡片可查看详细的时段、程序和上下文分布。");
 setTip("usageInfo", "记录你每次打开仪表盘或随身鸭的时间，统计使用频率、活跃时段与最近足迹。这只是 UI 使用记录，<b>与你的打字数据无关</b>，删除打字数据不会清掉它。");
 setTip("cmpInfo", "选两个时段并排比较：左边 A 为重点、右边 B 为基准，箭头表示 A 相对 B 的变化。支持「本周 vs 上周」「今天 vs 某一天」等，也可各自选自定义区间。");
+setTip("dayInfo", "挑某一天，集中回看那天的产出、节奏、用字、应用与片段，并和你的活跃日均对照。用 ← → 或日期框切换日期，独立于顶部时间范围。");
+setTip("recInfo", "你的全部历史里那些「最」的时刻：最高产的一天、最快的速度、最长的连续……都来自真正上屏的汉字，随数据增长自动刷新。");
 
 // ---- tabs ----

@@ -1,0 +1,96 @@
+/* v0.2.9: weekly/monthly goal rings, day-view (回顾), records (记录珍藏),
+   onboarding guide. Scoped names so it never collides with base/v028. */
+
+/* ---- multi goal rings (board) ---- */
+.goalrings{display:flex;gap:20px;flex-wrap:wrap}
+.ringbox{display:flex;flex-direction:column;align-items:center;gap:8px}
+.goalrings .ring{width:104px;height:104px}
+.goalrings .ring .inner{width:82px;height:82px}
+.goalrings .ring .inner b{font-size:18px}
+.ringcap{color:var(--muted);font-size:11px;white-space:nowrap}
+
+/* ---- onboarding guide card (board, empty state) ---- */
+.guidecard{position:relative;display:flex;gap:18px;align-items:flex-start;
+  margin-bottom:16px;padding:20px 22px;border:1px solid var(--line);
+  border-radius:var(--radius);background:linear-gradient(135deg,var(--grad1),var(--grad2));
+  box-shadow:var(--card-shadow)}
+.guide-duck{width:64px;height:64px;flex:0 0 auto;object-fit:contain;
+  filter:drop-shadow(0 6px 14px #0004)}
+.guide-body h3{margin:0 0 6px;font-size:18px}
+.guide-body p{margin:0 0 12px;color:var(--muted);font-size:14px;line-height:1.6}
+.guide-steps{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.guide-steps li{display:flex;gap:10px;align-items:flex-start;font-size:13.5px;line-height:1.5}
+.guide-steps li span{flex:0 0 auto;width:20px;height:20px;border-radius:50%;
+  background:var(--accent);color:var(--ink);font-size:12px;font-weight:700;
+  display:flex;align-items:center;justify-content:center;margin-top:1px}
+.guide-steps a{color:var(--accent);font-weight:600;text-decoration:none}
+.guide-steps a:hover{text-decoration:underline}
+.guide-close{position:absolute;top:10px;right:12px;border:0;background:transparent;
+  color:var(--muted);font-size:16px;cursor:pointer;line-height:1}
+.guide-close:hover{color:var(--fg)}
+
+/* ---- day view (回顾) ---- */
+.dayhead-top{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}
+.dayhead-title{margin:0}
+.dayhead-sub{color:var(--muted);font-size:13px;margin-top:4px}
+.daynav{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.daynav input[type="date"]{padding:6px 10px;border:1px solid var(--line);border-radius:var(--radius-sm);
+  background:var(--panel2);color:var(--fg)}
+.day-hero{background:linear-gradient(135deg,var(--grad1),var(--grad2))}
+.dh-date{font-size:15px;color:var(--muted)}
+.dh-date span{margin-left:6px;color:var(--fg);font-weight:600}
+.dh-num{font-size:48px;font-weight:800;line-height:1.1;margin:4px 0}
+.dh-num small{font-size:18px;font-weight:500;color:var(--muted);margin-left:6px}
+.dh-sub{color:var(--muted);font-size:13px}
+.dh-sub .up{color:var(--up)} .dh-sub .down{color:var(--down)}
+.day-rank{display:inline-block;margin-left:8px;padding:2px 8px;border-radius:20px;
+  background:var(--accent);color:var(--ink);font-size:12px;font-weight:600}
+.day-statgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:14px}
+.day-statgrid .s b{font-size:22px} .day-statgrid .s small{color:var(--muted);font-size:12px;display:block}
+.day-statgrid .s .up{color:var(--up)} .day-statgrid .s .down{color:var(--down)}
+.day-apps{display:grid;gap:8px}
+.day-approw{display:grid;grid-template-columns:120px 1fr auto;gap:10px;align-items:center;font-size:13px}
+.da-name{color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.da-bar{height:8px;border-radius:5px;background:var(--track);overflow:hidden}
+.da-bar i{display:block;height:100%;border-radius:5px;background:var(--accent)}
+.da-num{color:var(--muted);font-size:12px;white-space:nowrap}
+.day-runs{display:grid;gap:8px}
+.day-run{display:flex;gap:12px;padding:8px 10px;border:1px solid var(--line);border-radius:var(--radius-sm);
+  background:var(--panel2);font-size:13px}
+.dr-meta{flex:0 0 auto;color:var(--muted);font-size:12px;white-space:nowrap}
+.dr-text{color:var(--fg)}
+.day-empty{text-align:center}
+
+/* ---- records (记录珍藏) ---- */
+.recintro-sub{color:var(--muted);font-size:13.5px;margin-top:4px}
+.rec-hero{display:flex;gap:20px;align-items:center;margin-bottom:18px;padding:24px 26px;
+  border:1px solid var(--line);border-radius:var(--radius);
+  background:linear-gradient(135deg,var(--grad1),var(--grad2));box-shadow:var(--card-shadow)}
+.rec-hero-duck{width:84px;height:84px;flex:0 0 auto;object-fit:contain;filter:drop-shadow(0 8px 18px #0005)}
+.rec-hero-k{color:var(--muted);font-size:13px}
+.rec-hero-num{font-size:46px;font-weight:800;line-height:1.1;margin:2px 0}
+.rec-hero-num small{font-size:18px;font-weight:500;color:var(--muted);margin-left:8px}
+.rec-hero-sub{color:var(--muted);font-size:13px}
+.rec-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px}
+.rec-card{position:relative;overflow:hidden;padding:18px;border:1px solid var(--line);
+  border-radius:var(--radius);background:var(--panel);box-shadow:var(--card-shadow);
+  transition:transform .15s ease,box-shadow .15s ease}
+.rec-card:hover{transform:translateY(-3px);box-shadow:var(--shadow)}
+.rec-card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--accent)}
+.rec-ic{font-size:24px;line-height:1}
+.rec-t{margin-top:8px;color:var(--muted);font-size:12.5px}
+.rec-v{margin-top:4px;font-size:26px;font-weight:800;line-height:1.15;word-break:break-word}
+.rec-d{margin-top:4px;color:var(--muted);font-size:12px}
+.rec-glyph{font-size:34px;font-weight:800}
+.rec-glyph.sm{font-size:26px}
+.rec-card.tone-gold::before{background:#ffce33}
+.rec-card.tone-red::before{background:#ff6b81}
+.rec-card.tone-cyan::before{background:#22d3ee}
+.rec-card.tone-blue::before{background:#3b82f6}
+.rec-card.tone-green::before{background:#36d399}
+.rec-card.tone-violet::before{background:#a78bfa}
+
+@media (max-width:720px){
+  .day-approw{grid-template-columns:90px 1fr auto}
+  .goalrings{gap:14px}
+}

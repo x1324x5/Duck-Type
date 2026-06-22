@@ -34,6 +34,7 @@ class App:
         self._tray = None
         self._purge_timer: threading.Timer | None = None
         self._hotkeys = None
+        self._notifier = None
 
     # ---- status (for the dashboard health banner) -----------------------
     def get_status(self) -> dict:
@@ -141,6 +142,7 @@ class App:
         self._tray = TrayApp(self)
         self._tray.run_detached()
         self._start_hotkeys(desktop)
+        self._start_notifier()
         # blocks until quit_window(); start hidden only if the user opted out of
         # showing the window on launch.
         desktop.run_window(self.api, hidden=not self.config.open_dashboard_on_start)
@@ -160,6 +162,18 @@ class App:
         except Exception:
             log.exception("Failed to set up mini-counter hotkeys")
 
+    def _start_notifier(self) -> None:
+        """Start the milestone-notification poller (tray balloons for goals /
+        achievements). Silent if the user turned notifications off."""
+        try:
+            from .notify import NotificationManager
+            self._notifier = NotificationManager(
+                self.db, self.config,
+                lambda title, msg: self._tray.notify(title, msg) if self._tray else None)
+            self._notifier.start()
+        except Exception:
+            log.exception("Failed to start the notification poller")
+
     def request_quit(self) -> None:
         """Quit (callable from any thread, e.g. tray menu or the update flow):
         tear down the window so run()'s GUI loop returns, and remove the tray."""
@@ -175,6 +189,11 @@ class App:
         if self._hotkeys is not None:
             try:
                 self._hotkeys.stop()
+            except Exception:
+                pass
+        if self._notifier is not None:
+            try:
+                self._notifier.stop()
             except Exception:
                 pass
         for obj in (self._char_hook, self._key_hook, self._tracker):

@@ -1065,7 +1065,25 @@ _ACHIEVEMENTS = [
 ]
 
 
-def gamify(db, daily_goal: int) -> Dict:
+def _week_month_chars(daymap: Dict[str, int]) -> Tuple[int, int]:
+    """Sum of characters in the current calendar week (Mon-Sun) and month."""
+    now = datetime.now()
+    monday = (now - timedelta(days=now.weekday())).date()
+    week = month = 0
+    ym = now.strftime("%Y-%m")
+    for d, c in daymap.items():
+        try:
+            dt = datetime.strptime(d, "%Y-%m-%d").date()
+        except ValueError:
+            continue
+        if dt >= monday and dt <= now.date():
+            week += c
+        if d.startswith(ym):
+            month += c
+    return week, month
+
+
+def gamify(db, daily_goal: int, weekly_goal: int = 0, monthly_goal: int = 0) -> Dict:
     """Goal progress + streak + achievement list for the gamification panel."""
     daymap = _daily_map(db)
     total = sum(daymap.values())
@@ -1073,6 +1091,7 @@ def gamify(db, daily_goal: int) -> Dict:
     today_chars = daymap.get(today_key, 0)
     day_max = max(daymap.values()) if daymap else 0
     current, best = _streak(daymap)
+    week_chars, month_chars = _week_month_chars(daymap)
 
     con = db.connect()
     try:
@@ -1122,10 +1141,22 @@ def gamify(db, daily_goal: int) -> Dict:
         a["unlocked_at"] = stamps.get(a["id"])
 
     goal = max(1, int(daily_goal or 1))
+    # Weekly / monthly goals: fall back to a daily-derived target when unset (0).
+    import calendar as _cal
+    now = datetime.now()
+    days_in_month = _cal.monthrange(now.year, now.month)[1]
+    wgoal = max(1, int(weekly_goal) if weekly_goal else goal * 7)
+    mgoal = max(1, int(monthly_goal) if monthly_goal else goal * days_in_month)
     return {
         "today_chars": today_chars,
         "daily_goal": goal,
         "goal_pct": round(min(today_chars / goal, 99.99), 4),
+        "week_chars": week_chars,
+        "weekly_goal": wgoal,
+        "week_goal_pct": round(min(week_chars / wgoal, 99.99), 4),
+        "month_chars": month_chars,
+        "monthly_goal": mgoal,
+        "month_goal_pct": round(min(month_chars / mgoal, 99.99), 4),
         "streak_current": current,
         "streak_best": best,
         "total_chars": total,

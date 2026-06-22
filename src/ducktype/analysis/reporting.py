@@ -225,3 +225,173 @@ def dashboard_usage(db, days: int = 30) -> Dict:
         "recent": recent,
         "window_days": days,
     }
+
+
+# ---- personal records ("collection" page) ---------------------------------
+_WEEKDAY_CN = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+
+
+def _weekday_cn(date_str: Optional[str]) -> str:
+    if not date_str:
+        return ""
+    try:
+        return _WEEKDAY_CN[datetime.strptime(date_str, "%Y-%m-%d").weekday()]
+    except (ValueError, TypeError):
+        return ""
+
+
+def records(db, run_gap: float, session_gap: float) -> Dict:
+    """A curated set of all-time personal bests for the 记录珍藏 page.
+
+    Read-only; reuses the same all-time helpers the gamification panel uses so
+    the numbers always agree with the rest of the dashboard."""
+    from . import stats
+    from .fun import _is_uncommon
+
+    daymap = stats._daily_map(db)
+    total = sum(daymap.values())
+    active_days = len(daymap)
+    current_streak, best_streak = stats._streak(daymap)
+    best_day = max(daymap.items(), key=lambda kv: kv[1]) if daymap else (None, 0)
+
+    con = db.connect()
+    try:
+        distinct = con.execute("SELECT COUNT(DISTINCT ch) FROM char_events").fetchone()[0]
+        first_ts = con.execute("SELECT MIN(ts) FROM char_events").fetchone()[0]
+        last_ts = con.execute("SELECT MAX(ts) FROM char_events").fetchone()[0]
+        key_total = con.execute("SELECT COUNT(*) FROM key_events").fetchone()[0]
+        top_char_row = con.execute(
+            "SELECT ch, COUNT(*) c FROM char_events GROUP BY ch ORDER BY c DESC LIMIT 1"
+        ).fetchone()
+        char_counts = dict(con.execute(
+            "SELECT ch, COUNT(*) FROM char_events GROUP BY ch").fetchall())
+        hour_row = con.execute(
+            "SELECT CAST(strftime('%H', ts,'unixepoch','localtime') AS INT) h, "
+            "COUNT(*) c FROM char_events GROUP BY h ORDER BY c DESC LIMIT 1"
+        ).fetchone()
+        app_rows = con.execute(
+            "SELECT app, COUNT(*) c FROM char_events WHERE app IS NOT NULL "
+            "GROUP BY app ORDER BY c DESC LIMIT 1").fetchone()
+    finally:
+        con.close()
+
+    eff = stats.efficiency(db, None, session_gap)
+    longest_min, longest_start = stats._longest_session(db, None, None, session_gap)
+    top_word = stats._top_multichar_word(db, None, None, run_gap)
+    top_word_count = 0
+    if top_word:
+        for w, c in stats.top_words(db, None, 80, run_gap):
+            if w == top_word:
+                top_word_count = c
+                break
+    rare_distinct = sum(1 for ch in char_counts if _is_uncommon(ch))
+    rare_total = sum(n for ch, n in char_counts.items() if _is_uncommon(ch))
+
+    # span (calendar days from first record to today) + how full it has been
+    span_days = 0
+    if first_ts:
+        span_days = (datetime.now().date()
+                     - datetime.fromtimestamp(first_ts).date()).days + 1
+
+    return {
+        "total_chars": total,
+        "distinct_chars": distinct,
+        "key_total": key_total,
+        "active_days": active_days,
+        "span_days": span_days,
+        "first_ts": first_ts,
+        "last_ts": last_ts,
+        "avg_per_active_day": round(total / active_days) if active_days else 0,
+        "best_day": {"date": best_day[0], "count": best_day[1],
+                     "weekday": _weekday_cn(best_day[0])} if best_day[0] else None,
+        "best_streak": best_streak,
+        "current_streak": current_streak,
+        "peak_cpm": eff.get("peak_cpm", 0),
+        "avg_cpm": eff.get("cpm", 0),
+        "longest_session_min": longest_min,
+        "longest_session_ts": longest_start,
+        "top_char": ({"ch": top_char_row[0], "count": top_char_row[1]}
+                     if top_char_row else None),
+        "top_word": ({"word": top_word, "count": top_word_count}
+                     if top_word else None),
+        "peak_hour": (int(hour_row[0]), hour_row[1]) if hour_row else None,
+        "top_app": ({"app": stats.pretty_app(app_rows[0]), "count": app_rows[1]}
+                    if app_rows else None),
+        "rare_distinct": rare_distinct,
+        "rare_total": rare_total,
+    }
+
+
+# ---- single-day review ("day view") ---------------------------------------
+def day_detail(db, day: str, run_gap: float, session_gap: float) -> Dict:
+    """Everything about one calendar day for the 回顾 (day view) page."""
+    from . import stats
+
+    day = (day or "").strip()
+    if not day:
+        day = datetime.now().strftime("%Y-%m-%d")
+    try:
+        d = datetime.strptime(day, "%Y-%m-%d")
+    except ValueError:
+        d = datetime.now()
+        day = d.strftime("%Y-%m-%d")
+    since = datetime(d.year, d.month, d.day).timestamp()
+    until = since + 86400
+
+    chars = stats.total_chars(db, since, until)
+    eff = stats.efficiency(db, since, session_gap, until)
+    e = stats.edits(db, since, until, session_gap)
+    peak_hr, peak_hr_count = stats._peak_hour(db, since, until)
+    top_chars = stats.top_chars(db, since, 20, until)
+    top_words = stats.top_words(db, since, 20, run_gap, until)
+    apps = stats.per_app(db, since, 12, until)
+    app_total = sum(c for _a, c in apps) or 1
+
+    w, p = stats._where(since, until)
+    con = db.connect()
+    try:
+        distinct = con.execute(
+            f"SELECT COUNT(DISTINCT ch) FROM char_events{w}", p).fetchone()[0]
+        hour_rows = con.execute(
+            f"SELECT CAST(strftime('%H', ts,'unixepoch','localtime') AS INT) h, "
+            f"COUNT(*) c FROM char_events{w} GROUP BY h", p).fetchall()
+    finally:
+        con.close()
+    by_hour = [0] * 24
+    for h, c in hour_rows:
+        if h is not None:
+            by_hour[int(h)] = c
+
+    # how this day stacks up against the user's active-day average + its rank
+    daymap = stats._daily_map(db)
+    active_days = len(daymap)
+    grand_total = sum(daymap.values())
+    avg = round(grand_total / active_days) if active_days else 0
+    ranked = sorted(daymap.values(), reverse=True)
+    rank = (ranked.index(chars) + 1) if chars in ranked else None
+    # a few representative runs from that day (most recent first)
+    runs = stats.sequence_recent(db, since, run_gap, 6, until, "", "")
+
+    return {
+        "day": day,
+        "weekday": _weekday_cn(day),
+        "chars": chars,
+        "distinct_chars": distinct,
+        "active_minutes": eff["active_minutes"],
+        "cpm": eff["cpm"],
+        "peak_cpm": eff.get("peak_cpm", 0),
+        "sessions": eff["sessions"],
+        "edit_ratio": e["edit_ratio"],
+        "peak_hour": peak_hr,
+        "peak_hour_count": peak_hr_count,
+        "by_hour": by_hour,
+        "top_chars": [{"ch": c, "count": k} for c, k in top_chars],
+        "top_words": [{"word": ww, "count": cc} for ww, cc in top_words],
+        "apps": [{"app": stats.pretty_app(a), "count": c,
+                  "share": round(c / app_total * 100, 1)} for a, c in apps],
+        "avg_per_active_day": avg,
+        "vs_avg_pct": _pct_delta(chars, avg),
+        "rank": rank,
+        "active_days": active_days,
+        "runs": runs,
+    }
