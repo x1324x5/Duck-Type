@@ -1,11 +1,3 @@
-"""Regenerate dashboard screenshots from the live preview server.
-
-Renders the real DuckType frontend (served by _preview_server.py on :8799),
-flips on 演示模式 so the panels are populated with the throwaway sample database,
-and saves a full-page PNG per view into docs/screenshots/.
-
-Run the preview server first, then: python tools/shoot_screens.py
-"""
 from __future__ import annotations
 
 import sys
