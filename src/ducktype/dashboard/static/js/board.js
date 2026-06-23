@@ -41,18 +41,16 @@ document.getElementById("tabs").addEventListener("click", e=>{
   const v = tab && tab.dataset.v; if(!v) return;
   document.querySelectorAll("#tabs button").forEach(b=>b.classList.toggle("active", b.dataset.v===v));
   document.querySelectorAll(".view").forEach(s=>s.classList.toggle("active", s.id==="view-"+v));
-  // 回顾(day) / 记录(records) / 设置 / 报告 have their own controls -> hide the shared range bar
+  // 回顾(day) / 设置 / 报告 have their own controls -> hide the shared range bar
   document.getElementById("rangebar").style.display =
-    (v==="settings"||v==="report"||v==="day"||v==="records") ? "none" : "flex";
+    (v==="settings"||v==="report"||v==="day") ? "none" : "flex";
   scrollToTop(false);
   if(v==="settings") loadSettings();
   else if(v==="sequence"){ seqResetFilters(); loadSequence(); }  // entering the view restores all apps + keyword
   else if(v==="fun") loadFun();
-  else if(v==="lexicon") loadLexicon();
+  else if(v==="lexicon"){ loadLexicon(); loadTracked(); }   // 词语：词库 + 关注词
   else if(v==="report") loadReportCurrent();
   else if(v==="day"){ if(typeof loadDayView==="function") loadDayView(); }
-  else if(v==="records"){ if(typeof loadRecords==="function") loadRecords(); }
-  else if(v==="search"){ loadTracked(); document.getElementById("searchInput").focus(); }
 });
 // Deep-link a view via #view=<name> (e.g. #view=report) so a tab can open directly
 // on load — useful for bookmarks, linking from the intro page, and tooling. (#mini
@@ -114,11 +112,9 @@ function refreshActive(){
   if(v==="board") refreshBoard();
   else if(v==="sequence") loadSequence();
   else if(v==="fun") loadFun();
-  else if(v==="lexicon") loadLexicon();
+  else if(v==="lexicon"){ loadLexicon(); loadTracked(); if(document.getElementById("searchInput").value.trim()) doSearch(); }
   else if(v==="report") loadReportCurrent();
   else if(v==="day"){ if(typeof loadDayView==="function") loadDayView(); }
-  else if(v==="records"){ if(typeof loadRecords==="function") loadRecords(); }
-  else if(v==="search"){ loadTracked(); if(document.getElementById("searchInput").value.trim()) doSearch(); }
 }
 
 // ---- demo / sample data ----
@@ -591,8 +587,8 @@ function showToast(a){
 let charN = 25, wordN = 25;
 function renderChars(chars){ makeRankBar("charChart", chars.map(c=>c.ch), chars.map(c=>c.count), "#ffce33", gotoSearch); }
 function renderWords(words){ makeRankBar("wordChart", words.map(w=>w.word), words.map(w=>w.count), "#36d399", gotoSearch); }
-async function reloadChars(){ renderChars(await getJSON("/api/top_chars?n="+charN)); }
-async function reloadWords(){ renderWords(await getJSON("/api/top_words?n="+wordN)); }
+async function reloadChars(){ renderChars(await apiGet("top_chars", rangeParams({n:charN}))); }
+async function reloadWords(){ renderWords(await apiGet("top_words", rangeParams({n:wordN}))); }
 let posWordN = 12, posCurrent = null;
 function pct(count, total){ return total ? (count / total * 100).toFixed(1) : "0.0"; }
 function posTooltip(total){
@@ -637,7 +633,7 @@ async function loadPosWords(row){
   posCurrent = row;
   const n = +document.getElementById("posWordN").value || posWordN;
   posWordN = n;
-  const r = await getJSON("/api/pos_words?pos="+encodeURIComponent(row.pos)+"&n="+n+"&min_len=2");
+  const r = await apiGet("pos_words", rangeParams({pos:row.pos, n, min_len:2}));
   renderPosWords(r);
 }
 function renderPosWords(r){
@@ -700,9 +696,9 @@ async function refreshBoard(){
     makeRankBar("appChart", b.apps.map(a=>a.app), b.apps.map(a=>a.count), "#ffb454", openAppDetail);
     if(appCurrent) openAppDetail(appCurrent);
     renderHeat(b.heatmap.grid);
-    loadRichness(seq, params);
-    loadContrib();
-    loadUsage();
+    // Below-the-fold panels (richness / vocab / app-eff / weekday / contrib /
+    // usage) are lazy-loaded as they scroll into view -- see boardpanels.js.
+    refreshBoardPanels(params, seq);
     boardLoaded = true;
     apiGet("board_heavy", params).then(h=>{
       if(seq !== boardReqSeq) return;
@@ -725,7 +721,7 @@ let appCurrent = null;
 async function openAppDetail(app){
   const seq = ++appReqSeq;
   appCurrent = app;
-  const r = await getJSON("/api/app_detail?app="+encodeURIComponent(app)+"&n=25");
+  const r = await apiGet("app_detail", rangeParams({app, n:25}));
   if(seq !== appReqSeq || appCurrent !== app) return;
   document.getElementById("appOverviewWrap").style.display = "none";
   document.getElementById("appDetail").style.display = "block";
@@ -809,327 +805,3 @@ document.getElementById("hourStyle").addEventListener("click", e=>{
     clearTimeout(t); t = setTimeout(onDone, 250);
   });
 })("wordN","wordNv",()=>{ wordN = +document.getElementById("wordN").value; reloadWords(); });
-
-// ---- download-complete toast (bottom-right; click to reveal the file) ----
-// Native saves return {ok, path}; surface a dismissible toast that opens the
-// folder on click. Browser downloads have no path, so we show a plain note.
-function notifyDownload(res){
-  if(res && res.cancelled) return;
-  const host = document.getElementById("toastHost");
-  if(!host) return;
-  const ok = res && res.ok !== false;
-  const path = res && res.path;
-  const el = document.createElement("div");
-  el.className = "toast" + (path ? " toast-link" : "");
-  const where = path ? `<div class="tdsc" title="${escapeAttr(path)}">${escapeHtml(path)}</div>` : "";
-  el.innerHTML = `<img src="${randomDuck()}" alt="" onerror="this.onerror=null;this.src='duck.png'">
-    <div class="tbody"><div class="ttag">${ok ? "⬇ 下载完成" : "下载失败"}</div>
-      <div class="tname">${ok ? (path ? "点此打开所在文件夹" : "已保存") : escapeHtml((res&&res.error)||"未知错误")}</div>
-      ${where}</div>
-    <button class="tclose" title="关闭" aria-label="关闭">×</button>`;
-  host.appendChild(el);
-  requestAnimationFrame(()=>el.classList.add("show"));
-  let timer = setTimeout(close, 7000);
-  function close(){ clearTimeout(timer); el.classList.remove("show"); setTimeout(()=>el.remove(), 300); }
-  el.querySelector(".tclose").addEventListener("click", e=>{ e.stopPropagation(); close(); });
-  if(ok && path && isNative()){
-    el.addEventListener("click", ()=>{ DT.reveal_path(path).catch(()=>{}); });
-  }
-}
-// Hand a finished PNG (data: URL) to the OS save dialog (native) or an off-DOM
-// link (browser); toast the result. Shared by plain canvases and pie composites.
-function saveImage(dataurl, name){
-  const fname = "ducktype_" + name + "_" + new Date().toISOString().slice(0,10) + ".png";
-  if(isNative()){
-    nApi().save_png(fname, dataurl).then(notifyDownload).catch(()=>{});
-  } else {
-    const a = document.createElement("a");
-    a.href = dataurl; a.download = fname;
-    document.body.appendChild(a); a.click(); a.remove();
-    notifyDownload({ok:true});
-  }
-}
-// ---- save any board chart as a PNG ----
-function downloadCanvas(id, name){
-  const cv = document.getElementById(id); if(!cv || !cv.width) return;
-  const tmp = document.createElement("canvas");
-  tmp.width = cv.width; tmp.height = cv.height;
-  const ctx = tmp.getContext("2d");
-  ctx.fillStyle = cssVar("--bg") || "#0f1216";   // opaque bg so the PNG isn't see-through
-  ctx.fillRect(0, 0, tmp.width, tmp.height);
-  ctx.drawImage(cv, 0, 0);
-  saveImage(tmp.toDataURL("image/png"), name);
-}
-// Find a live Chart.js instance by its <canvas> id across the board + lexicon
-// registries (the lexicon pies live in their own `lexCharts` map).
-function findChartByCanvas(id){
-  if(charts[id]) return charts[id];
-  // lexicon pies live in `lexCharts`, keyed by lexicon id (canvas is "lexchart_<id>")
-  try{
-    if(typeof lexCharts !== "undefined"){
-      if(lexCharts[id]) return lexCharts[id];
-      const k = id.replace(/^lexchart_/, "");
-      if(lexCharts[k]) return lexCharts[k];
-    }
-  }catch(e){}
-  return null;
-}
-// Labels on some pies embed "词 · 12次 · 3.4%"; strip that so our legend can
-// render the name cleanly and append its own count / %.
-function cleanSliceLabel(s){ return String(s).replace(/\s*·\s*[\d,]+\s*次.*$/, "").trim(); }
-// Compose a doughnut + aligned legend (swatch · name · count · optional %) into
-// one PNG, so the saved image carries the legend that's otherwise HTML-only
-// (item: 词库占比 downloads). The pie is re-rendered off-screen without a
-// built-in legend to avoid duplicating it; % follows the global setting.
-function exportDoughnutWithLegend(chart, name){
-  const ds = chart.data.datasets[0] || {};
-  const raw = chart.data.labels || [];
-  const colors = Array.isArray(ds.backgroundColor) ? ds.backgroundColor : [];
-  const rows = [];
-  raw.forEach((lab, i)=>{
-    if(typeof chart.getDataVisibility === "function" && !chart.getDataVisibility(i)) return;
-    rows.push({label: cleanSliceLabel(lab), count: +ds.data[i] || 0, color: colors[i] || "#888"});
-  });
-  const total = rows.reduce((s, r)=>s+r.count, 0) || 1;
-  const includePct = window.__pieIncludePct !== false;
-  // off-screen pie (no legend, no animation) -> a square image we paste on the left
-  const PIE = 320, off = document.createElement("canvas");
-  off.width = PIE; off.height = PIE;
-  const tmpChart = new Chart(off, {
-    type:"doughnut",
-    data:{labels: rows.map(r=>r.label), datasets:[{data: rows.map(r=>r.count),
-      backgroundColor: rows.map(r=>r.color), borderColor: cssVar("--panel"), borderWidth:2}]},
-    options:{responsive:false, animation:false, events:[], devicePixelRatio:1,
-      plugins:{legend:{display:false}, tooltip:{enabled:false}},
-      cutout: chart.options && chart.options.cutout || "58%"}
-  });
-  tmpChart.update("none");   // animation:false -> draws synchronously, no rAF wait
-  // measure legend
-  const ctxm = off.getContext("2d");
-  const FS = 15, ROW = 26, PAD = 24, SW = 14, GAP = 10;
-  ctxm.font = FS + 'px "Segoe UI","Microsoft YaHei",sans-serif';
-  let nameW = 0, cntW = 0;
-  const fmtRow = rows.map(r=>{
-    const cnt = r.count.toLocaleString() + "次";
-    const pctv = includePct ? "  " + (r.count/total*100).toFixed(2) + "%" : "";
-    nameW = Math.max(nameW, ctxm.measureText(r.label).width);
-    cntW = Math.max(cntW, ctxm.measureText(cnt + pctv).width);
-    return {name:r.label, tail: cnt + pctv, color:r.color};
-  });
-  const legendW = SW + GAP + Math.min(nameW, 260) + 18 + cntW;
-  const legendH = rows.length * ROW;
-  const W = PAD + PIE + 28 + legendW + PAD;
-  const H = PAD + Math.max(PIE, legendH) + PAD;
-  const out = document.createElement("canvas");
-  out.width = W; out.height = H;
-  const ctx = out.getContext("2d");
-  ctx.fillStyle = cssVar("--bg") || "#0f1216";
-  ctx.fillRect(0, 0, W, H);
-  ctx.drawImage(off, PAD, (H - PIE) / 2);
-  // legend block, vertically centred against the pie
-  let lx = PAD + PIE + 28, ly = (H - legendH) / 2;
-  ctx.textBaseline = "middle";
-  ctx.font = FS + 'px "Segoe UI","Microsoft YaHei",sans-serif';
-  fmtRow.forEach((r, i)=>{
-    const cy = ly + i * ROW + ROW / 2;
-    ctx.fillStyle = r.color;
-    roundRectPath(ctx, lx, cy - SW/2, SW, SW, 3); ctx.fill();
-    ctx.fillStyle = cssVar("--fg") || "#e8eaed";
-    const maxName = 260;
-    ctx.fillText(ellipsizeText(ctx, r.name, maxName), lx + SW + GAP, cy);
-    ctx.fillStyle = cssVar("--muted") || "#9aa0a6";
-    ctx.textAlign = "right";
-    ctx.fillText(r.tail, W - PAD, cy);
-    ctx.textAlign = "left";
-  });
-  tmpChart.destroy();
-  saveImage(out.toDataURL("image/png"), name);
-}
-function roundRectPath(ctx, x, y, w, h, r){
-  ctx.beginPath();
-  ctx.moveTo(x+r, y); ctx.arcTo(x+w, y, x+w, y+h, r); ctx.arcTo(x+w, y+h, x, y+h, r);
-  ctx.arcTo(x, y+h, x, y, r); ctx.arcTo(x, y, x+w, y, r); ctx.closePath();
-}
-function ellipsizeText(ctx, text, maxW){
-  if(ctx.measureText(text).width <= maxW) return text;
-  let t = text;
-  while(t.length > 1 && ctx.measureText(t + "…").width > maxW) t = t.slice(0, -1);
-  return t + "…";
-}
-document.addEventListener("click", e=>{
-  const b = e.target.closest(".dlbtn"); if(!b) return;
-  const id = b.dataset.dl, name = b.dataset.name || "chart";
-  const chart = findChartByCanvas(id);
-  if(chart && chart.config && chart.config.type === "doughnut"){
-    try{ exportDoughnutWithLegend(chart, name); }
-    catch(err){ console.warn("pie export failed, falling back", err); downloadCanvas(id, name); }
-  } else {
-    downloadCanvas(id, name);
-  }
-});
-
-// ---- report ----
-
-// ---- vocabulary richness trend + yearly contribution calendar (item 5) ----
-async function loadRichness(seq, params){
-  const cv = document.getElementById("richnessChart");
-  if(!cv) return;
-  let rows; try{ rows = await apiGet("richness", params); }catch(e){ return; }
-  if(seq !== boardReqSeq) return;
-  if(charts.richness){ charts.richness.destroy(); charts.richness = null; }
-  const sub = document.getElementById("richSub");
-  if(!rows || rows.length < 2){
-    if(sub) sub.textContent = "（这段时间数据太少，暂不足以成趋势）";
-    cv.style.display = "none";       // don't reserve a tall empty canvas
-    return;
-  }
-  cv.style.display = "";
-  if(sub) sub.textContent = "（越高=用字越多样，越低=重复越多）";
-  const labels = rows.map(r=>r.date.slice(5));
-  const data = rows.map(r=> +(r.ratio*100).toFixed(1));
-  charts.richness = new Chart(cv, {
-    type:"line",
-    data:{labels, datasets:[{data, borderColor:cssVar('--accent2'),
-      backgroundColor:"rgba(54,211,153,.12)", fill:true, tension:.3,
-      pointRadius:2, pointHoverRadius:5, pointHitRadius:20, borderWidth:2}]},
-    options:{
-      // hover anywhere along the x-axis (not just exactly on a point) shows the day
-      interaction:{mode:"index", intersect:false},
-      plugins:{legend:{display:false},tooltip:{displayColors:false,callbacks:{
-      label:(ctx)=>{ const r=rows[ctx.dataIndex]; return ` 丰富度 ${ctx.raw}% · ${r.distinct}/${r.total} 字`; }}}},
-      scales:{x:{grid:{display:false}},y:{beginAtZero:true,max:100,ticks:{callback:v=>v+"%"}}}}
-  });
-}
-let contribLoaded = false;
-async function loadContrib(force){
-  const host = document.getElementById("contribCal");
-  if(!host || (contribLoaded && !force)) return;
-  let r; try{ r = await apiGet("contrib", {days:364}); }catch(e){ return; }
-  contribLoaded = true;
-  renderContrib(r);
-}
-function contribLevel(count, max){
-  if(!count || max <= 0) return 0;
-  const q = count / max;
-  if(q <= 0.10) return 1;
-  if(q <= 0.30) return 2;
-  if(q <= 0.60) return 3;
-  return 4;
-}
-function renderContrib(r){
-  const host = document.getElementById("contribCal");
-  const cells = (r && r.cells) || [];
-  if(!cells.length){ host.innerHTML = '<div class="empty">还没有足够的数据。</div>'; return; }
-  const weeks = r.weeks || Math.ceil(cells.length / 7);
-  const DOWLBL = ["日","一","二","三","四","五","六"];
-  let html = '<div class="cal-wrap"><div class="cal-dow">' +
-    DOWLBL.map((d,i)=> i%2 ? `<span>${d}</span>` : '<span></span>').join("") + '</div>';
-  for(let w=0; w<weeks; w++){
-    html += '<div class="cal-col">';
-    for(let d=0; d<7; d++){
-      const c = cells[w*7 + d];
-      if(!c){ html += '<div class="cal-cell empty-cell"></div>'; continue; }
-      const lvl = contribLevel(c.count, r.max);
-      html += `<div class="cal-cell lvl${lvl}" data-date="${c.date}" title="${c.date} · ${c.count.toLocaleString()} 字"></div>`;
-    }
-    html += '</div>';
-  }
-  html += '</div>';
-  host.innerHTML = html;
-  const sum = document.getElementById("contribSummary");
-  if(sum) sum.textContent = `${r.active_days} 天有记录 · 共 ${(r.total||0).toLocaleString()} 字`;
-}
-function localDateStr(d){
-  const p = n=>String(n).padStart(2,"0");
-  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
-}
-
-// ---- dashboard usage history (0.2.8) ----
-// Range-independent (like the contribution calendar): how often you open the
-// dashboard / mini counter, when, and your most recent visits.
-let usageLoaded = false;
-async function loadUsage(force){
-  const host = document.getElementById("usageBody");
-  if(!host || (usageLoaded && !force)) return;
-  let r; try{ r = await apiGet("usage", {days:30}); }catch(e){ return; }
-  usageLoaded = true;
-  renderUsage(r);
-}
-function usageAgo(ts){
-  if(!ts) return "—";
-  const d = new Date(ts*1000), now = Date.now();
-  const days = Math.floor((now - ts*1000)/86400000);
-  const hm = String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");
-  if(days<=0) return "今天 "+hm;
-  if(days===1) return "昨天 "+hm;
-  if(days<7) return days+" 天前";
-  return d.toLocaleDateString();
-}
-function renderUsage(r){
-  const host = document.getElementById("usageBody");
-  if(!host) return;
-  if(charts.usageDaily){ charts.usageDaily.destroy(); charts.usageDaily=null; }
-  if(charts.usageHour){ charts.usageHour.destroy(); charts.usageHour=null; }
-  if(!r || !r.total){
-    host.innerHTML = emptyHTML("还没有使用记录。打开看板或随身鸭后，这里会出现你的使用足迹。");
-    return;
-  }
-  const cards = [
-    [r.total.toLocaleString(), "累计打开"],
-    [r.dashboard.toLocaleString(), "看板"],
-    [r.mini.toLocaleString(), "随身鸭"],
-    [r.active_days.toLocaleString(), "使用天数"],
-    [usageAgo(r.last_ts), "最近一次"],
-  ];
-  const recent = (r.recent||[]).map(x=>
-    `<span class="chip usage-chip ${x.kind==="mini"?"mini":""}">${x.kind==="mini"?"随身鸭":"看板"} · ${usageAgo(x.ts)}</span>`
-  ).join("") || emptyHTML("暂无记录");
-  const busiest = r.busiest_day ? `最常打开：${r.busiest_day.date}（${r.busiest_day.count} 次）` : "";
-  host.innerHTML =
-    `<div class="usage-cards">`+
-      cards.map(([v,l])=>`<div class="s"><b>${v}</b><small>${l}</small></div>`).join("")+
-    `</div>`+
-    `<div class="usage-charts">`+
-      `<div class="usage-chart"><div class="subhd">每日打开次数 <span>近 30 天</span></div><div style="position:relative;height:150px"><canvas id="usageDaily"></canvas></div></div>`+
-      `<div class="usage-chart"><div class="subhd">活跃时段 <span>按小时</span></div><div style="position:relative;height:150px"><canvas id="usageHour"></canvas></div></div>`+
-    `</div>`+
-    `<div class="subhd">最近足迹 <span>${escapeHtml(busiest)}</span></div>`+
-    `<div class="chips usage-recent">${recent}</div>`;
-  const pd = r.per_day || [];
-  charts.usageDaily = new Chart(document.getElementById("usageDaily"), {
-    type:"bar",
-    data:{labels:pd.map(d=>d.date.slice(5)),
-      datasets:[
-        {label:"看板",data:pd.map(d=>d.total-d.mini),backgroundColor:"#ffce33",borderRadius:3,maxBarThickness:14,stack:"u"},
-        {label:"随身鸭",data:pd.map(d=>d.mini),backgroundColor:"#36d399",borderRadius:3,maxBarThickness:14,stack:"u"},
-      ]},
-    options:{maintainAspectRatio:false,plugins:{legend:{display:true,labels:{boxWidth:10,font:{size:11}}},tooltip:{displayColors:true}},
-      scales:{x:{stacked:true,grid:{display:false},ticks:{autoSkip:true,maxRotation:0,maxTicksLimit:10}},
-              y:{stacked:true,beginAtZero:true,ticks:{precision:0}}}}
-  });
-  charts.usageHour = new Chart(document.getElementById("usageHour"), {
-    type:"bar",
-    data:{labels:[...Array(24).keys()].map(h=>String(h).padStart(2,"0")),
-      datasets:[{data:r.by_hour,backgroundColor:"#a78bfa",borderRadius:3,maxBarThickness:14}]},
-    options:{maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{displayColors:false}},
-      scales:{x:{grid:{display:false},ticks:{autoSkip:true,maxTicksLimit:12}},y:{beginAtZero:true,ticks:{precision:0}}}}
-  });
-}
-// Switch the shared range to a named preset (e.g. "today"), clearing any custom
-// date inputs so the top bar doesn't keep showing a stale custom day.
-function setRangePreset(r){
-  range = r; custom = {start:null, end:null};
-  const ds = document.getElementById("d-start"), de = document.getElementById("d-end");
-  if(ds) ds.value = ""; if(de) de.value = "";
-  syncDateFields();
-  document.querySelectorAll("#ranges button").forEach(b=>b.classList.toggle("active", b.dataset.r===r));
-  refreshActive();
-}
-document.getElementById("contribCal").addEventListener("click", e=>{
-  const cell = e.target.closest(".cal-cell[data-date]");
-  if(!cell) return;
-  // Clicking today's cell maps to the 今天 preset (no lingering custom date);
-  // any past day becomes a single-day custom range.
-  if(cell.dataset.date === localDateStr(new Date())) setRangePreset("today");
-  else setCustomRange(cell.dataset.date, cell.dataset.date);
-});

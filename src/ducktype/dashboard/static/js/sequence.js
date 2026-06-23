@@ -129,7 +129,8 @@ document.getElementById("seq").addEventListener("click", async e=>{
 // ---- fun ----
 function chips(items, fmt){ return items && items.length ? items.map(fmt).join("") : "<div class='empty'>暂无</div>"; }
 async function loadFun(){
-  const [g, f] = await Promise.all([getJSON("/api/gamify"), getJSON("/api/fun")]);
+  if(typeof loadRecords === "function") loadRecords();   // 记录珍藏 lives in this view now
+  const [g, f] = await Promise.all([apiGet("gamify", {}), apiGet("fun", rangeParams())]);
   renderGamify(g);
   // Every chip is clickable: tapping its box jumps to the search view for that word/char.
   const wc = w=>`<span class="chip link" data-w="${escapeAttr(w.word)}" title="搜索「${escapeAttr(w.word)}」">${escapeHtml(w.word)}<b>${w.count}</b></span>`;

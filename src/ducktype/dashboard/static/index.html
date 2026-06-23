@@ -10,8 +10,7 @@
 <link rel="stylesheet" href="css/lexicon.css" />
 <link rel="stylesheet" href="css/settings.css" />
 <link rel="stylesheet" href="css/mini.css" />
-<link rel="stylesheet" href="css/v028.css" />
-<link rel="stylesheet" href="css/v029.css" />
+<link rel="stylesheet" href="css/features.css" />
 </head>
 <body>
 <div class="titlebar">
@@ -49,10 +48,8 @@
       <button data-v="day"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18"/><path d="M8 2v4"/><path d="M16 2v4"/><path d="M12 13v4"/><path d="M9.5 15h5"/></svg></span>回顾</button>
       <button data-v="report"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v5h5"/><path d="M9 13h6"/><path d="M9 17h6"/></svg></span>报告</button>
       <button data-v="sequence"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></svg></span>序列</button>
-      <button data-v="search"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg></span>搜索</button>
+      <button data-v="lexicon"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg></span>词语</button>
       <button data-v="fun"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 11h12a4 4 0 0 1 4 4v1a3 3 0 0 1-5.2 2.05L15 16H9l-1.8 2.05A3 3 0 0 1 2 16v-1a4 4 0 0 1 4-4z"/><path d="M8 14h.01"/><path d="M11 14h.01"/><path d="M16 14h.01"/><path d="M18 16h.01"/><path d="M9 11V8"/><path d="M15 11V8"/></svg></span>趣味</button>
-      <button data-v="records"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 21h8"/><path d="M12 17v4"/><path d="M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M7 5H4v2a3 3 0 0 0 3 3"/><path d="M17 5h3v2a3 3 0 0 1-3 3"/></svg></span>记录</button>
-      <button data-v="lexicon"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M19 17H6a2 2 0 0 0-2 2"/><path d="M9 7h6"/><path d="M9 11h4"/></svg></span>词库</button>
       <button data-v="settings"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.05.05a2 2 0 1 1-2.83 2.83l-.05-.05a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.07A1.7 1.7 0 0 0 8.97 19.4a1.7 1.7 0 0 0-1.88.34l-.05.05a2 2 0 1 1-2.83-2.83l.05-.05A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.07A1.7 1.7 0 0 0 4.6 8.97a1.7 1.7 0 0 0-.34-1.88l-.05-.05a2 2 0 1 1 2.83-2.83l.05.05A1.7 1.7 0 0 0 8.97 4.6 1.7 1.7 0 0 0 10 3.07V3a2 2 0 1 1 4 0v.07a1.7 1.7 0 0 0 1.03 1.53 1.7 1.7 0 0 0 1.88-.34l.05-.05a2 2 0 1 1 2.83 2.83l-.05.05a1.7 1.7 0 0 0-.34 1.88 1.7 1.7 0 0 0 1.56 1.03H21a2 2 0 1 1 0 4h-.07A1.7 1.7 0 0 0 19.4 15z"/></svg></span>设置</button>
     </nav>
     <div class="sidebar-foot">
@@ -222,9 +219,29 @@
         <h2>活跃热力图 <span>星期 × 小时</span></h2>
         <div id="heatmap"></div>
       </div>
+      <div class="panel" id="appEffPanel">
+        <h2>各应用效率<i class="info" id="appEffInfo">i</i><span>谁让你打得最快</span>
+          <span class="ctl"><button class="dlbtn" data-dl="appEffChart" data-name="app_efficiency" title="保存为图片">⬇</button></span>
+        </h2>
+        <div class="hbar"><div class="inner"><canvas id="appEffChart"></canvas></div></div>
+        <div id="appEffNote" class="posnote"></div>
+      </div>
+      <div class="panel" id="weekdayPanel">
+        <h2>工作日 vs 周末<i class="info" id="weekdayInfo">i</i><span>每活跃日均产</span>
+          <span class="ctl"><button class="dlbtn" data-dl="weekdayChart" data-name="weekday_rhythm" title="保存为图片">⬇</button></span>
+        </h2>
+        <canvas id="weekdayChart"></canvas>
+        <div id="weekdayNote" class="posnote"></div>
+      </div>
       <div class="panel wide">
         <h2>词汇丰富度趋势<i class="info" id="richInfo">i</i><span id="richSub"></span></h2>
         <canvas id="richnessChart"></canvas>
+      </div>
+      <div class="panel wide" id="vocabPanel">
+        <h2>词汇量成长<i class="info" id="vocabInfo">i</i><span id="vocabSub">累计写过的不同词 / 字</span>
+          <span class="ctl"><button class="dlbtn" data-dl="vocabChart" data-name="vocab_growth" title="保存为图片">⬇</button></span>
+        </h2>
+        <canvas id="vocabChart"></canvas>
       </div>
       <div class="panel wide">
         <h2>年度贡献热力图 <span>近一年每日字数</span><i class="info" id="contribInfo">i</i>
@@ -364,7 +381,7 @@
     </div>
   </section>
 
-  <!-- ======================= FUN ======================= -->
+  <!-- ======================= FUN (趣味 + 记录珍藏) ======================= -->
   <section class="view" id="view-fun">
     <div class="panel">
       <h2>成就 <span class="saved" id="gUnlockedTop" style="display:none"></span></h2>
@@ -377,10 +394,6 @@
       <div class="panel"><h2>生僻字<i class="info" id="rareInfo">i</i></h2><div class="chips" id="rareChars"></div></div>
       <div class="panel wide"><h2>只打过一次的字</h2><div class="chips" id="hapax"></div></div>
     </div>
-  </section>
-
-  <!-- ======================= RECORDS (记录珍藏) ======================= -->
-  <section class="view" id="view-records">
     <div class="panel recintro">
       <h2>记录珍藏<i class="info" id="recInfo">i</i></h2>
       <div class="recintro-sub">这是你与码字鸭一路写下的高光时刻——所有数字都来自你真正上屏的汉字。</div>
@@ -388,8 +401,8 @@
     <div id="recBody"><div class="chart-skel">正在翻看你的珍藏…</div></div>
   </section>
 
-  <!-- ======================= SEARCH ======================= -->
-  <section class="view" id="view-search">
+  <!-- ======================= LEXICON / 词语 (查询 + 关注词 + 词库) ======================= -->
+  <section class="view" id="view-lexicon">
     <div class="panel" id="queryPanel">
       <h2>查询</h2>
       <div class="searchbar">
@@ -409,10 +422,6 @@
       </div>
       <div id="trackedList" class="trackgrid"></div>
     </div>
-  </section>
-
-  <!-- ======================= LEXICON (词库) ======================= -->
-  <section class="view" id="view-lexicon">
     <div class="panel">
       <h2>词库<i class="info" id="lexInfo">i</i></h2>
       <div class="lexlist" id="lexList"></div>
@@ -448,10 +457,17 @@
 
   <!-- ======================= SETTINGS ======================= -->
   <section class="view" id="view-settings">
-    <div class="panel">
+    <div class="settabs" id="setTabs">
+      <button class="active" data-sset="record">记录与目标</button>
+      <button data-sset="appearance">启动与外观</button>
+      <button data-sset="data">分析与数据</button>
+      <button data-sset="update">检查更新</button>
+      <button data-sset="manage">数据管理</button>
+    </div>
+    <div class="panel" data-spanel="config">
       <h2>设置 <span class="saved" id="cfgSaved" style="display:none">已保存 ✓</span></h2>
       <div class="settings-layout" id="cfgForm">
-        <section class="setting-section">
+        <section class="setting-section" data-ssec="record">
           <h3>记录</h3>
           <div class="setting-list">
             <div class="setting-item">
@@ -480,7 +496,7 @@
             </div>
           </div>
         </section>
-        <section class="setting-section">
+        <section class="setting-section" data-ssec="appearance">
           <h3>启动与外观</h3>
           <div class="setting-list">
             <div class="setting-item">
@@ -527,7 +543,7 @@
             </div>
           </div>
         </section>
-        <section class="setting-section">
+        <section class="setting-section" data-ssec="data">
           <h3>分析与数据</h3>
           <div class="setting-list">
             <div class="setting-item">
@@ -563,7 +579,7 @@
       </div>
     </div>
 
-    <div class="panel">
+    <div class="panel" data-spanel="update">
       <h2>检查更新</h2>
       <div class="btnrow">
         <button class="btn" id="updCheck">检查更新</button>
@@ -580,13 +596,13 @@
       <div id="updMsg"></div>
     </div>
 
-    <div class="panel">
+    <div class="panel" data-spanel="manage">
       <h2>词库</h2>
       <div class="hint">管理用于「占比统计」的词库：内置成语库，以及你自己上传或新建的词库。词库统计是额外的观察层，不影响看板的字数与词频。</div>
       <div class="btnrow" style="margin-top:10px"><button class="btn primary" id="gotoLexBtn">管理我的词库 →</button></div>
     </div>
 
-    <div class="panel">
+    <div class="panel" data-spanel="manage">
       <h2>数据管理</h2>
       <div id="dataSummary" class="empty"></div>
 
@@ -724,6 +740,8 @@
 
 <script src="js/core.js"></script>
 <script src="js/board.js"></script>
+<script src="js/boardexport.js"></script>
+<script src="js/boardpanels.js"></script>
 <script src="js/boardlayout.js"></script>
 <script src="js/report.js"></script>
 <script src="js/day.js"></script>

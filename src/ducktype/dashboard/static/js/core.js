@@ -141,12 +141,6 @@ async function apiGet(endpoint, params){
     throw e;
   }
 }
-async function getJSON(path){
-  // Accepts the historical "/api/endpoint?a=b" form and routes it to the bridge.
-  const [ep, query] = path.replace(/^\/api\//,"").split("?");
-  const params = rangeParams(Object.fromEntries(new URLSearchParams(query||"")));
-  return apiGet(ep, params);
-}
 const DT = {
   config_get: ()=> isNative()? nApi().config_get() : fetch("/api/config").then(_j),
   config_set: (b)=> isNative()? nApi().config_set(b) : fetch("/api/config",_post(b)).then(_j),
@@ -225,7 +219,8 @@ window.addEventListener("resize", ()=>{
   }, 120);
 });
 function gotoSearch(term){
-  document.querySelector('#tabs button[data-v="search"]').click();
+  // 查询 now lives at the top of the 词语 (lexicon) view.
+  document.querySelector('#tabs button[data-v="lexicon"]').click();
   const inp = document.getElementById("searchInput");
   inp.value = term; doSearch();
   // The view switch resets scroll to the top; bring the 查询 panel (and its

@@ -70,6 +70,9 @@ READ_ENDPOINTS = (
     "mini_stats",
     "richness",
     "contrib",
+    "vocab_growth",
+    "app_efficiency",
+    "weekday_rhythm",
     "usage",
     "report_compare",
     "records",
@@ -240,6 +243,19 @@ class Api:
         except (TypeError, ValueError):
             days = 364
         return stats.contrib_calendar(self._db, days)
+
+    def _r_vocab_growth(self, p):
+        return stats.vocab_growth(self._db, self._config.run_gap_seconds)
+
+    def _r_app_efficiency(self, p):
+        since, until = self._bounds(p)
+        return stats.app_efficiency(self._db, since, until,
+                                    self._config.session_gap_seconds,
+                                    int(p.get("n", 8)))
+
+    def _r_weekday_rhythm(self, p):
+        since, until = self._bounds(p)
+        return stats.weekday_rhythm(self._db, since, until)
 
     def _r_usage(self, p):
         return reporting.dashboard_usage(self._db, int(p.get("days", 30)))

@@ -1,6 +1,35 @@
 const CFG_BOOL = ["paused","exclude_password_fields","autostart","open_dashboard_on_start","lexicon_recompute_on_exclude","pie_download_include_pct","notify_enabled"];
 const CFG_NUM = ["daily_goal","weekly_goal","monthly_goal","retention_days","run_gap_seconds","session_gap_seconds","dashboard_port","ticker_refresh_seconds"];
+// ---- settings sub-section navigation (0.3.0) ----
+// The settings page is split into named sub-sections; the sub-nav shows only the
+// chosen one so the page isn't one long scroll. The first three live inside the
+// #cfgForm panel (data-spanel="config"); 检查更新 / 数据管理 are their own panels.
+let setSection = "record";
+const _SET_PANEL_FOR = {record:"config", appearance:"config", data:"config",
+                        update:"update", manage:"manage"};
+function showSetSection(key){
+  setSection = key || "record";
+  document.querySelectorAll("#setTabs button").forEach(b=>
+    b.classList.toggle("active", b.dataset.sset === setSection));
+  const wantPanel = _SET_PANEL_FOR[setSection] || "config";
+  document.querySelectorAll("#view-settings [data-spanel]").forEach(p=>{
+    p.style.display = (p.dataset.spanel === wantPanel) ? "" : "none";
+  });
+  // within the shared config panel, reveal only the matching sub-section
+  document.querySelectorAll("#cfgForm .setting-section").forEach(s=>{
+    s.style.display = (s.dataset.ssec === setSection) ? "" : "none";
+  });
+}
+(function wireSetTabs(){
+  const bar = document.getElementById("setTabs");
+  if(bar) bar.addEventListener("click", e=>{
+    const b = e.target.closest("button[data-sset]"); if(!b) return;
+    showSetSection(b.dataset.sset);
+  });
+})();
+
 async function loadSettings(){
+  showSetSection(setSection);
   const c = await DT.config_get();
   CFG_BOOL.forEach(k=>document.getElementById("c-"+k).checked = !!c[k]);
   CFG_NUM.forEach(k=>document.getElementById("c-"+k).value = c[k]);
@@ -224,7 +253,7 @@ async function doSearch(){
   const box = document.getElementById("searchResult");
   if(!q){ box.className="empty"; box.textContent="输入关键字后回车或点「搜索」。"; return; }
   box.className=""; box.textContent="搜索中…";
-  let r; try{ r = await getJSON("/api/search?q=" + encodeURIComponent(q)); }
+  let r; try{ r = await apiGet("search", rangeParams({q})); }
   catch(e){ box.className="empty"; box.textContent="搜索失败。"; return; }
   if(!r.total){ box.className="empty"; box.innerHTML = `当前范围内没有找到「${escapeHtml(q)}」。换个词或把时间范围调大试试。`; return; }
   const fmt = ts => ts ? new Date(ts*1000).toLocaleString() : "—";
