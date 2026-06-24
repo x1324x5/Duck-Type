@@ -98,6 +98,13 @@ class Config:
     mini_open_hotkey: str = ""
     mini_close_hotkey: str = ""
 
+    # mini counter window size, remembered across opens. 0 means "use the
+    # built-in default"; otherwise the last size the user drag-resized it to
+    # (clamped to the allowed range by desktop.py). Written programmatically when
+    # the mini window is resized/closed, not from the settings page.
+    mini_width: int = 0
+    mini_height: int = 0
+
     # startup
     autostart: bool = False
 

@@ -12,6 +12,7 @@ the tray destroys it so the GUI loop returns and the app shuts down.
 from __future__ import annotations
 
 import logging
+import threading
 from pathlib import Path
 
 log = logging.getLogger("ducktype")
@@ -22,6 +23,7 @@ _api = None
 _quitting = False
 _maximized = False
 _pending_maximize = False   # defer the first maximize when started hidden (silent start)
+_mini_save_timer = None     # debounces persisting the mini size during a drag
 _DEFAULT_W, _DEFAULT_H = 1180, 820
 # Mini counter window: starts compact (the full layout fits ~2/3 of the old size)
 # and can be drag-resized via the in-page corner grip (frameless windows have no
@@ -29,6 +31,53 @@ _DEFAULT_W, _DEFAULT_H = 1180, 820
 _MINI_DEFAULT_W, _MINI_DEFAULT_H = 196, 246
 _MINI_MIN_W, _MINI_MIN_H = 150, 154
 _MINI_MAX_W, _MINI_MAX_H = 360, 480
+
+
+def _clamp_mini(w, h):
+    """Clamp a (w, h) to the mini window's allowed range."""
+    return (max(_MINI_MIN_W, min(_MINI_MAX_W, int(w))),
+            max(_MINI_MIN_H, min(_MINI_MAX_H, int(h))))
+
+
+def _saved_mini_size():
+    """The last drag-resized mini size from config, or the built-in default when
+    unset / unavailable."""
+    cfg = getattr(_api, "_config", None)
+    w, h = _MINI_DEFAULT_W, _MINI_DEFAULT_H
+    try:
+        if cfg is not None:
+            if getattr(cfg, "mini_width", 0):
+                w = cfg.mini_width
+            if getattr(cfg, "mini_height", 0):
+                h = cfg.mini_height
+    except Exception:
+        pass
+    return _clamp_mini(w, h)
+
+
+def _persist_mini_size(w, h) -> None:
+    """Remember the mini window size so the next open restores it. Debounced so a
+    drag (which fires many resize calls) only writes config once it settles."""
+    global _mini_save_timer
+    cfg = getattr(_api, "_config", None)
+    if cfg is None:
+        return
+    if _mini_save_timer is not None:
+        try:
+            _mini_save_timer.cancel()
+        except Exception:
+            pass
+
+    def _do():
+        try:
+            cfg.mini_width, cfg.mini_height = int(w), int(h)
+            cfg.save()
+        except Exception:
+            log.debug("persist mini size failed", exc_info=True)
+
+    _mini_save_timer = threading.Timer(0.5, _do)
+    _mini_save_timer.daemon = True
+    _mini_save_timer.start()
 
 
 def _main_hwnd():
@@ -276,6 +325,7 @@ def show_mini() -> None:
         except Exception:
             _mini = None
     index = _index_html()
+    init_w, init_h = _saved_mini_size()         # restore the last drag-resized size
     _mini = webview.create_window(
         "码字鸭 · 迷你计数器",
         url=index.as_uri() + "#mini",
@@ -283,7 +333,7 @@ def show_mini() -> None:
         frameless=True,
         resizable=True,             # user can zoom the gauge/sparkline within a range
         on_top=True,
-        width=_MINI_DEFAULT_W, height=_MINI_DEFAULT_H,
+        width=init_w, height=init_h,
         min_size=(_MINI_MIN_W, _MINI_MIN_H),   # smallest keeps the speed gauge + 本次会话
         background_color="#0f1216",
     )
@@ -301,9 +351,9 @@ def resize_mini(w, h) -> dict:
     if _mini is None:
         return {"ok": False}
     try:
-        w = max(_MINI_MIN_W, min(_MINI_MAX_W, int(w)))
-        h = max(_MINI_MIN_H, min(_MINI_MAX_H, int(h)))
+        w, h = _clamp_mini(w, h)
         _mini.resize(w, h)
+        _persist_mini_size(w, h)    # remember it for the next open
         return {"ok": True, "w": w, "h": h}
     except Exception:
         log.exception("resize_mini failed")

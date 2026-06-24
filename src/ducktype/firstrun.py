@@ -120,10 +120,95 @@ def delete_files(paths_: List[Path]) -> None:
             pass
 
 
+def _char_count(db_file: Path) -> Optional[int]:
+    """char_events row count if ``db_file`` is a readable DuckType DB, else None
+    (missing file, not SQLite, or no such table)."""
+    if not db_file.exists():
+        return None
+    import sqlite3
+    try:
+        con = sqlite3.connect(str(db_file))
+        try:
+            row = con.execute("SELECT COUNT(*) FROM char_events").fetchone()
+            return int(row[0]) if row else 0
+        finally:
+            con.close()
+    except sqlite3.DatabaseError:
+        return None
+
+
+def _migration_verified(old: Path, new_root: Path) -> bool:
+    """True only if the new root holds a complete copy of the old root's data,
+    so deleting the old root cannot lose anything.
+
+    The database needs special handling: the dashboard relocate flow writes it
+    via SQLite's *online backup*, so the destination ``ducktype.db`` is a fresh,
+    fully-checkpointed file whose byte size differs from the source and which has
+    no ``-wal`` / ``-shm`` sidecars. A plain size compare (the old behaviour)
+    therefore almost always failed, orphaning the old data forever. We accept the
+    DB when it is a byte-for-byte copy (raw-file first-run migration) *or* a valid
+    DuckType database with at least as many char rows as the source. The remaining
+    flat files must still match by size; throwaway WAL/SHM sidecars are ignored.
+    """
+    old_db, new_db = old / "ducktype.db", new_root / "ducktype.db"
+    if not new_db.exists():
+        return False
+    db_ok = False
+    try:
+        if old_db.exists() and new_db.stat().st_size == old_db.stat().st_size:
+            db_ok = True  # identical bytes (raw copy / first-run migration)
+    except OSError:
+        pass
+    if not db_ok:
+        new_n = _char_count(new_db)
+        if new_n is None:
+            return False  # destination isn't a usable DuckType DB -> keep source
+        old_n = _char_count(old_db)
+        db_ok = old_n is None or new_n >= old_n
+    for name in _OTHER_FILES:                      # config.json, phrases.txt
+        s = old / name
+        if not s.exists():
+            continue
+        d = new_root / name
+        try:
+            if not d.exists() or d.stat().st_size != s.stat().st_size:
+                return False
+        except OSError:
+            return False
+    return db_ok
+
+
+def _delete_root_data(old: Path) -> None:
+    """Remove every data file from a (now-migrated) old root, including the DB's
+    WAL/SHM sidecars and any hook DLLs, then drop the native dir if it empties."""
+    for name in (*_DB_FILES, *_OTHER_FILES, _LOG_FILE):
+        try:
+            (old / name).unlink()
+        except OSError:
+            pass
+    nd = old / "native"
+    if nd.is_dir():
+        for dll in nd.glob("ducktype_hook_*.dll"):
+            try:
+                dll.unlink()
+            except OSError:
+                pass
+        try:
+            if not any(nd.iterdir()):
+                nd.rmdir()
+        except OSError:
+            pass
+
+
 def cleanup_old_root(new_root: Path) -> None:
     """Finish a relocation started in a previous run: if ``new_root`` holds the
-    CLEANUP_MARKER pointing at the old root, delete the old root's data files
-    (only after confirming the new root has them) and remove the marker."""
+    CLEANUP_MARKER pointing at the old root, delete the old root's data once the
+    new root is confirmed to hold a complete copy, then drop the marker.
+
+    The marker is only removed when the job is truly finished (old gone, or
+    verified-and-deleted). If verification fails -- e.g. the new root sits on a
+    drive that wasn't mounted yet -- the marker is *kept* so the next launch
+    retries, rather than abandoning the orphaned copy as the old code did."""
     marker = new_root / CLEANUP_MARKER
     if not marker.exists():
         return
@@ -131,24 +216,24 @@ def cleanup_old_root(new_root: Path) -> None:
         old = Path(marker.read_text(encoding="utf-8").strip())
     except OSError:
         return
+    done = False
     try:
-        if old.exists() and old.resolve() != new_root.resolve():
-            plan = plan_files(old, new_root)
-            if verify_files(plan):
-                delete_files([s for s, _ in plan])
-                # Drop the now-empty native dir if we emptied it.
-                nd = old / "native"
-                if nd.is_dir() and not any(nd.iterdir()):
-                    try:
-                        nd.rmdir()
-                    except OSError:
-                        pass
-                log.info("Cleaned up old data root after relocation: %s", old)
+        if not old.exists() or old.resolve() == new_root.resolve():
+            done = True  # nothing to clean up
+        elif _migration_verified(old, new_root):
+            _delete_root_data(old)
+            log.info("Cleaned up old data root after relocation: %s", old)
+            done = True
+        else:
+            log.warning(
+                "Relocation cleanup deferred: %s not yet a verified copy of %s; "
+                "keeping the old data for a retry.", new_root, old)
     finally:
-        try:
-            marker.unlink()
-        except OSError:
-            pass
+        if done:
+            try:
+                marker.unlink()
+            except OSError:
+                pass
 
 
 # ===========================================================================

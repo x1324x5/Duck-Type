@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ducktype"
-version = "0.3.0"
+version = "0.3.1"
 description = "码字鸭 · 后台统计输入法上屏汉字的字频、词频与序列 (Windows)"
 readme = "README.md"
 requires-python = ">=3.9"

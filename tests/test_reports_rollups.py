@@ -44,8 +44,19 @@ def test_record_achievements_idempotent_and_persists(db):
     time.sleep(0.01)
     second = db.record_achievements(["k1", "k5"])  # same ids again
     assert second["k1"] == ts  # original timestamp preserved
-    third = db.record_achievements(["streak3"])
+    # Newly-earned ids are added while the existing ones keep their timestamps.
+    third = db.record_achievements(["k1", "k5", "streak3"])
     assert set(third) == {"k1", "k5", "streak3"}
+    assert third["k1"] == ts
+
+
+def test_record_achievements_revokes_when_no_longer_met(db):
+    """A smaller set (e.g. after the user deleted data) drops the missing ids so
+    the unlocked set always mirrors the live data."""
+    db.record_achievements(["k1", "k5", "streak3"])
+    remaining = db.record_achievements(["k1"])      # k5/streak3 no longer met
+    assert set(remaining) == {"k1"}
+    assert db.record_achievements([]) == {}          # nothing met -> wiped
 
 
 def test_gamify_reports_unlocked_at_and_category(db, insert_chars, now):

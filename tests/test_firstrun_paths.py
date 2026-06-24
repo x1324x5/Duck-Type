@@ -113,10 +113,46 @@ def test_cleanup_old_root_keeps_data_if_unverified(tmp_path):
     new = tmp_path / "new"
     old.mkdir(); new.mkdir()
     (old / "ducktype.db").write_bytes(b"x" * 100)
-    # new is missing the db -> verify fails -> old must be preserved
+    # new is missing the db -> verify fails -> old must be preserved, and the
+    # marker kept so a later launch can retry the cleanup.
     (new / firstrun.CLEANUP_MARKER).write_text(str(old), encoding="utf-8")
     firstrun.cleanup_old_root(new)
     assert (old / "ducktype.db").exists()
+    assert (new / firstrun.CLEANUP_MARKER).exists()
+
+
+def test_cleanup_old_root_accepts_online_backup_db(tmp_path):
+    """The dashboard relocate flow writes the new DB via SQLite online backup, so
+    it differs in byte size from the source and has no WAL/SHM. Cleanup must still
+    recognise it as a complete copy (valid DB, >= source row count) and delete the
+    old root -- the case the old size-equality check always failed."""
+    import sqlite3
+    from ducktype import firstrun
+    old = tmp_path / "old"
+    new = tmp_path / "new"
+    old.mkdir(); new.mkdir()
+
+    def _make_db(path, rows):
+        con = sqlite3.connect(str(path))
+        con.execute("CREATE TABLE char_events (id INTEGER PRIMARY KEY, ts REAL, ch TEXT, app TEXT)")
+        con.executemany("INSERT INTO char_events(ts, ch, app) VALUES (?,?,?)",
+                        [(0.0, "鸭", None)] * rows)
+        con.commit(); con.close()
+
+    _make_db(old / "ducktype.db", 2000)
+    (old / "ducktype.db-wal").write_bytes(b"leftover wal")   # sidecar only in old
+    (old / "config.json").write_text("{}", encoding="utf-8")
+    # Online-backup destination: a valid DB with >= the source rows, so its byte
+    # size differs from the source yet it is plainly a complete copy.
+    _make_db(new / "ducktype.db", 2400)
+    (new / "config.json").write_text("{}", encoding="utf-8")
+    assert (new / "ducktype.db").stat().st_size != (old / "ducktype.db").stat().st_size
+
+    (new / firstrun.CLEANUP_MARKER).write_text(str(old), encoding="utf-8")
+    firstrun.cleanup_old_root(new)
+    assert not (old / "ducktype.db").exists()
+    assert not (old / "ducktype.db-wal").exists()
+    assert not (new / firstrun.CLEANUP_MARKER).exists()
 
 
 def test_updater_clean_env_strips_pyinstaller_vars(monkeypatch):
@@ -133,16 +169,23 @@ def test_updater_clean_env_strips_pyinstaller_vars(monkeypatch):
 def test_updater_swap_script_waits_replaces_and_restarts(tmp_path, monkeypatch):
     from ducktype import updater
 
-    monkeypatch.setattr(updater, "root_dir", lambda: tmp_path)
-    new = r"C:\Users\me\AppData\Roaming\DuckType\DuckType-new.exe"
-    cur = r"C:\Program Files\DuckType\DuckType.exe"
+    staging = str(tmp_path)
+    new = str(tmp_path / "DuckType-new.exe")
+    cur = r"C:\Users\me\桌面\码字鸭\DuckType.exe"   # non-ASCII install path
 
-    bat = updater._write_swap_script(new, cur)
-    script = (tmp_path / "_update.bat").read_text(encoding="ascii")
+    bat = updater._write_swap_script(new, cur, staging)
+    # Written in the system codepage so the Chinese path survives intact.
+    try:
+        script = (tmp_path / "_update.bat").read_text(encoding="mbcs")
+    except LookupError:
+        script = (tmp_path / "_update.bat").read_text(encoding="utf-8")
 
     assert bat == str(tmp_path / "_update.bat")
-    assert f'move /Y "{new}" "{cur}"' in script
+    # Lossless swap: back up the old exe, install the new one under the same name,
+    # relaunch it, and roll back if the install fails.
+    assert f'move /Y "{cur}" "{cur}.old"' in script   # old moved aside, not deleted
+    assert f'move /Y "{new}" "{cur}"' in script        # new takes the original name
     assert f'start "" "{cur}"' in script
     assert "tasklist /FI" in script
-    assert "if %tries% geq 30 goto run" in script
+    assert ":rollback" in script and ":giveup" in script
     assert 'del "%~f0"' in script

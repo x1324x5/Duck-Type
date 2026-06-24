@@ -391,18 +391,34 @@ class Database:
 
     # ---- achievements (unlock timestamps) -------------------------------
     def record_achievements(self, ids) -> dict:
-        """Stamp first-unlock time for any newly-unlocked achievement ids and
-        return the full {id: unlocked_ts} map. Idempotent: an id already on
-        record keeps its original timestamp."""
+        """Synchronise the stored unlocked set to ``ids`` and return the full
+        {id: unlocked_ts} map.
+
+        - Newly-unlocked ids get the current time stamped (idempotent: an id
+          already on record keeps its *original* timestamp).
+        - Ids no longer in ``ids`` are *revoked* (their row is dropped). This is
+          what keeps achievements honest after the user deletes typing data: a
+          milestone that no longer holds disappears instead of lingering as a
+          stale unlock. During normal play ``ids`` only grows, so nothing is ever
+          removed. The caller (gamify) always passes the *complete* currently-met
+          set, so a partial list must never be handed in here.
+        """
         now = time.time()
+        want = [str(i) for i in (ids or [])]
         con = self.connect()
         try:
-            if ids:
+            if want:
                 con.executemany(
                     "INSERT OR IGNORE INTO achievements(id, unlocked_ts) VALUES (?, ?)",
-                    [(str(i), now) for i in ids],
+                    [(i, now) for i in want],
                 )
-                con.commit()
+                placeholders = ",".join("?" * len(want))
+                con.execute(
+                    f"DELETE FROM achievements WHERE id NOT IN ({placeholders})", want
+                )
+            else:
+                con.execute("DELETE FROM achievements")
+            con.commit()
             rows = con.execute("SELECT id, unlocked_ts FROM achievements").fetchall()
         except sqlite3.OperationalError:
             return {}
@@ -429,12 +445,22 @@ class Database:
         con.execute("DELETE FROM meta WHERE key='metrics_done_through'")
 
     def clear_all(self) -> int:
-        """Delete every captured event. Returns the number of char rows removed."""
+        """Delete every captured event and the derived progress state, returning
+        the number of char rows removed.
+
+        A full wipe must leave *no* trace that depends on the typed data:
+        achievement unlocks (incl. quote-view milestones) and the quote-view
+        tallies that feed them are cleared too, otherwise the gamification panel
+        would still show medals for data that no longer exists. ``dashboard_sessions``
+        is deliberately kept -- it is a UI-activity log, not typing data.
+        """
         con = self.connect()
         try:
             n = con.execute("SELECT COUNT(*) FROM char_events").fetchone()[0]
             con.execute("DELETE FROM char_events")
             con.execute("DELETE FROM key_events")
+            con.execute("DELETE FROM achievements")
+            con.execute("DELETE FROM quote_views")
             self._reset_materialization(con)
             con.commit()
             con.execute("VACUUM")

@@ -13,6 +13,30 @@ def test_clear_all(db, insert_chars, insert_keys, now):
     assert db.stats_summary()["key_rows"] == 0
 
 
+def test_clear_all_wipes_achievements_and_quote_views(db, insert_chars, now):
+    insert_chars(db, [(now, "鸭", None)])
+    db.record_achievements(["k1", "first_word"])
+    db.record_quote_view("一片留白")
+    assert db.record_achievements(["k1", "first_word"])     # rows present
+    assert db.quote_stats()[0] == 1
+    db.clear_all()
+    # A full wipe must leave no medals or quote tallies behind.
+    con = db.connect()
+    try:
+        assert con.execute("SELECT COUNT(*) FROM achievements").fetchone()[0] == 0
+    finally:
+        con.close()
+    assert db.quote_stats() == (0, 0, False)
+
+
+def test_clear_all_keeps_dashboard_sessions(db, insert_chars, now):
+    """Usage history is UI activity, not typing data, so it survives a wipe."""
+    insert_chars(db, [(now, "鸭", None)])
+    db.record_dashboard_open("dashboard")
+    db.clear_all()
+    assert len(db.dashboard_opens()) == 1
+
+
 def test_delete_range(db, insert_chars, now):
     insert_chars(db, [(now - 100, "旧", None), (now, "新", None)])
     deleted = db.delete_range(None, now - 50)  # delete everything before now-50

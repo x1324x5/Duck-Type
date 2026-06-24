@@ -171,14 +171,17 @@ def gamify(db, daily_goal: int, weekly_goal: int = 0, monthly_goal: int = 0) -> 
             "unlocked": is_unlocked,
             "progress": min(1.0, round(value / threshold, 4)) if threshold else 1.0,
         })
-    # Stamp (and persist) first-unlock times so the page can show them and the
-    # frontend can detect freshly-earned achievements for the toast.
+    # Sync (and persist) the unlocked set: stamps newly-earned ids, and revokes
+    # any that the current data no longer satisfies (e.g. after the user deleted
+    # records). Passing the *full* met set is required -- see record_achievements.
     try:
         stamps = db.record_achievements(unlocked_ids)
     except Exception:
         stamps = {}
     for a in achievements:
-        a["unlocked_at"] = stamps.get(a["id"])
+        # Only a currently-unlocked achievement carries a timestamp; this stays
+        # consistent even if a stale row briefly lingered before the sync.
+        a["unlocked_at"] = stamps.get(a["id"]) if a["unlocked"] else None
 
     goal = max(1, int(daily_goal or 1))
     # Weekly / monthly goals: fall back to a daily-derived target when unset (0).

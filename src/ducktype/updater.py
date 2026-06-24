@@ -1,17 +1,28 @@
 """Check GitHub Releases for a newer DuckType and (for packaged builds) apply it.
 
 The packaged .exe cannot overwrite itself while running, so applying an update
-streams the new exe to disk (reporting download progress), then writes a tiny
-.bat that waits for this process to exit, swaps the file in place -- keeping the
-name DuckType.exe -- and relaunches, then asks the app to quit.
+streams the new exe to disk (reporting download progress) **right next to the
+running exe**, then writes a tiny .bat that waits for this process to exit, swaps
+the file in place -- keeping the exact same path and name -- and relaunches, then
+asks the app to quit. Staying in the original folder under the original name is
+what keeps the user's setup intact: the autostart Run-key and any shortcuts point
+at that path, so a lossless in-place swap leaves them all working.
 
-Critical detail (the cause of the historical "Failed to load Python DLL
-...\\Temp\\_MEI...\\python3xx.dll" crash on relaunch): a PyInstaller one-file
-process exports ``_MEIPASS2`` / ``_PYI_*`` environment variables pointing at its
-private temp-extraction directory. If the relaunch inherits them, the new exe
-tries to reuse that directory -- which the old process deletes on exit -- instead
-of extracting fresh, and fails to find its Python DLL. We therefore launch the
-swap script with those variables stripped from the environment.
+Three failure modes this guards against (all seen as a "找不到路径 / can't relaunch"
+report after a download that otherwise succeeded):
+
+  * **Stale _MEI dir.** A PyInstaller one-file process exports ``_MEIPASS2`` /
+    ``_PYI_*`` env vars pointing at its private temp-extraction directory. If the
+    relaunch inherits them, the new exe tries to reuse that dir -- which the old
+    process deletes on exit -- and fails to find its Python DLL. We strip those
+    vars from the swap script's environment.
+  * **Invalid working directory.** cmd inherits this process's CWD; if that was a
+    now-deleted temp dir, cmd aborts with "The system cannot find the path
+    specified" before the swap even runs. We launch it with an explicit ``cwd``
+    of the exe's folder, which always exists.
+  * **Non-ASCII paths.** When the exe lives under a Chinese folder name, writing
+    the .bat as ASCII dropped those characters and produced a broken path. We
+    write it in the system codepage (``mbcs``) so the path survives.
 """
 from __future__ import annotations
 
@@ -105,38 +116,79 @@ def _clean_env() -> dict:
             if not (k.startswith("_MEI") or k.startswith("_PYI"))}
 
 
-def _write_swap_script(new: str, cur: str) -> str:
-    """Write the wait-then-swap-then-relaunch batch file; return its path."""
-    bat = os.path.join(str(root_dir()), "_update.bat")
+def _staging_dir(cur: str) -> str:
+    """Where to drop the downloaded exe and swap script.
+
+    Prefer the folder the running exe lives in, so the swap is a fast, reliable
+    same-directory rename and the new exe ends up exactly where the old one was.
+    Falls back to the data root only if that folder isn't writable (e.g. the user
+    parked the exe under Program Files)."""
+    exe_dir = os.path.dirname(cur)
+    try:
+        probe = os.path.join(exe_dir, ".dt_update_write_test")
+        with open(probe, "w") as f:
+            f.write("ok")
+        os.remove(probe)
+        return exe_dir
+    except OSError:
+        return str(root_dir())
+
+
+def _write_swap_script(new: str, cur: str, staging: str) -> str:
+    """Write the wait-then-swap-then-relaunch batch file; return its path.
+
+    The swap is lossless at every step: the old exe is moved aside (not deleted)
+    before the new one takes its place, and if the install can't complete the old
+    exe is moved back, so a working DuckType always remains at ``cur``. ``ping`` is
+    the delay because ``timeout`` needs console stdin, which a hidden process lacks.
+    Written in the system codepage so non-ASCII (e.g. Chinese) paths survive."""
+    bat = os.path.join(staging, "_update.bat")
     pid = os.getpid()
-    # Wait for THIS process to exit, then replace the exe in place (retrying the
-    # move so the brief window where the bootloader still holds the file lock
-    # doesn't abort the swap), then relaunch under the SAME name. `ping` is the
-    # delay because `timeout` needs console stdin, which a hidden process lacks.
+    bak = cur + ".old"
     script = (
         "@echo off\r\n"
         ":wait\r\n"
         f'tasklist /FI "PID eq {pid}" | find "{pid}" >nul\r\n'
         "if not errorlevel 1 ( ping -n 2 127.0.0.1 >nul & goto wait )\r\n"
+        # Move the old exe aside, retrying while the bootloader releases its lock.
         "set /a tries=0\r\n"
-        ":swap\r\n"
-        f'move /Y "{new}" "{cur}" >nul 2>&1\r\n'
-        "if not errorlevel 1 goto run\r\n"
+        ":mvold\r\n"
+        f'if not exist "{cur}" goto putnew\r\n'
+        f'move /Y "{cur}" "{bak}" >nul 2>&1\r\n'
+        "if not errorlevel 1 goto putnew\r\n"
         "set /a tries+=1\r\n"
-        "if %tries% geq 30 goto run\r\n"
+        "if %tries% geq 30 goto giveup\r\n"
         "ping -n 2 127.0.0.1 >nul\r\n"
-        "goto swap\r\n"
+        "goto mvold\r\n"
+        # Put the freshly downloaded exe in place under the original name.
+        ":putnew\r\n"
+        f'move /Y "{new}" "{cur}" >nul 2>&1\r\n'
+        "if errorlevel 1 goto rollback\r\n"
+        f'del /F /Q "{bak}" >nul 2>&1\r\n'
+        "goto run\r\n"
+        # Install failed: restore the old exe so nothing is lost.
+        ":rollback\r\n"
+        f'if exist "{bak}" move /Y "{bak}" "{cur}" >nul 2>&1\r\n'
+        f'del /F /Q "{new}" >nul 2>&1\r\n'
+        "goto run\r\n"
+        # Old exe never unlocked: leave it untouched and still relaunch it.
+        ":giveup\r\n"
         ":run\r\n"
-        f'start "" "{cur}"\r\n'
+        f'if exist "{cur}" start "" "{cur}"\r\n'
         'del "%~f0"\r\n'
     )
-    with open(bat, "w", encoding="ascii", errors="ignore") as f:
+    try:
+        f = open(bat, "w", encoding="mbcs", errors="replace", newline="")
+    except LookupError:                          # non-Windows (tests/import only)
+        f = open(bat, "w", encoding="utf-8", errors="replace", newline="")
+    with f:
         f.write(script)
     return bat
 
 
 def _download_and_stage(url: str, cur: str, on_quit: Optional[Callable]) -> None:
-    new = os.path.join(str(root_dir()), "DuckType-new.exe")
+    staging = _staging_dir(cur)
+    new = os.path.join(staging, "DuckType-new.exe")
     _set_state(phase="downloading", downloaded=0, total=0, error="",
                path=new, target=cur)
     try:
@@ -175,10 +227,13 @@ def _download_and_stage(url: str, cur: str, on_quit: Optional[Callable]) -> None
         return
 
     try:
-        bat = _write_swap_script(new, cur)
+        bat = _write_swap_script(new, cur, staging)
         CREATE_NO_WINDOW = 0x08000000
+        # Run from the exe's folder (always exists) so cmd never inherits this
+        # process's about-to-be-deleted _MEI temp dir as its working directory.
+        exe_dir = os.path.dirname(cur) or staging
         subprocess.Popen(["cmd", "/c", bat], creationflags=CREATE_NO_WINDOW,
-                         close_fds=True, env=_clean_env())
+                         close_fds=True, env=_clean_env(), cwd=exe_dir)
     except Exception as exc:
         _set_state(phase="error", error="启动更新脚本失败：" + str(exc))
         log.exception("Failed to launch update script")
