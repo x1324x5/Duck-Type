@@ -141,12 +141,18 @@ def _write_swap_script(new: str, cur: str, staging: str) -> str:
     before the new one takes its place, and if the install can't complete the old
     exe is moved back, so a working DuckType always remains at ``cur``. ``ping`` is
     the delay because ``timeout`` needs console stdin, which a hidden process lacks.
-    Written in the system codepage so non-ASCII (e.g. Chinese) paths survive."""
+
+    Non-ASCII (e.g. Chinese) paths survive because the file is written as UTF-8 and
+    switches the console to UTF-8 via ``chcp 65001`` up front. This is locale
+    independent -- the earlier ``mbcs`` approach mangled CJK paths on an English
+    system (cp1252 can't encode them), so the bytes must not depend on the codepage
+    of the machine that *wrote* the script."""
     bat = os.path.join(staging, "_update.bat")
     pid = os.getpid()
     bak = cur + ".old"
     script = (
         "@echo off\r\n"
+        "chcp 65001 >nul\r\n"
         ":wait\r\n"
         f'tasklist /FI "PID eq {pid}" | find "{pid}" >nul\r\n'
         "if not errorlevel 1 ( ping -n 2 127.0.0.1 >nul & goto wait )\r\n"
@@ -177,11 +183,9 @@ def _write_swap_script(new: str, cur: str, staging: str) -> str:
         f'if exist "{cur}" start "" "{cur}"\r\n'
         'del "%~f0"\r\n'
     )
-    try:
-        f = open(bat, "w", encoding="mbcs", errors="replace", newline="")
-    except LookupError:                          # non-Windows (tests/import only)
-        f = open(bat, "w", encoding="utf-8", errors="replace", newline="")
-    with f:
+    # UTF-8 without a BOM (a BOM would break the leading `@echo off`); `chcp 65001`
+    # inside the script makes cmd read the following lines as UTF-8.
+    with open(bat, "w", encoding="utf-8", newline="") as f:
         f.write(script)
     return bat
 

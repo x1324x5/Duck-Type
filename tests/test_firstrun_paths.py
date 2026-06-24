@@ -174,13 +174,12 @@ def test_updater_swap_script_waits_replaces_and_restarts(tmp_path, monkeypatch):
     cur = r"C:\Users\me\桌面\码字鸭\DuckType.exe"   # non-ASCII install path
 
     bat = updater._write_swap_script(new, cur, staging)
-    # Written in the system codepage so the Chinese path survives intact.
-    try:
-        script = (tmp_path / "_update.bat").read_text(encoding="mbcs")
-    except LookupError:
-        script = (tmp_path / "_update.bat").read_text(encoding="utf-8")
+    # Written as UTF-8 (+ chcp 65001 inside) so the Chinese path survives intact
+    # regardless of the writing machine's system locale.
+    script = (tmp_path / "_update.bat").read_text(encoding="utf-8")
 
     assert bat == str(tmp_path / "_update.bat")
+    assert "chcp 65001" in script                     # console switched to UTF-8
     # Lossless swap: back up the old exe, install the new one under the same name,
     # relaunch it, and roll back if the install fails.
     assert f'move /Y "{cur}" "{cur}.old"' in script   # old moved aside, not deleted
